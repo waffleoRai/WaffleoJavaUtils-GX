@@ -1,0 +1,182 @@
+package waffleoRai_soundbank.nintendo;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+
+import waffleoRai_Containers.nintendo.NDKDSFile;
+import waffleoRai_Containers.nintendo.NDKSectionType;
+import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+
+public class DSBank extends NinBank{
+	
+	/*--- Constants ---*/
+	
+	public static final String MAGIC = "SBNK";
+
+	/*--- Construction/Parsing ---*/
+	
+	private DSBank(int initNodes)
+	{
+		topNodes = new ArrayList<NinBankNode>(initNodes+1);
+		nodeMap = new HashMap<Long, NinBankNode>();
+		linkNodes = new HashSet<NinBankNode>();
+	}
+	
+	public static DSBank readSBNK(FileBuffer src, long stoff) throws UnsupportedFileTypeException
+	{
+		if(src == null) return null;
+		NDKDSFile ds_file = NDKDSFile.readDSFile(src);
+		if(ds_file == null) return null;
+		if(!MAGIC.equals(ds_file.getFileIdentifier())) throw new FileBuffer.UnsupportedFileTypeException("DSBank.readSBNK || Source data does not begin with SBNK magic number!");
+		
+		//DATA
+		long data_off = ds_file.getOffsetToSection(NDKSectionType.DATA);
+		FileBuffer data_sec = ds_file.getSectionData(NDKSectionType.DATA);
+		long cpos = 40L; //4 magic, 4 size, 32 reserved?
+		int ncount = data_sec.intFromFile(cpos); cpos+=4;
+		
+		//Create bank
+		DSBank bank = new DSBank(ncount);
+		
+		//Instrument pointer table
+		//& Instrument table
+		for(int i = 0; i < ncount; i++)
+		{
+			byte frecord = data_sec.getByte(cpos); cpos++;
+			int type = getType(frecord);
+			int offset = Short.toUnsignedInt(data_sec.shortFromFile(cpos)); cpos += 2;
+			cpos++; //Padding
+			
+			if(type == 0)
+			{
+				bank.topNodes.add(NinBankNode.generateEmptyNode(null));
+			}
+			else
+			{
+				long rpos = Integer.toUnsignedLong(offset) - data_off;
+				NinBankNode node = readSBNKNode(data_sec, type, data_off, rpos);
+				bank.topNodes.add(node);	
+				
+				if(!node.isLink()) bank.nodeMap.put(node.getLocalAddress(), node);
+				else bank.linkNodes.add(node);
+				
+				Collection<NinBankNode> inner = node.getAllNonNullDescendants();
+				for(NinBankNode n : inner){
+					if(!n.isLink()) bank.nodeMap.put(n.getLocalAddress(), n);
+					else bank.linkNodes.add(n);
+				}
+			}
+		}
+		
+		bank.resolveLinks();
+		return bank;
+	}
+	
+	public static NinBankNode readSBNKNode(FileBuffer data_sec, int flag, long data_off, long offset) throws UnsupportedFileTypeException
+	{
+		return readSBNKNode(data_sec, flag, data_off, offset, null);
+	}
+	
+	public static NinBankNode readSBNKNode(FileBuffer data_sec, int flag, long data_off, long offset, NinBankNode parentNode) throws UnsupportedFileTypeException
+	{
+		if(data_sec == null) return null;
+		//Determine start position
+		
+		long rawAddress = data_off + offset;
+		NinBankNode node = new NinBankNode(flag, rawAddress, parentNode);
+		switch(flag)
+		{
+		case NinBankNode.TYPE_TONE: parseType1S(data_sec, offset, node); break;
+		case NinBankNode.TYPE_INST: parseType2S(data_sec, offset, data_off, node); break;
+		case NinBankNode.TYPE_PERC: parseType3S(data_sec, offset, data_off, node); break;
+		case NinBankNode.TYPE_LINK: 
+			node.setLinkAddress(rawAddress);
+			break;
+		}
+		
+		return node;
+	}
+	
+	private static void parseType1S(FileBuffer src, long stpos, NinBankNode node) throws UnsupportedFileTypeException
+	{
+		NinTone t = NinTone.readSTone(src, stpos);
+		node.setTone(t);
+	}
+	
+	private static void parseType2S(FileBuffer src, long stpos, long data_off, NinBankNode node) throws UnsupportedFileTypeException
+	{
+		//System.err.println("Instrument is type 2");
+		long cpos = stpos;
+		
+		//Get range maxs. Always 8 slots in SBNK, though not all need be used.
+		byte[] maxs = new byte[8];
+		for(int i = 0; i < 8; i++)
+		{
+			maxs[i] = src.getByte(cpos); cpos++;
+		}
+	
+		for(int i = 0; i < 8; i++)
+		{
+			if((i != 0) && (maxs[i] == 0)) break;
+			//Skip type only because I don't know what to do with it...
+			cpos += 2;
+			
+			NinBankNode cnode = new NinBankNode(NinBankNode.TYPE_TONE, data_off + stpos, node);
+			parseType1S(src, cpos, cnode);
+			cpos += 10;
+			
+			//Set range
+			byte min = 0;
+			if(i > 0) min = (byte) (maxs[i-1] + 1);
+			byte max = maxs[i];
+			cnode.setRange(min, max);
+		}
+
+	}
+	
+	private static void parseType3S(FileBuffer src, long stpos, long data_off, NinBankNode node) throws UnsupportedFileTypeException
+	{
+		//System.err.println("Instrument is type 3");
+		long cpos = stpos;
+		int min = Byte.toUnsignedInt(src.getByte(cpos)); cpos++;
+		int max = Byte.toUnsignedInt(src.getByte(cpos)); cpos++;
+		cpos += 2; //Unknown
+		int rcount = max - min + 1;
+
+		for(int i = 0; i < rcount; i++)
+		{
+			//Skip type only because I don't know what to do with it...
+			cpos += 2;
+			
+			NinBankNode cnode = new NinBankNode(NinBankNode.TYPE_TONE, data_off + stpos, node);
+			parseType1S(src, cpos, cnode);
+			cpos += 10;
+			
+			//Set range
+			int note = min + i;
+			cnode.setRange((byte)note, (byte)note);
+
+		}
+	}
+	
+	public static DSBank createEmptySBNK(int initPresets)
+	{
+		return new DSBank(initPresets);
+	}
+	
+	private static int getType(byte flag)
+	{
+		if(flag == 0) return NinBankNode.TYPE_NULL;
+		if(flag == 5) return NinBankNode.TYPE_LINK;
+		if(flag < 16) return NinBankNode.TYPE_TONE;
+		if(flag == 16) return NinBankNode.TYPE_PERC;
+		if(flag == 17) return NinBankNode.TYPE_INST;
+		
+		return -1;
+	}
+	
+
+}
