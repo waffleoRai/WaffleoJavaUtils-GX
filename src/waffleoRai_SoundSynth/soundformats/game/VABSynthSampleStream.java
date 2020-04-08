@@ -272,6 +272,17 @@ public class VABSynthSampleStream extends SynthSampleStream{
 		updatePitch();
 	}
 	
+	public void setPitchBendDirect(int cents){
+		if(Math.abs(cents) > pitchbend_range){
+			boolean n = cents < 0;
+			cents = pitchbend_range;
+			if(n) cents *= -1;
+		}
+		
+		pitchbend_cents = cents;
+		updatePitch();
+	}
+	
 	public void setLFO(Oscillator osc)
 	{
 		lfo = osc;

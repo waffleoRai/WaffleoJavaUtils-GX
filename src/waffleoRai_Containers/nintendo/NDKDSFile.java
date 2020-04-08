@@ -21,14 +21,15 @@ public class NDKDSFile extends NDKFile{
 	protected boolean readHeader(boolean hasTbl)
 	{
 		if(data == null) return false;
+		data.setEndian(true);
 		long cpos = 0;
 		String fileid = data.getASCII_string(cpos, 4); cpos += 4;
 		//System.err.println("Magic: " + fileid);
 		
 		//Byte order mark
 		int bom = Short.toUnsignedInt(data.shortFromFile(cpos)); cpos += 2;
-		if(bom == 0xFFFE) data.setEndian(false);
-		else data.setEndian(true);
+		if(bom == 0xFFFE) data.setEndian(true);
+		else data.setEndian(false);
 		//System.err.println("Big Endian: " + data.isBigEndian());
 		
 		int ver_minor = 0;

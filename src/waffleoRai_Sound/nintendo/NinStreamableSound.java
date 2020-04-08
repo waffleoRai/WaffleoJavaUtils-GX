@@ -329,6 +329,10 @@ public abstract class NinStreamableSound implements Sound{
 		return new NAudioSampleStream(this);
 	}
 	
+	public AudioSampleStream createSampleStream(boolean loop){
+		return new NAudioSampleStream(this, loop);
+	}
+	
 	/*--- Conversion ---*/
 	
 	public boolean writeWAV(String path)
@@ -398,4 +402,7 @@ public abstract class NinStreamableSound implements Sound{
 		return true;
 	}
 
+	public void setActiveTrack(int tidx){}
+	public int countTracks(){return 1;}
+	
 }

@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-import waffleoRai_Encryption.AES;
+import waffleoRai_Encryption.nintendo.DSModcrypt;
 import waffleoRai_Files.EncryptionDefinition;
 import waffleoRai_Image.Palette;
 import waffleoRai_Image.PaletteRaster;
@@ -33,8 +33,15 @@ public class NDS {
 	
 	//https://dsibrew.org/wiki/DSi_Cartridge_Header
 	//https://dsibrew.org/wiki/Icon.bin
+	//http://problemkaputt.de/gbatek.htm
 
 	/*----- Constants -----*/
+	
+	public static final byte[] MODCRYPT_KEYX_FIRSTHALF = {0x4E, 0x69, 0x6E, 0x74,
+														  0x65, 0x6E, 0x64, 0x6F}; //"Nintendo"
+	
+	public static final int BLOWFISHENC_VALUE_LEVEL = 0;
+	public static final int BLOWFISHENC_VALUE_MODULO = 1;
 	
 	public static final int TITLE_LANGUAGE_JAPANESE = 0;
 	public static final int TITLE_LANGUAGE_ENGLISH = 1;
@@ -93,7 +100,8 @@ public class NDS {
 	private long modcrypt2_off;
 	private long modcrypt2_size;
 	
-	private String titleID_dsi;
+	private String titleID_dsi_ascii;
+	private byte[] titleID_dsi_dat;
 	private long pubsav_size;
 	private long privsav_size;
 	
@@ -175,7 +183,7 @@ public class NDS {
 		private int fat_start_index;
 		
 		private int val1; //I think # children for root, parent idx for other?
-		private byte root_flag; //????
+		//private byte root_flag; //????
 		
 		private List<FNTNode> children;
 		
@@ -199,7 +207,7 @@ public class NDS {
 			
 			System.err.println(tabs + ">>BRANCH 0x" + Integer.toHexString(index));
 			System.err.println(tabs + "(FAT Start Idx: 0x" + Integer.toHexString(fat_start_index) + ")");
-			System.err.println(tabs + "(Mystery Fields: " + String.format("%02x %02x", val1, root_flag) + ")");
+			System.err.println(tabs + "(Parent/# Children: " + String.format("%04x", val1) + ")");
 			
 			for(FNTNode child : children) child.printMeToErr(indent + 1);
 		}
@@ -224,7 +232,7 @@ public class NDS {
 		
 		private boolean isDir;
 		private int branch_idx;
-		private byte root_flag; //??????
+		//private byte root_flag; //??????
 		
 		//private BranchNode parent;
 		
@@ -236,9 +244,10 @@ public class NDS {
 			
 			if(isDir)
 			{
-				String v1 = String.format("%02x", branch_idx);
-				String v2 = String.format("%02x", root_flag);
-				System.err.println(tabs + "->[<DIR>" + v1 + "," + v2 + "]" + name);
+				String v1 = String.format("%04x", branch_idx);
+				//String v2 = String.format("%02x", root_flag);
+				//System.err.println(tabs + "->[<DIR>" + v1 + "," + v2 + "]" + name);
+				System.err.println(tabs + "->[<DIR>" + v1 + "]" + name);
 			}
 			else System.err.println(tabs + "->[0x" + Integer.toHexString(fat_idx) + "] " + name);
 		}
@@ -361,9 +370,9 @@ public class NDS {
 		System.err.println("FAT: 0x" + Long.toHexString(fat_offset) + " - 0x" + Long.toHexString(fat_offset + fat_size));
 		System.err.println("ARM9 Overlay: 0x" + Long.toHexString(arm9over_offset) + " - 0x" + Long.toHexString(arm9over_offset + arm9over_size));
 		System.err.println("ARM7 Overlay: 0x" + Long.toHexString(arm7over_offset) + " - 0x" + Long.toHexString(arm7over_offset + arm7over_size));
-		System.err.println("Icon Banner Offset: 0x" + Long.toHexString(icon_banner_offset));
-		System.err.println("NTR ROM Size: 0x" + Long.toHexString(ntr_rom_size));
-		System.err.println("Header Size: 0x" + Long.toHexString(header_size));*/
+		System.err.println("Icon Banner Offset: 0x" + Long.toHexString(icon_banner_offset));*/
+		//System.err.println("NTR ROM Size: 0x" + Long.toHexString(ntr_rom_size));
+		//System.err.println("Header Size: 0x" + Long.toHexString(header_size));
 		
 		cpos += 56;
 		image.nintendo_logo = file.createCopy(cpos, cpos+156); cpos += 156;
@@ -376,7 +385,7 @@ public class NDS {
 		image.arm9.loadAddr = arm9_load;
 		image.arm9.entryAddr = arm9_entry;
 		image.arm9.data = file.createCopy(arm9_offset, arm9_offset + arm9_size);
-		image.arm9_overlay = file.createCopy(arm9over_offset, arm9over_offset + arm9over_size);
+		if(arm9over_size > 0) image.arm9_overlay = file.createCopy(arm9over_offset, arm9over_offset + arm9over_size);
 		
 		image.arm7 = new DSExeData();
 		image.arm7.offset = arm7_offset;
@@ -472,7 +481,10 @@ public class NDS {
 			image.modcrypt2_off = Integer.toUnsignedLong(file.intFromFile(cpos)); cpos+=4;
 			image.modcrypt2_size = Integer.toUnsignedLong(file.intFromFile(cpos)); cpos+=4;
 			
-			image.titleID_dsi = file.getASCII_string(cpos, 8); cpos+=8;
+			//image.titleID_dsi = file.getASCII_string(cpos, 8); cpos+=8;
+			image.titleID_dsi_ascii = file.getASCII_string(cpos, 4); cpos+=4;
+			image.titleID_dsi_dat = new byte[4];
+			for(int i = 0; i < 4; i++) image.titleID_dsi_dat[i] = file.getByte(cpos++);
 			image.pubsav_size = Integer.toUnsignedLong(file.intFromFile(cpos)); cpos+=4;
 			image.privsav_size = Integer.toUnsignedLong(file.intFromFile(cpos)); cpos+=4;
 			
@@ -518,17 +530,14 @@ public class NDS {
 		 * 	Entries...
 		 * 		Offset to name of first entity [4]
 		 * 		Index of first FAT node [2]
-		 * 		Parent (Not root) or #children (root) [1] ?????
-		 * 		Flag???? [1]
-		 * 			0xf0 appears to mean it's not the root, and 0x00 is root?
-		 * 			I think 0x00 here might be the signal to say how many children the root node has?
+		 * 		Parent (Not root) or #children (root) [2]
 		 * Name Table
 		 * 	Entries...
 		 * 		Flag/Strlen [1]
 		 * 			If the highest bit is set, then it's a directory
 		 * 			The other bits are the length of the name string
-		 * 		Dir Table Idx [1] (If Dir)
-		 * 		Flag [1] ??? Always seems to be 0xf0?
+		 * 		Dir Table Idx [2] (If Dir)
+		 * 		
 		 */
 		
 		List<BranchNode> branches = new LinkedList<BranchNode>();
@@ -542,8 +551,9 @@ public class NDS {
 			branch.fnt_offset = in.intFromFile(cpos); cpos += 4;
 			//System.err.println("Offset: 0x" + Long.toHexString(start_off));
 			branch.fat_start_index = Short.toUnsignedInt(in.shortFromFile(cpos)); cpos += 2;
-			branch.val1 = in.getByte(cpos); cpos++;
-			branch.root_flag = in.getByte(cpos); cpos++;
+			//branch.val1 = in.getByte(cpos); cpos++;
+			//branch.root_flag = in.getByte(cpos); cpos++;
+			branch.val1 = Short.toUnsignedInt(in.shortFromFile(cpos)); cpos+=2;
 			branch.index = i;
 			
 			//Read file/dir names...
@@ -572,8 +582,9 @@ public class NDS {
 				//Get fields after string (if applicable)
 				if(node.isDir)
 				{
-					node.branch_idx = Byte.toUnsignedInt(in.getByte(bpos)); bpos++;
-					node.root_flag = in.getByte(bpos); bpos++;	
+					//node.branch_idx = Byte.toUnsignedInt(in.getByte(bpos)); bpos++;
+					//node.root_flag = in.getByte(bpos); bpos++;	
+					node.branch_idx = Short.toUnsignedInt(in.shortFromFile(bpos)); bpos +=2;
 				}
 				else
 				{
@@ -651,54 +662,43 @@ public class NDS {
 	
 	private static DirectoryNode buildFileTree(List<BranchNode> fnt, long[][] fat, String datapath)
 	{
-		//Dump fnt list to array (for easier random access)
+		//Debug
+		/*for(BranchNode bn : fnt){
+			bn.printMeToErr(0);
+		}*/
+		
+		//Just rewrite...
 		int dcount = fnt.size();
-		BranchNode[] barr = new BranchNode[dcount];
+		DirectoryNode[] darr = new DirectoryNode[dcount];
+		for(int i = 0; i < darr.length; i++) darr[i] = new DirectoryNode(null, "");
+				
+		//Actually go through each dir record...
 		int i = 0;
 		for(BranchNode b : fnt)
 		{
-			barr[i] = b;
-			i++;
-		}
-		
-		//Find root
-		int root_branch = 0;
-		for(i = 0; i < dcount; i++)
-		{
-			if(barr[i].root_flag == 0x00)
-			{
-				root_branch = i;
-				break;
-			}
-		}
-		
-		//Iterate through branches and generate an empty dir node for each...
-		DirectoryNode[] darr = new DirectoryNode[dcount];
-		for(i = 0; i < dcount; i++) darr[i] = new DirectoryNode(null, ""); //So linking can happen
-		
-		//Actually go through each dir record...
-		for(i = 0; i < dcount; i++)
-		{
-			List<FNTNode> children = barr[i].children;
+			//System.err.println("Branch node: #" + i);
+			List<FNTNode> children = b.children;
 			for(FNTNode child : children)
 			{
+				DirectoryNode me = darr[i];
 				if(child.isDir)
 				{
-					DirectoryNode c = darr[child.branch_idx];
+					DirectoryNode c = darr[child.branch_idx & 0x0FFF]; //I'm just assuming the first 0xF is always there?
 					c.setFileName(child.name);
-					c.setParent(darr[i]);
+					c.setParent(me);
 				}
 				else
 				{
-					FileNode c = new FileNode(darr[i], child.name);
+					FileNode c = new FileNode(me, child.name);
 					c.setOffset(fat[child.fat_idx][0]);
 					c.setLength(fat[child.fat_idx][1] - c.getOffset());
 					c.setSourcePath(datapath);
 				}
 			}
+			i++;
 		}
 		
-		return darr[root_branch];
+		return darr[0];
 	}
 	
 	private void scanForEncryption(DirectoryNode dir)
@@ -768,7 +768,7 @@ public class NDS {
 	public int getARM7_extMask(){return this.arm7_ext_mask;}
 	public int getTWLFlags(){return this.twl_flags;}
 	public long getNTRTWLROMSize(){return this.total_rom_size;}
-	public String getTWLTitleID(){return this.titleID_dsi;}
+	public String getTWLTitleID_ASCII(){return this.titleID_dsi_ascii;}
 	public long getPublicSavSize(){return this.pubsav_size;}
 	public long getPrivateSavSize(){return this.privsav_size;}
 	public FileBuffer getRSACert(){return this.rsa;}
@@ -929,9 +929,13 @@ public class NDS {
 		root.setFileName(game_code + getMakerCodeAsASCII());
 		root.copyAsDir(iroot);
 		
+		//iroot.printMeToStdErr(0);
+		
 		//Do the raws...
-		DirectoryNode rawdat = new DirectoryNode(iroot, "rawdat");
-		for(FileNode raw : raw_files) raw.copy(rawdat);
+		if(!raw_files.isEmpty()){
+			DirectoryNode rawdat = new DirectoryNode(iroot, "fsraw");
+			for(FileNode raw : raw_files) raw.copy(rawdat);	
+		}
 		
 		//Generate nodes for the headers/ execs?
 		FileNode fn = new FileNode(iroot, "header.bin");
@@ -947,6 +951,12 @@ public class NDS {
 		fn = arm9.addFileNode(iroot);
 		fn.setFileName("main.arm9");
 		fn.setSourcePath(rom_path);
+		long armoff = arm9.getROMOffset();
+		if(armoff >= 0x4000 && armoff < 0x8000){
+			long st = armoff - 0x4000;
+			long len = 0x800 - st;
+			fn.setEncryption(getBlowfishDef(), st, len);
+		}
 		
 		fn = arm7.addFileNode(iroot);
 		fn.setFileName("main.arm7");
@@ -973,6 +983,182 @@ public class NDS {
 	
 	/*----- Setters -----*/
 	
+	/*----- Blowfish Encryption -----*/
+	
+	private static DSBlowfishDefinition bf_def;
+	
+	public boolean hasSecureArea(){
+		//If ARM9 starts before 0x8000
+		long off9 = this.arm9.getROMOffset();
+		return (off9 >= 0x4000) && (off9 < 0x8000);
+	}
+	
+	public static class DSBlowfishDefinition implements EncryptionDefinition
+	{
+
+		private static final int CRYPTO_ID = 0xb10f5684;
+		private static final String DEFO_ENG_DESC = "Nintendo DS Blowfish Encryption";
+		
+		private int level;
+		private int modulo;
+		
+		private String str;
+		
+		public DSBlowfishDefinition()
+		{
+			str = DEFO_ENG_DESC;
+		}
+		
+		public int getID(){return CRYPTO_ID;}
+		
+		@Override
+		public String getDescription() {return str;}
+
+		@Override
+		public void setDescription(String s) {str = s;}
+
+		public void setStateValue(int key, int value){
+			switch(key){
+			case BLOWFISHENC_VALUE_LEVEL: level = value; break;
+			case BLOWFISHENC_VALUE_MODULO: modulo = value; break;
+			}
+		}
+		
+		public int getStateValue(int key){
+			switch(key){
+			case BLOWFISHENC_VALUE_LEVEL: return level;
+			case BLOWFISHENC_VALUE_MODULO: return modulo;
+			}
+			return 0;
+		}
+		
+		public int[] getExpectedKeydataSizes(){
+
+			//0 - Key table from BIOS (0x1048 bytes)
+			//1 - IDCode (4, I think)
+			//Level & modulo are set as "state" values
+			int[] sizes = {0x1048, 4};
+			
+			return sizes;
+		}
+		
+		private void encdec64(FileBuffer keybuff, int[] dat, boolean enc){
+
+			int Y = dat[0];
+			int X = dat[1];
+			
+			if(enc){
+				for(int i = 0; i < 16; i++){
+					int Z = keybuff.intFromFile(i << 2) ^ X;
+					X = keybuff.intFromFile(0x48 + (((Z >>> 24) & 0xFF) << 2));
+					X = keybuff.intFromFile(0x448 + (((Z >>> 16) & 0xFF) << 2)) + X;
+					X = keybuff.intFromFile(0x848 + (((Z >>> 8) & 0xFF) << 2)) ^ X;
+					X = keybuff.intFromFile(0xC48 + ((Z & 0xFF) << 2)) + X;
+					X = X ^ Y;
+					Y = Z;
+				}
+				dat[0] = X ^ keybuff.intFromFile(0x40);
+				dat[1] = Y ^ keybuff.intFromFile(0x44);
+			}
+			else{
+				for(int i = 17; i > 1; i--){
+					int Z = keybuff.intFromFile(i << 2) ^ X;
+					X = keybuff.intFromFile(0x48 + (((Z >>> 24) & 0xFF) << 2));
+					X = keybuff.intFromFile(0x448 + (((Z >>> 16) & 0xFF) << 2)) + X;
+					X = keybuff.intFromFile(0x848 + (((Z >>> 8) & 0xFF) << 2)) ^ X;
+					X = keybuff.intFromFile(0xC48 + ((Z & 0xFF) << 2)) + X;
+					X = X ^ Y;
+					Y = Z;
+				}
+				dat[0] = X ^ keybuff.intFromFile(0x4);
+				dat[1] = Y ^ keybuff.intFromFile(0);
+			}
+			
+		}
+		
+		private void applykeycode(FileBuffer keybuff, int[] keycode){
+
+			int[] dat = new int[2];
+			dat[0] = keycode[1]; dat[1] = keycode[2];
+			encdec64(keybuff, dat, true);
+			keycode[1] = dat[0]; keycode[2] = dat[1];
+			
+			dat[0] = keycode[0]; dat[1] = keycode[1];
+			encdec64(keybuff, dat, true);
+			keycode[0] = dat[0]; keycode[1] = dat[1];
+			
+			byte[] kcbyte = new byte[16];
+			for(int i = 0; i < 4; i++){
+				int b = i << 2;
+				int word = keycode[i];
+				
+				kcbyte[b] = (byte)((word >> 24) & 0xFF);
+				kcbyte[b+1] = (byte)((word >> 16) & 0xFF);
+				kcbyte[b+2] = (byte)((word >> 8) & 0xFF);
+				kcbyte[b+3] = (byte)(word & 0xFF);
+			}
+			
+			for(int i = 0; i <= 44; i+=4){
+				int idx = i % modulo;
+				int val = 0;
+				for(int j = 3; j >= 0; j--){
+					val = val << 8;
+					val |= Byte.toUnsignedInt(kcbyte[idx + j]);
+				}
+				val = val ^ keybuff.intFromFile(i);
+				keybuff.replaceInt(val, i);
+			}
+			
+			int[] scratch = new int[2];
+			for(int i = 0; i <= 0x1040; i+=8){
+				encdec64(keybuff, scratch, true);
+				keybuff.replaceInt(scratch[1], i);
+				keybuff.replaceInt(scratch[0], i+4);
+			}
+			
+		}
+		
+		@Override
+		public boolean decrypt(StreamWrapper input, OutputStream output, List<byte[]> keydata) 
+		{
+			//TODO Nah, this needs to be moved to its own java file
+			
+			//Init keycode
+			byte[] keybuff_arr = keydata.get(0);
+			FileBuffer keybuff = new FileBuffer(keybuff_arr.length, true);
+			for(int i = 0; i < keybuff_arr.length; i++) keybuff.addToFile(keybuff_arr[i]);
+			byte[] idcode = keydata.get(1);
+			int idcodei = Byte.toUnsignedInt(idcode[0]) << 24;
+			idcodei = idcodei | Byte.toUnsignedInt(idcode[1]) << 16;
+			idcodei = idcodei | Byte.toUnsignedInt(idcode[2]) << 8;
+			idcodei = idcodei | Byte.toUnsignedInt(idcode[3]);
+			int[] keycode = new int[4];
+			keycode[0] = idcodei;
+			keycode[1] = idcodei >>> 1;
+			keycode[2] = idcodei << 1;
+			if(level >= 1) applykeycode(keybuff, keycode);
+			if(level >= 2) applykeycode(keybuff, keycode);
+			keycode[1] = keycode[1] << 1;
+			keycode[2] = keycode[2] >>> 1;
+			if(level >= 2) applykeycode(keybuff, keycode);
+			
+			//Run encryption/decryption
+			
+			
+			return true;
+		}
+
+		@Override
+		public boolean encrypt(StreamWrapper input, OutputStream stream, List<byte[]> keydata) {
+			return decrypt(input, stream, keydata);
+		}
+		
+	}
+	
+	public static EncryptionDefinition getBlowfishDef(){
+		if(bf_def == null) bf_def = new DSBlowfishDefinition();
+		return bf_def;
+	}
 	
 	/*----- Modcrypt -----*/
 	
@@ -1061,40 +1247,65 @@ public class NDS {
 		return key;
 	}
 	
-	public byte[][] getSecureKeyPair(byte[] dsi_common)
+	public byte[][] getSecureKeyPair()
 	{
+		//System.err.println("DSi Title ID (ASCII): " + titleID_dsi_ascii);
+		
 		//TODO: Dunno if this is how it rolls. Will need to check
 		byte[][] pair = new byte[2][16];
-		for(int i = 0; i < 8; i++) pair[0][i] = dsi_common[i];
-		for(int i = 0; i < 8; i++) pair[0][i+8] = (byte)(titleID_dsi.charAt(i));
+		//for(int i = 0; i < 8; i++) pair[0][i] = dsi_common[i];
+		for(int i = 0; i < 8; i++) pair[0][i] = MODCRYPT_KEYX_FIRSTHALF[i];
+		for(int i = 0; i < 4; i++) pair[0][i+8] = (byte)(game_code.charAt(i));
+		for(int i = 0; i < 4; i++) pair[0][i+12] = (byte)(titleID_dsi_ascii.charAt(i));
+		
+		//for(int i = 0; i < 4; i++) pair[0][i+8] = (byte)(titleID_dsi_ascii.charAt(i));
+		//for(int i = 0; i < 4; i++) pair[0][i+12] = this.titleID_dsi_dat[i];
 		
 		for(int i = 0; i < 16; i++) pair[1][i] = hash_arm9i_dec[i];
+		
+		/*System.err.println("Secure Key X: ");
+		for(int i = 0; i < 16; i++){
+			System.err.print(String.format("%02x ", pair[0][i]));
+		}
+		System.err.println();
+		System.err.println("Secure Key Y: ");
+		for(int i = 0; i < 16; i++){
+			System.err.print(String.format("%02x ", pair[1][i]));
+		}
+		System.err.println();*/
 		
 		return pair;
 	}
 	
-	public byte[] getSecureKey(byte[] dsi_common)
+	public byte[] getSecureKey()
 	{
-		//TODO Still need to look up the scramble algorithm.
-		//I'm gonna check 3DBrew because DSibrew is not helpful on this one
-		return null;
+		/*Not really sure
+		 * Might be this??? (from GBATEK):
+		 * Writing the last word of "Key_Y" (or any of its last four bytes, ie. byte(s) 2Ch..2Fh) causes the Normal Key to be overwritten by following values:
+  			Key = ((Key_X XOR Key_Y) + FFFEFB4E295902582A680F5F1A4F3E79h) ROL 42
+		 */
+		byte[][] pair = getSecureKeyPair();
+		byte[] mykey = DSModcrypt.normal128Key_from_128pair(pair[0], pair[1]);
+		//byte[] mykey = DSModcrypt.combine_pair(pair[0], pair[1]);
+		
+		return mykey;
 	}
 	
-	private boolean decryptSecureRegion(byte[] dsi_common, OutputStream out, long offset, long size, byte[] ctr) throws IOException
+	private boolean decryptSecureRegion(OutputStream out, long offset, long size, byte[] ctr) throws IOException
 	{
 		boolean use_secure = usesSecureKey();
 		byte[] aeskey = null;
-		if(use_secure) aeskey = getSecureKey(dsi_common);
+		if(use_secure) aeskey = getSecureKey();
 		else aeskey = getInsecureKey();
 		
-		AES aes = new AES(aeskey);
+		/*AES aes = new AES(aeskey);
 		aes.setCTR();
-		aes.initDecrypt(ctr);
+		aes.initDecrypt(ctr);*/
 		
 		BufferedInputStream bis = new BufferedInputStream(new FileInputStream(rom_path));
 		bis.skip(offset);
 		
-		long remaining = size;
+		/*long remaining = size;
 		while(remaining > 0)
 		{
 			boolean last = (remaining <= 512);
@@ -1104,32 +1315,40 @@ public class NDS {
 			
 			bis.read(in);
 			out.write(aes.decryptBlock(in, last));
-		}
+			remaining -= 512;
+		}*/
+		boolean b = DSModcrypt.aes_crypt_ctr(bis, out, aeskey, ctr, (int)size);
 		
 		bis.close();
-		return true;
+		return b;
 	}
 	
-	public boolean decryptSecureRegion1(byte[] dsi_common, OutputStream out) throws IOException
+	public boolean decryptSecureRegion1(OutputStream out) throws IOException
 	{
-		if(dsi_common == null || dsi_common.length != 8) return false;
+		//if(dsi_common == null || dsi_common.length != 8) return false;
 		if(out == null) return false;
 		if(modcrypt1_size <= 0) return false;
 		
 		byte[] ctr1 = getModcryptCTR1();
-
-		return decryptSecureRegion(dsi_common, out, modcrypt1_off, modcrypt1_size, ctr1);
+		/*System.err.println("Modcrypt Region 1: 0x" + Long.toHexString(modcrypt1_off) + " - 0x" + Long.toHexString(modcrypt1_size + modcrypt1_off));
+		System.err.println("IV: ");
+		for(int i = 0; i < 16; i++){
+			System.err.print(String.format("%02x ", ctr1[i]));
+		}
+		System.err.println();*/
+		
+		return decryptSecureRegion(out, modcrypt1_off, modcrypt1_size, ctr1);
 	}
 	
-	public boolean decryptSecureRegion2(byte[] dsi_common, OutputStream out) throws IOException
+	public boolean decryptSecureRegion2(OutputStream out) throws IOException
 	{
-		if(dsi_common == null || dsi_common.length != 8) return false;
+		//if(dsi_common == null || dsi_common.length != 8) return false;
 		if(out == null) return false;
 		if(modcrypt2_size <= 0) return false;
 		
 		byte[] ctr2 = getModcryptCTR2();
 
-		return decryptSecureRegion(dsi_common, out, modcrypt2_off, modcrypt2_size, ctr2);
+		return decryptSecureRegion(out, modcrypt2_off, modcrypt2_size, ctr2);
 	}
 	
 	private static ModcryptDefinition cryptodef;
@@ -1161,6 +1380,20 @@ public class NDS {
 		@Override
 		public void setDescription(String s) {str = s;}
 
+		public void setStateValue(int key, int value){
+			//TODO
+		}
+		
+		public int getStateValue(int key){
+			//TODO
+			return 0;
+		}
+		
+		public int[] getExpectedKeydataSizes(){
+			int[] sizes = {16, 16};
+			return sizes;
+		}
+		
 		@Override
 		public boolean decrypt(StreamWrapper input, OutputStream output, List<byte[]> keydata) 
 		{
@@ -1171,33 +1404,15 @@ public class NDS {
 			
 			//Key, IV
 			byte[] aeskey = keydata.get(0);
+			byte[] iv = keydata.get(1);
 			
-			AES aes = new AES(aeskey);
-			aes.setCTR();
-			aes.initDecrypt(keydata.get(1));
-			
-			while(!input.isEmpty())
-			{
-				boolean last = false;
-				byte[] buffer = new byte[512];
-				for(int i = 0; i < 512; i++)
-				{
-					if(input.isEmpty())
-					{
-						last = true;
-						//Recopy into new buffer
-						byte[] temp = new byte[i];
-						for(int j = 0; j < i; j++) temp[j] = buffer[j];
-						buffer = temp;
-					}
-					else buffer[i] = input.get();
-				}
-				
-				try{output.write(aes.decryptBlock(buffer, last));}
-				catch(IOException x){x.printStackTrace(); return false;}
+			try {
+				return DSModcrypt.aes_crypt_ctr(input, output, aeskey, iv);
+			} 
+			catch (IOException e) {
+				e.printStackTrace();
+				return false;
 			}
-
-			return true;
 		}
 
 		@Override

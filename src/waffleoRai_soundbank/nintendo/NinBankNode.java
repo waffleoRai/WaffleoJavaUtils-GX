@@ -13,6 +13,7 @@ import javax.swing.tree.TreeNode;
 
 import waffleoRai_Utils.Treenumeration;
 import waffleoRai_soundbank.SimpleInstrument;
+import waffleoRai_soundbank.SoundbankNode;
 import waffleoRai_soundbank.SimpleInstrument.InstRegion;
 
 public class NinBankNode implements TreeNode{
@@ -311,9 +312,11 @@ public class NinBankNode implements TreeNode{
 	}
 	
 	public NinTone getToneForKey(byte key){
-		if(isLeaf()) return tone;
+		//System.err.println("NinBankNode.getToneForKey || Entered");
 		if(linkedNode != null) return linkedNode.getToneForKey(key);
+		if(isLeaf()) return tone;
 		if(keymap == null) mapKeys();
+		//System.err.println("NinBankNode.getToneForKey || Mapped");
 		
 		NinBankNode child = keymap.get(key);
 		if(child == null) return null;
@@ -323,12 +326,18 @@ public class NinBankNode implements TreeNode{
 	
 	private void mapKeys(){
 		keymap = new ConcurrentHashMap<Byte, NinBankNode>();
+		//int n = 0;
 		for(NinBankNode child : children)
 		{
+			//System.err.println("Child " + n++);
 			byte min = child.getMinNote();
 			byte max = child.getMaxNote();
-			for(byte i = min; i <= max; i++) keymap.put(i, child);
+			//System.err.println("Max note: " + max);
+			for(int i = min; i <= max; i++){
+				keymap.put((byte)i, child);
+			}
 		}
+		//System.err.println("Mapping done");
 	}
 	
 	public void clearKeyMapping(){
@@ -590,6 +599,67 @@ public class NinBankNode implements TreeNode{
 		}
 		
 		return inst;
+	}
+	
+	public SoundbankNode toSoundbankNode(SoundbankNode parentNode, int nodeidx){
+
+		String myname = "[" + String.format("%03d", nodeidx) + "] 0x" + Long.toHexString(address);
+		if(this.isLink()) myname += " (LINK)";
+		int mytype = SoundbankNode.NODETYPE_PROGRAM;
+		if(this.isLeaf()) mytype = SoundbankNode.NODETYPE_TONE;
+		
+		SoundbankNode node = new SoundbankNode(parentNode, myname, mytype);
+		
+		//Add metadata
+		node.addMetadataEntry("Local Address", "0x" + Long.toHexString(address));
+		node.addMetadataEntry("Key Range (Node)", minKey + " - " + maxKey);
+		switch(typeFlag){
+		case TYPE_TONE: node.addMetadataEntry("Node Type", "Tone"); break;
+		case TYPE_INST: node.addMetadataEntry("Node Type", "Instrument"); break;
+		case TYPE_PERC: node.addMetadataEntry("Node Type", "Percussion Set"); break;
+		case TYPE_LINK: node.addMetadataEntry("Node Type", "Link"); break;
+		}
+		
+		//Add link metadata (if applicable)
+		if(this.isLink()){
+			node.addMetadataEntry("Link Address", "0x" + Long.toHexString(linkAddress));
+			
+			int ltype = this.linkedNode.typeFlag;
+			switch(ltype){
+			case TYPE_TONE: node.addMetadataEntry("Linked Node Type", "Tone"); break;
+			case TYPE_INST: node.addMetadataEntry("Linked Node Type", "Instrument"); break;
+			case TYPE_PERC: node.addMetadataEntry("Linked Node Type", "Percussion Set"); break;
+			case TYPE_LINK: node.addMetadataEntry("Linked Node Type", "Link"); break;
+			}
+			
+		}
+		
+		//Add tone metadata (if applicable)
+		if(tone != null){
+			tone.addMetadataToNode(node);
+		}
+		if(linkedNode != null && linkedNode.tone != null){
+			linkedNode.tone.addMetadataToNode(node);
+		}
+		
+		//Do children (skip null placeholders)
+		if(children != null){
+			int i = 0;
+			for(NinBankNode child : children){
+				if(!child.isEmpty()) child.toSoundbankNode(node, i);
+				i++;
+			}
+		}
+		
+		if(linkedNode != null && linkedNode.children != null){
+			int i = 0;
+			for(NinBankNode child : linkedNode.children){
+				if(!child.isEmpty()) child.toSoundbankNode(node, i);
+				i++;
+			}
+		}
+		
+		return node;
 	}
 	
 	/*--- Debug ---*/

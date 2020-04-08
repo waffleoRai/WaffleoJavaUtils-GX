@@ -87,12 +87,15 @@ public class NinTrack
 	private Map<Integer, PendingNote> pendingNotes;
 	private long remainingWait;
 	
-	private List<Integer> offNotes;
+	private List<Integer> offNotes; //What the hell is this for???
 	private List<NSEvent> lastEvents;
 	
 	private boolean iLooped;
 	private boolean loopStartHit;
 	private int loopsRemaining;
+	
+	private boolean internal_mute; //Prevents from sending noteon signals to player
+	private boolean monophony;
 	
 	/* ----- Construction ----- */
 	
@@ -188,6 +191,12 @@ public class NinTrack
 	public int getPitchBendRangeSemitones()
 	{
 		return this.bendRange;
+	}
+	
+	public short getPitchWheel(int cents){
+		double v = (double)cents/((double)this.bendRange * 100.0);
+		v = v * (double)0x7FFF;
+		return (short)Math.round(v);
 	}
 	
 	/* ----- Looping ----- */
@@ -300,9 +309,11 @@ public class NinTrack
 	
 	public NSEvent nextEvent()
 	{
+		//System.err.println("Track " + trackIndex + " Address: 0x" + Long.toHexString(trackPos));
 		NSEvent event = src.getEventAt(trackPos);
 		lastPos = trackPos;
 		trackPos += event.getSerialSize();
+		//System.err.println("Next event: " + event.toString());
 		return event;
 	}
 	
@@ -328,6 +339,7 @@ public class NinTrack
 	
 	public void onTickFlagLoop()
 	{
+		//System.err.println("Tick!");
 		if(trackEnd) return;
 		//Refresh queues (they only mark what happened in the last tick)
 		clearLastTickState();
@@ -348,9 +360,18 @@ public class NinTrack
 		checkForNotesOff();
 	}
 	
+	private void allNotesOff(){
+		for(PendingNote note : pendingNotes.values())
+		{
+			player.noteOff(trackIndex, note.note);
+			//offNotes.add(note.note);		
+		}
+		pendingNotes.clear();
+	}
+	
 	private void checkForNotesOff()
 	{
-		List<PendingNote> rset = new LinkedList<PendingNote>();
+		//List<PendingNote> rset = new LinkedList<PendingNote>();
 		for(PendingNote note : pendingNotes.values())
 		{
 			if(--note.ticksLeft <= 0)
@@ -360,7 +381,9 @@ public class NinTrack
 				offNotes.add(note.note);
 			}		
 		}
-		for(PendingNote pn : rset) pendingNotes.remove(pn.note);
+		//for(PendingNote pn : rset) pendingNotes.remove(pn.note);
+		for(Integer pn : offNotes) pendingNotes.remove(pn);
+		offNotes.clear();
 	}
 	
 	private int calculatePitchBendCents(int rawpb)
@@ -374,12 +397,21 @@ public class NinTrack
 		return (int)Math.round(ratio * rangecents);
 	}
 	
+	public void setInternalMute(boolean b){
+		internal_mute = b;
+	}
+	
+	public boolean getInternalMute(){
+		return internal_mute;
+	}
+	
 	/* ----- Events ----- */
 	
 	/* ~~ note ~~ */
 	
 	protected void playNote(int rawnote, int vel, int ticks)
 	{
+		//System.err.println("Track: play note -- " + rawnote);
 		int playnote = rawnote + transpose;
 		if(noteWait) remainingWait = ticks;
 		if(tie)
@@ -388,14 +420,18 @@ public class NinTrack
 			if(anote != null) anote.ticksLeft += ticks;
 			else
 			{
+				//If monophony is on, stop old note(s) and play this one instead
+				if(monophony)allNotesOff();
 				pendingNotes.put(playnote, new PendingNote(playnote, ticks+1));
-				player.noteOn(trackIndex, playnote, vel);	
+				if(!internal_mute) player.noteOn(trackIndex, playnote, vel);	
 			}
 		}
 		else
 		{
+			//If monophony is on, stop old note(s) and play this one instead
+			if(monophony)allNotesOff();
 			pendingNotes.put(playnote, new PendingNote(playnote, ticks+1));
-			player.noteOn(trackIndex, playnote, vel);	
+			if(!internal_mute) player.noteOn(trackIndex, playnote, vel);	
 		}
 	}
 	
@@ -420,13 +456,13 @@ public class NinTrack
 	{
 		int pidx = rawval & 0x7F;
 		int bidx = rawval >>> 7;
+		program = pidx;
 		if (bidx != bank)
 		{
 			bank = bidx;
-			player.changeTrackBank(trackIndex, bank);
+			player.changeTrackProgram(trackIndex, bank, pidx);
 		}
-		program = pidx;
-		player.changeTrackProgram(trackIndex, pidx);
+		else player.changeTrackProgram(trackIndex, pidx);
 	}
 	
 	protected void setPan(int pan)
@@ -603,14 +639,18 @@ public class NinTrack
 	
 	protected void setMonophony(boolean b)
 	{
-		//TODO: No idea what this does!
-		player.setMonophony(trackIndex, b);
+		player.setMonophony(trackIndex, b); //This allows it to ask permission from player
+	}
+
+	public void setInternalMonophony(boolean b){
+		monophony = b;
 	}
 	
 	protected void setVelocityRange(int value)
 	{
 		//TODO: Dunno how it scales!!
-		player.setVelocityRange(trackIndex, 0, value);
+		//TODO This should NOT be delegated to player!
+		//player.setVelocityRange(trackIndex, 0, value);
 	}
 	
 	protected void setBiquadType(int value)
@@ -627,7 +667,7 @@ public class NinTrack
 	
 	protected void setTempo(int bpm)
 	{
-		player.setTempo(bpm);
+		player.setTempoBPM(bpm);
 	}
 	
 	protected void setPitchSweep(int value)
@@ -646,7 +686,8 @@ public class NinTrack
 	protected void call(int ja)
 	{
 		if(!player.jumpsAllowed()) return;
-		stack.push(new StackNode(STACK_NODE_TYPE_RA,(int)lastPos));
+		//stack.push(new StackNode(STACK_NODE_TYPE_RA,(int)lastPos));
+		stack.push(new StackNode(STACK_NODE_TYPE_RA,(int)trackPos));
 		trackPos = Integer.toUnsignedLong(ja);
 	}
 	

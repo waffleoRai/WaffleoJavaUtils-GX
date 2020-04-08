@@ -20,6 +20,7 @@ import waffleoRai_soundbank.SimpleBank;
 import waffleoRai_soundbank.SimpleInstrument;
 import waffleoRai_soundbank.SimplePreset;
 import waffleoRai_soundbank.SingleBank;
+import waffleoRai_soundbank.SoundbankNode;
 import waffleoRai_soundbank.SimpleInstrument.InstRegion;
 import waffleoRai_soundbank.SimplePreset.PresetRegion;
 import waffleoRai_soundbank.adsr.Attack;
@@ -269,6 +270,29 @@ public class PSXVAB implements SynthBank{
 					t.addToInstrument(i);
 				}
 			}
+		}
+		
+		public SoundbankNode toSoundbankNode(SoundbankNode parentBank, String name){
+			SoundbankNode node = new SoundbankNode(parentBank, name, SoundbankNode.NODETYPE_PROGRAM);
+			
+			node.addMetadataEntry("Volume", String.format("0x%02x", volume));
+			node.addMetadataEntry("Pan", String.format("0x%02x", pan));
+			node.addMetadataEntry("Priority", Integer.toString(priority));
+			node.addMetadataEntry("Mode", String.format("0x%02x", mode));
+			node.addMetadataEntry("Attribute", String.format("0x%04x", attribute));
+			
+			//Do tones.
+			int tcount = 0;
+			for(int i = 0; i < tones.length; i++){
+				if(tones[i] != null){
+					tcount++;
+					tones[i].toSoundbankNode(node);
+				}
+			}
+			
+			node.addMetadataEntry("Tone Count", Integer.toString(tcount));
+			
+			return node;
 		}
 		
 		/* ----- Playback ----- */
@@ -855,6 +879,51 @@ public class PSXVAB implements SynthBank{
 			reg.setDecay(ADSR.getDecay(Dh));
 			reg.setSustain(ADSR.getSustain(Sm, Sd, Sh, Ss, Sl));
 			reg.setRelease(ADSR.getRelease(Rm, Rh));
+		}
+		
+		public SoundbankNode toSoundbankNode(SoundbankNode parentProgram){
+			SoundbankNode node = new SoundbankNode(parentProgram, toString(), SoundbankNode.NODETYPE_TONE);
+			
+			//Add metadata
+			node.addMetadataEntry("Priority", Integer.toString(priority));
+			node.addMetadataEntry("Reverb", Boolean.toString(reverb));
+			node.addMetadataEntry("Volume", String.format("0x%02x", volume));
+			node.addMetadataEntry("Pan", String.format("0x%02x", pan));
+			node.addMetadataEntry("Unity Key", Integer.toString(unityKey));
+			node.addMetadataEntry("Fine Tune", tune + " cents");
+			node.addMetadataEntry("Key Range", keyRangeBot + " - " + keyRangeTop);
+			node.addMetadataEntry("Pitch Bend", pBendMin + " - " + pBendMin);
+			node.addMetadataEntry("Sample Index", Integer.toString(sampleIndex));
+			
+			//ADSR
+			Sustain sus = getSustain();
+			node.addMetadataEntry("Attack Time", getAttack().getTime() + " ms");
+			node.addMetadataEntry("Decay Time", getDecay().getTime() + " ms");
+			node.addMetadataEntry("Sustain Time", sus + " ms");
+			node.addMetadataEntry("Release Time", getRelease().getTime() + " ms");
+			
+			if(Am) node.addMetadataEntry("Attack Mode", "Pseudo-Exponential");
+			else node.addMetadataEntry("Attack Mode", "Linear");
+			if(Sm) node.addMetadataEntry("Sustain Mode", "Exponential");
+			else node.addMetadataEntry("Sustain Mode", "Linear");
+			if(Rm) node.addMetadataEntry("Release Mode", "Exponential");
+			else node.addMetadataEntry("Release Mode", "Linear");
+			
+			node.addMetadataEntry("Attack Shift", String.format("0x%03x", Ah));
+			node.addMetadataEntry("Decay Shift", String.format("0x%03x", Dh));
+			node.addMetadataEntry("Sustain Shift", String.format("0x%03x", Sh));
+			node.addMetadataEntry("Release Shift", String.format("0x%03x", Rh));
+			
+			node.addMetadataEntry("Attack Step", String.format("0x%02x", As));
+			node.addMetadataEntry("Sustain Step", String.format("0x%02x", Ss));
+			
+			if(Sd) node.addMetadataEntry("Sustain Direction", "Increase");
+			else node.addMetadataEntry("Sustain Direction", "Decrease");
+			
+			node.addMetadataEntry("Sustain Level Raw", String.format("0x%01x", Sl));
+			node.addMetadataEntry("Sustain Level 16-Bit", String.format("0x%04x", sus.getLevel16()));
+			
+			return node;
 		}
 		
 		/* ----- Information ----- */
@@ -1506,6 +1575,28 @@ public class PSXVAB implements SynthBank{
 		return mybank;
 	}
 
+	public SoundbankNode getBankTree(String bankname){
+		SoundbankNode root = new SoundbankNode(null, bankname, SoundbankNode.NODETYPE_BANK);
+		
+		root.addMetadataEntry("Volume", String.format("0x%02x", masterVolume));
+		root.addMetadataEntry("Pan", String.format("0x%02x", masterPan));
+		root.addMetadataEntry("Attribute 1", String.format("0x%04x", att1));
+		root.addMetadataEntry("Attribute 2", String.format("0x%04x", att2));
+		
+		int pcount = 0;
+		for(int i = 0; i < programs.length; i++){
+			if(programs[i] != null){
+				pcount++;
+				programs[i].toSoundbankNode(root, String.format("Program %03d", i));
+			}
+		}
+		
+		root.addMetadataEntry("Program Count", Integer.toString(pcount));
+		root.addMetadataEntry("Sound Sample Count", Integer.toString(samples.size()));
+		
+		return root;
+	}
+	
 	public void dumpReport(String reportPath) throws IOException
 	{
 		if (reportPath != null && !reportPath.isEmpty())

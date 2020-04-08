@@ -133,7 +133,7 @@ public interface NinSeqPlayer {
 	 * standard of microseconds per beat).
 	 * @since 1.0.0
 	 */
-	public void setTempo(int bpm);
+	public void setTempoBPM(int bpm);
 	
 	/**
 	 * Some variations of Nintendo SEQ involve (P)RNG. This method calls on the 
@@ -169,108 +169,187 @@ public interface NinSeqPlayer {
 	 * to NinSeq commands.
 	 * @param min Bottom of velocity range (inclusive)
 	 * @param max Top of velocity range (inclusive)
+	 * @since 1.0.0
 	 */
-	public void setVelocityRange(int tidx, int min, int max);
+	//public void setVelocityRange(int tidx, int min, int max);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param pan
+	 * Set the (stereo) pan for the specified track/channel.
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param pan MIDI standard value to set for pan (8-bit signed, centered around 0x40)
+	 * @since 1.0.0
 	 */
 	public void updateTrackPan(int tidx, int pan);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param value
+	 * Set the (stereo) initial pan for the specified track/channel
+	 * <br><i>Note: This is currently mostly unimplemented</i>
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param value MIDI standard value to set for pan (8-bit signed, centered around 0x40)
+	 * @since 1.0.0
 	 */
 	public void setTrackInitPan(int tidx, int value);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param value
+	 * Set the surround pan for the specified track/channel.
+	 * <br><i>Note 1: Don't currently know how value scales</i>
+	 * <br><i>Note 2: This is currently mostly unimplemented</i>
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param value (Surround Pan) 8 bits, scaling unknown.
+	 * @since 1.0.0
 	 */
 	public void updateTrackSurroundPan(int tidx, int value);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param vol
+	 * Set the master volume for the specified track/channel.
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param vol MIDI standard volume level 0x00-0x7F 
+	 * @since 1.0.0
 	 */
 	public void updateTrackVolume(int tidx, int vol);
 	
 	/**
-	 * 
-	 * @param vol
+	 * Set the master volume of the player using a standard MIDI value.
+	 * @param vol MIDI standard volume level 0x00-0x7F 
+	 * @since 1.0.0
 	 */
 	public void setMasterVolume(int vol);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param cents
+	 * Set the pitch bend value in cents for the specified track/channel.
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param cents Pitch bend value in cents. The track usually does
+	 * the conversion considering raw pitch wheel value and current range
+	 * beforehand. Value in cents needs to be converted back to pitch wheel
+	 * level/ range for use in some functions in the SynthPlayer API
+	 * @since 1.0.0
 	 */
 	public void updatePitchBend(int tidx, int cents);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param pri
+	 * Set the track priority in the player for the specified track/channel.
+	 * <br><i>Note 1: Don't currently know how value scales</i>
+	 * <br><i>Note 2: This is currently mostly unimplemented</i>
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param pri (Priority) 8 bit, presumably used for player to determine
+	 * which tracks to mute if voices are needed for other audio?
+	 * @since 1.0.0
 	 */
 	public void setTrackPriority(int tidx, int pri);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param value
+	 * Set expression value for the specified track/channel. 
+	 * Expression is generally synonymous with track volume from an
+	 * implementation perspective, but is considered a separate variable
+	 * from the perspective of the composer/sound designer.
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param value MIDI standard volume level 0x00-0x7F 
+	 * @since 1.0.0
 	 */
 	public void setExpression(int tidx, int value);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param on
+	 * Switch on/off damper for specified track/channel.
+	 * <br><i>Note: This is currently mostly unimplemented. Assumption is
+	 * made that non-zero values mean on and zero means off.</i>
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param on True to set damper on, false to set damper off.
+	 * @since 1.0.0
 	 */
 	public void setDamper(int tidx, boolean on);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param on
+	 * Switch on/off monophony for specified track/channel.
+	 * If monophony is on, only one voice can sound at a time from
+	 * a channel.
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param on True to set monophony on (polyphony off), false to set monophony off
+	 * (polyphony on).
+	 * @since 1.0.0
 	 */
 	public void setMonophony(int tidx, boolean on);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param value
+	 * Set the timebase or tick resolution for the specified track/channel.
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param value New tick resolution in TPQN (ticks per quarter note).
+	 * @since 1.0.0
 	 */
 	public void setTimebase(int tidx, int value);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param value
+	 * Set the biquad value for the specified track/channel. Presumably
+	 * used for filter definitions?
+	 * <br><i>Note 1: Don't currently know how value scales</i>
+	 * <br><i>Note 2: This is currently mostly unimplemented</i>
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param value (Biquad Value) 8 bits, scaling/meaning unknown
+	 * @since 1.0.0
 	 */
 	public void setBiquadValue(int tidx, int value);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param value
+	 * Set the biquad type for the specified track/channel. Presumably
+	 * used for filter definitions?
+	 * <br><i>Note 1: Don't currently know how value scales</i>
+	 * <br><i>Note 2: This is currently mostly unimplemented</i>
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param value (Biquad Type) 8 bits, scaling/meaning unknown
+	 * @since 1.0.0
 	 */
 	public void setBiquadType(int tidx, int value);
 	
 	/**
-	 * 
-	 * @param tidx
-	 * @param value
+	 * Set pitch sweep value for the specified track/channel.
+	 * <br><i>Note 1: Don't currently know how value scales</i>
+	 * <br><i>Note 2: This is currently mostly unimplemented</i>
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param value (Pitch Sweep) Signed 16 bits
+	 * @since 1.0.0
 	 */
 	public void setPitchSweep(int tidx, int value);
 	
-	public void changeTrackBank(int tidx, int bankIndex);
+	/**
+	 * Set the bank index for the program track/channel is using. This
+	 * functions as a program change.
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param bankIndex Index of bank to change to.
+	 * @since 1.0.0
+	 */
+	//public void changeTrackBank(int tidx, int bankIndex);
+	
+	/**
+	 * Change program for the specified track/channel.
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param bank Index of bank to change to.
+	 * @param program Index of program to change to.
+	 * @since 1.0.0
+	 */
 	public void changeTrackProgram(int tidx, int program);
+	
+	/**
+	 * Change program for the specified track/channel.
+	 * @param tidx Index of track/channel command is targeted to. These are synonymous
+	 * to NinSeq commands.
+	 * @param program Index of program to change to.
+	 * @since 1.0.0
+	 */
+	public void changeTrackProgram(int tidx, int bank, int program);
 	
 	public void setPortamentoControl(int tidx, int note);
 	public void setPortamento(int tidx, boolean on);

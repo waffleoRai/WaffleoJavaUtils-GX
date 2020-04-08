@@ -1,9 +1,15 @@
 package waffleoRai_SeqSound.ninseq;
 
+import java.util.Random;
+
+import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
 
 import waffleoRai_SoundSynth.PlayerTrack;
 import waffleoRai_SoundSynth.SequencePlayer;
+import waffleoRai_SoundSynth.SynthBank;
+import waffleoRai_SoundSynth.SynthProgram;
+import waffleoRai_SoundSynth.general.DefaultSynthChannel;
 
 public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 
@@ -32,44 +38,112 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 	private int samplerate;
 	private int bitdepth;
 	
+	private long startPos; //For rewinding or referencing
+	private NinSeqDataSource source;
+	private SynthBank bnk;
+	
+	private ShortRegister[] registers;
+	private Random rng;
+	
+	private NinTrack[] nin_tracks;
 	
 	/*--- Inner Classes ---*/
 	
+	private class ShortRegister
+	{
+		private volatile short value;
+		
+		public ShortRegister(){value = 0;}
+		public short read(){return value;}
+		public synchronized void write(short val){value = val;}
+	}
+	
 	public class NinSeqSynthTrack implements PlayerTrack{
 
-		@Override
+		private NinTrack track;
+		
+		public NinSeqSynthTrack(NinTrack t){
+			track = t;
+		}
+		
 		public void onTick(long tick) throws InterruptedException {
-			// TODO Auto-generated method stub
-			
+			//Change to just onTick if getting lag??? Probably won't help much.
+			track.onTickFlagLoop();
 		}
 
-		@Override
 		public void resetTo(long tick) {
-			// TODO Auto-generated method stub
-			
+			//I'm feeling lazy - maybe I'll fill this in proper later...
+			track.rewind();
 		}
 
-		@Override
 		public boolean trackEnd() {
-			// TODO Auto-generated method stub
-			return false;
+			return track.trackEnded();
 		}
 
-		@Override
 		public void setMute(boolean b) {
-			// TODO Auto-generated method stub
-			
+			track.setInternalMute(b);
 		}
 
-		@Override
 		public boolean isMuted() {
-			// TODO Auto-generated method stub
-			return false;
+			return track.getInternalMute();
 		}
 		
 	}
 	
 	/*--- Construction ---*/
+	
+	public NinSeqSynthPlayer(NinSeqDataSource seq, SynthBank bank, long staddr){
+		
+		super.allocateChannels(16);
+		super.setTickResolution(NinSeq.TICKS_PER_QNOTE);
+		
+		bnk_name = "Anonymous Soundbank";
+		
+		source = seq;
+		bnk = bank;
+		startPos = staddr; //Track 0
+		
+		//Initialize for specific mode...
+		int t = seq.getPlayerMode();
+		switch(t){
+		case NinSeq.PLAYER_MODE_DS:
+			samplerate = OUTPUT_SAMPLERATE;
+			bitdepth = 16;
+			src_type = SRC_SSEQ;
+			seq_name = "Anonymous DS Sequence";
+			break;
+		case NinSeq.PLAYER_MODE_WII:
+			samplerate = OUTPUT_SAMPLERATE;
+			bitdepth = 16;
+			src_type = SRC_RSEQ;
+			seq_name = "Anonymous Wii Sequence";
+			break;
+		case NinSeq.PLAYER_MODE_3DS:
+			samplerate = OUTPUT_SAMPLERATE;
+			bitdepth = 16;
+			src_type = SRC_CSEQ;
+			seq_name = "Anonymous 3DS Sequence";
+			break;
+		case NinSeq.PLAYER_MODE_CAFE:
+			samplerate = OUTPUT_SAMPLERATE_CAFE;
+			bitdepth = 16;
+			src_type = SRC_FSEQ;
+			seq_name = "Anonymous Wii U Sequence";
+			break;
+		}
+		
+		for(int i = 0; i < 16; i++){super.channels[i] = new DefaultSynthChannel(samplerate, bitdepth);}
+		
+		registers = new ShortRegister[255];
+		for(int i = 0; i < 255; i++) registers[i] = new ShortRegister();
+		rng = new Random();
+		
+		super.tracks = new PlayerTrack[16]; //Allocated by openTrack()
+		nin_tracks = new NinTrack[16];
+		
+		//Open track 0
+		openTrack(0, (int)startPos);
+	}
 	
 	/*--- Getters ---*/
 	
@@ -81,10 +155,8 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 	public int getChannelCount() {return 2;} //Right now, only stereo supported, though the files have support for 5.1 surround
 	public boolean jumpsAllowed() {return true;} //This is real-time, not captured, so won't bother turning off jumps
 	
-	@Override
 	public boolean isPlaying() {
-		// TODO Auto-generated method stub
-		return false;
+		return super.isRunning();
 	}
 	
 	/*--- Setters ---*/
@@ -94,9 +166,12 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 	
 	/*--- NinSeq Control ---*/
 	
+	//-- Play
+	
 	public void play() {
-		// TODO Auto-generated method stub
-		
+		try {startAsyncPlaybackToDefaultOutputDevice();} 
+		catch (LineUnavailableException e) 
+		{e.printStackTrace();}
 	}
 
 	@Override
@@ -105,337 +180,328 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 		
 	}
 
-
-	@Override
-	public void noteOn(int tidx, int note, int velocity) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void noteOff(int tidx, int note) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void mute(int tidx) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void unmute(int tidx) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
 	public void openTrack(int tidx, int addr) {
-		// TODO Auto-generated method stub
+		//if(tidx != 0) return; //Debug
+		//if(tidx != 0 && tidx != 10) return; //Debug
+		NinTrack t = new NinTrack(source, this, addr, tidx);
+		super.tracks[tidx] = new NinSeqSynthTrack(t);
+		nin_tracks[tidx] = t;
+		//System.err.println("Open Track: " + tidx);
+	}
+	
+	//-- Note Play & Pitch
+
+	public void noteOn(int tidx, int note, int velocity) {
 		
+		try {super.channels[tidx].noteOn((byte)note, (byte)velocity);} 
+		catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		super.sendNoteOnToListeners(tidx, (byte)note);
 	}
 
-	@Override
-	public int getRandomNumber() {
-		// TODO Auto-generated method stub
-		return 0;
+	public void noteOff(int tidx, int note) {
+		super.channels[tidx].noteOff((byte)note, (byte)0);
+		super.sendNoteOffToListeners(tidx, (byte)note);
 	}
 
-	@Override
-	public short getVariableValue(int vidx) {
-		// TODO Auto-generated method stub
-		return 0;
+	public void updatePitchBend(int tidx, int cents) {
+		channels[tidx].setPitchBendDirect(cents);
+		super.sendPitchWheelToListeners(tidx, nin_tracks[tidx].getPitchWheel(cents));
+	}
+	
+	public void setMonophony(int tidx, boolean on) {
+		nin_tracks[tidx].setInternalMonophony(on);
+	}
+	
+	//-- Volume
+	
+	public void mute(int tidx) {
+		nin_tracks[tidx].setInternalMute(true);
 	}
 
-	@Override
-	public void setVariableValue(int vidx, short value) {
-		// TODO Auto-generated method stub
-		
+	public void unmute(int tidx) {
+		nin_tracks[tidx].setInternalMute(false);
+	}
+	
+	public void changeTrackProgram(int tidx, int program) {
+		int nowbank = nin_tracks[tidx].getBankIndex();
+		SynthProgram p = bnk.getProgram(nowbank, program);
+		channels[tidx].setProgram(p);
+		super.sendProgramChangeToListeners(tidx, nowbank, program);
 	}
 
-	@Override
-	public void setVelocityRange(int tidx, int min, int max) {
-		// TODO Auto-generated method stub
-		
+	public void changeTrackProgram(int tidx, int bank, int program) {
+		SynthProgram p = bnk.getProgram(bank, program);
+		channels[tidx].setProgram(p);
+		super.sendProgramChangeToListeners(tidx, bank, program);
 	}
 
-	@Override
+	public void printVariable(int vidx) {
+		short var = registers[vidx].read();
+		System.err.println("$" + vidx + " = 0x" + String.format("%04x", var));
+	}
+	
+	//-- Pan
+	
 	public void updateTrackPan(int tidx, int pan) {
-		// TODO Auto-generated method stub
-		
+		channels[tidx].setPan((byte)pan);
+		super.sendPanToListeners(tidx, (byte)pan);
 	}
 
 	@Override
 	public void setTrackInitPan(int tidx, int value) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Track Init Pan - 0x" + String.format("%02x", value));
 	}
 
 	@Override
 	public void updateTrackSurroundPan(int tidx, int value) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Track Surround Pan - 0x" + String.format("%02x", value));
 	}
 
-	@Override
 	public void updateTrackVolume(int tidx, int vol) {
-		// TODO Auto-generated method stub
-		
+		double lvl = (double)vol/127.0;
+		channels[tidx].setVolume((byte)vol);
+		super.sendVolumeToListeners(tidx, lvl);
 	}
 
-	@Override
 	public void setMasterVolume(int vol) {
-		// TODO Auto-generated method stub
-		
+		double lvl = (double)vol/127.0;
+		setMasterAttenuation(lvl);
 	}
-
-	@Override
-	public void updatePitchBend(int tidx, int cents) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void setTrackPriority(int tidx, int pri) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
+	
 	public void setExpression(int tidx, int value) {
-		// TODO Auto-generated method stub
-		
+		double lvl = (double)value/127.0;
+		channels[tidx].setExpression((byte)value);
+		super.sendVolumeToListeners(tidx, lvl);
 	}
 
-	@Override
 	public void setDamper(int tidx, boolean on) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Set Damper - " + on);
 	}
 
-	@Override
-	public void setMonophony(int tidx, boolean on) {
-		// TODO Auto-generated method stub
-		
+	//-- Time
+	
+	public void setTempoBPM(int bpm)
+	{
+		//Convert bpm to microseconds
+		int us = (int)Math.round(60000000.0 / (double)bpm);
+		super.setTempo(us);
+		//System.err.println("Set Tempo: " + bpm);
 	}
-
-	@Override
+	
 	public void setTimebase(int tidx, int value) {
-		// TODO Auto-generated method stub
-		
+		//not 100% sure...
+		super.setTickResolution(value);
 	}
 
-	@Override
-	public void setBiquadValue(int tidx, int value) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void setBiquadType(int tidx, int value) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void setPitchSweep(int tidx, int value) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void changeTrackBank(int tidx, int bankIndex) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void changeTrackProgram(int tidx, int program) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void setPortamentoControl(int tidx, int note) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void setPortamento(int tidx, boolean on) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void setPortamentoTime(int tidx, int time) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
+	//-- Modulation
+	
 	public void setModulationDepth(int tidx, int value) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Mod Depth - 0x" + String.format("%02x", value));
 	}
 
 	@Override
 	public void setModulationSpeed(int tidx, int value) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Mod Speed - 0x" + String.format("%02x", value));
 	}
 
 	@Override
 	public void setModulationType(int tidx, int value) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Mod Type - 0x" + String.format("%02x", value));	// TODO Auto-generated method stub
 	}
 
 	@Override
 	public void setModulationRange(int tidx, int value) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Mod Range - 0x" + String.format("%02x", value));
 	}
 
-	@Override
 	public void setModulationDelay(int tidx, int millis) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Mod Delay - 0x" + String.format("%04x", millis));	
 	}
 
-	@Override
+	//-- Envelope
+	
 	public void setAttackOverride(int tidx, int millis) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Set Attack");
 	}
 
 	@Override
 	public void setDecayOverride(int tidx, int millis) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Set Decay");
 	}
 
 	@Override
 	public void setSustainOverride(int tidx, int level) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Set Sustain");
 	}
 
 	@Override
 	public void setReleaseOverride(int tidx, int millis) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Set Release");
 	}
 
 	@Override
 	public void setEnvelopeHold(int tidx, int millis) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Set Hold");
 	}
 
 	@Override
 	public void envelopeReset(int tidx) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Envelope Reset");
+	}
+	
+	//-- Effects
+	
+	public void setBiquadValue(int tidx, int value) {
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Biquad Value - 0x" + String.format("%02x", value));
 	}
 
 	@Override
-	public void printVariable(int vidx) {
-		// TODO Auto-generated method stub
-		
+	public void setBiquadType(int tidx, int value) {
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Biquad Type - 0x" + String.format("%02x", value));	
 	}
 
 	@Override
+	public void setPitchSweep(int tidx, int value) {
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Pitch Sweep - 0x" + String.format("%04x", value));
+	}
+
+	public void setPortamentoControl(int tidx, int note) {
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Portamento Control - 0x" + String.format("%02x", note));
+	}
+
+	public void setPortamento(int tidx, boolean on) {
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Set Portamento - " + on);
+	}
+
+	public void setPortamentoTime(int tidx, int time) {
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Portamento Time - 0x" + String.format("%02x", time));
+	}
+	
 	public void setLPFCutoff(int tidx, int frequency) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": LPF Cutoff - 0x" + String.format("%02x", frequency));
 	}
 
-	@Override
 	public void setFXSendLevel(int tidx, int send, int level) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": FX Send - 0x" + String.format("%02x", level));
 	}
 
-	@Override
 	public void setMainSendLevel(int tidx, int level) {
-		// TODO Auto-generated method stub
-		
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Main Send - 0x" + String.format("%02x", level));
+	}
+	
+	//-- Player State
+
+	public int getRandomNumber() {
+		return rng.nextInt();
 	}
 
-	@Override
+	public short getVariableValue(int vidx) {
+		return registers[vidx].read();
+	}
+
+	public void setVariableValue(int vidx, short value) {
+		System.err.println("$" + vidx + " = " + value);
+		registers[vidx].write(value);
+	}
+	
+	public void setTrackPriority(int tidx, int pri) {
+		// TODO Unimplemented
+		System.err.println("Unimplemented command from track " + tidx + ": Track Priority - 0x" + String.format("%02x", pri));
+	}
+
 	public void addImmediate(int vidx, short imm) {
-		// TODO Auto-generated method stub
-		
+		registers[vidx].write((short)(registers[vidx].read() + imm));
 	}
 
 	@Override
 	public void subtractImmediate(int vidx, short imm) {
-		// TODO Auto-generated method stub
-		
+		registers[vidx].write((short)(registers[vidx].read() - imm));
 	}
 
 	@Override
 	public void multiplyImmediate(int vidx, short imm) {
-		// TODO Auto-generated method stub
-		
+		registers[vidx].write((short)(registers[vidx].read() * imm));
 	}
 
-	@Override
 	public void divideImmediate(int vidx, short imm) {
-		// TODO Auto-generated method stub
-		
+		registers[vidx].write((short)(registers[vidx].read() / imm));
 	}
 
-	@Override
 	public void modImmediate(int vidx, short imm) {
-		// TODO Auto-generated method stub
-		
+		registers[vidx].write((short)(registers[vidx].read() % imm));
 	}
 
-	@Override
 	public void andImmediate(int vidx, int imm) {
-		// TODO Auto-generated method stub
-		
+		int current = (int)registers[vidx].read();
+		registers[vidx].write((short)(current & imm));
 	}
 
-	@Override
 	public void orImmediate(int vidx, int imm) {
-		// TODO Auto-generated method stub
-		
+		int current = (int)registers[vidx].read();
+		registers[vidx].write((short)(current | imm));
 	}
 
-	@Override
 	public void xorImmediate(int vidx, int imm) {
-		// TODO Auto-generated method stub
-		
+		int current = (int)registers[vidx].read();
+		registers[vidx].write((short)(current ^ imm));
 	}
 
-	@Override
 	public void notImmediate(int vidx, int imm) {
-		// TODO Auto-generated method stub
-		
+		registers[vidx].write((short)(~imm));
 	}
 
-	@Override
 	public void shiftImmediate(int vidx, int imm) {
-		// TODO Auto-generated method stub
-		
+		int current = (int)registers[vidx].read();
+		if(imm < 0) registers[vidx].write((short)(current << imm));
+		else registers[vidx].write((short)(current >> imm));
 	}
 	
 	/*--- External Control ---*/
 	
 	@Override
 	protected int saturate(int in) {
-		// TODO Auto-generated method stub
-		return 0;
+		//For now just 16 bit
+		if(in > 0x7FFF) return 0x7FFF;
+		if(in < -0x7FFF) return -0x7FFF;
+		return in;
 	}
 
-	@Override
 	protected void putNextSample(SourceDataLine target) throws InterruptedException {
-		// TODO Auto-generated method stub
+		int[] samps = nextSample();
+		byte[] dat = new byte[4];
+		//System.err.println(String.format("%04x %04x", samps[0], samps[1]));
 		
+		dat[0] = (byte)(samps[0] & 0x7F);
+		dat[1] = (byte)(samps[0] >>> 8);
+		dat[2] = (byte)(samps[1] & 0x7F);
+		dat[3] = (byte)(samps[1] >>> 8);
+		
+		target.write(dat, 0, 4);
 	}
 
 }

@@ -75,6 +75,8 @@ public abstract class NinStream extends NinStreamableSound{
 	protected ADPCTable adpc_table; //For DSP ADPCM
 	protected IMATable ima_table; //For IMA ADPCM
 	
+	protected int active_track;
+	
 	/*--- Data Copy ---*/
 	
 	public static void copyChannel(NinStream src, NinStream trg, int channel)
@@ -253,11 +255,49 @@ public abstract class NinStream extends NinStreamableSound{
 		return writeTrackAsWAV(path ,track, sframe, framediff);
 	}
 	
+	public int[] getActiveTrackChannels(){
+
+		if(active_track == -1) return null;
+		if(tracks == null || tracks.isEmpty()) return null;
+		Track t = tracks.get(active_track);
+		int[] chans = new int[2];
+		chans[0] = t.leftChannelID;
+		chans[1] = t.rightChannelID;
+		
+		return chans;
+	}
+	
 	public AudioSampleStream createSampleStream()
 	{
-		NAudioSampleStream str = new NAudioSampleStream(this);
+		int[] tchannels = getActiveTrackChannels();
+		NAudioSampleStream str = null;
+		if(tchannels != null) str = new NAudioSampleStream(this, tchannels);
+		else str = new NAudioSampleStream(this);
 		if(ima_table != null) str.addIMATable(ima_table);
 		return str;
+	}
+	
+	public AudioSampleStream createSampleStream(boolean loop)
+	{
+		int[] tchannels = getActiveTrackChannels();
+		NAudioSampleStream str = null;
+		if(tchannels != null) str = new NAudioSampleStream(this, tchannels, loop);
+		else str = new NAudioSampleStream(this, loop);
+		if(ima_table != null) str.addIMATable(ima_table);
+		return str;
+	}
+	
+	public void setActiveTrack(int tidx){
+		if(tracks == null || tracks.isEmpty()) return;
+		if(tidx >= tracks.size()) return;
+		if(tidx < 0) return;
+		
+		active_track = tidx;
+	}
+	
+	public int countTracks(){
+		if(tracks == null || tracks.isEmpty()) return 1;
+		return tracks.size();
 	}
 	
 }

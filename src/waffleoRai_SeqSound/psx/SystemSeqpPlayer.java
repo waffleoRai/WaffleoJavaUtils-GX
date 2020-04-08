@@ -250,7 +250,10 @@ public class SystemSeqpPlayer extends SystemSeqPlayer{
 		return "PlayStation 1 SEQp";
 	}
 
-	
+	public boolean done(){
+		//TODO
+		return false;
+	}
 
 
 	

@@ -327,7 +327,7 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 		rewind();
 	}
 	
-	public void setTempo(int bpm)
+	public void setTempoBPM(int bpm)
 	{
 		try 
 		{
@@ -558,6 +558,17 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 		{
 			List<MidiMessage> msgs = mmg.genBankSelect(tidx, bankIndex);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
+		}
+		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
+	}
+	
+	public void changeTrackProgram(int tidx, int bankIndex, int program)
+	{
+		changeTrackBank(tidx, bankIndex);
+		try 
+		{
+			MidiMessage msg = mmg.genProgramChange(tidx, program);
+			addMessage(msg, tidx);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}

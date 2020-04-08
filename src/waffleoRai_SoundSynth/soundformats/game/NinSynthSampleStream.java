@@ -70,7 +70,7 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	public NinSynthSampleStream(AudioSampleStream input, NinTone art, byte key, byte vel, float outSampleRate) throws InterruptedException{
 		super(input);
 		
-		ch_vol = 1.0;
+		ch_vol =0.75;
 		
 		unitykey = art.getOriginalKey() * 100;
 		tune = (art.getCoarseTune() * 100) + art.getFineTune();
@@ -84,18 +84,28 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		rel = art.getReleaseData();
 		hold = art.getHold();
 		
+		//System.err.println("Attack: " + att.getTime());
+		//System.err.println("Decay: " + dec.getTime());
+		//System.err.println("Sustain: 0x" + String.format("%04x", sus.getLevel16()));
+		//System.err.println("Release: " + rel.getTime());
+		
 		ignoreNoteOff = art.getNoteOffType() == 1;
+		//System.err.println("key = 0x" + String.format("%02x", key) + " (" + key + ")");
 		played = 100 * (int)key;
+		//System.err.println("played = " + played);
 		
 		volume *= (double)vel/127.0;
 		
-		pitch_interpolator = new UnbufferedWindowedSincInterpolator(source, 2);
-		
 		if(outSampleRate != input.getSampleRate())
 		{
-			sr_interpolator = new UnbufferedWindowedSincInterpolator(pitch_interpolator, 2);
+			sr_interpolator = new UnbufferedWindowedSincInterpolator(source, 3);
 			sr_interpolator.setUseTargetSampleRate(true);
+			sr_interpolator.setOutputSampleRate(outSampleRate);
 		}
+		
+		if(sr_interpolator != null) pitch_interpolator = new UnbufferedWindowedSincInterpolator(sr_interpolator, 2);
+		else pitch_interpolator = new UnbufferedWindowedSincInterpolator(source, 2);
+		updatePitch();
 		
 		calculateAmpRatios();
 		enterAttack();
@@ -169,7 +179,9 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	private void updatePitch()
 	{
 		//Add LFO, if present
+		//System.err.println("Key played: " + played + " | Unity Key: " + unitykey + " | Bend: " + pitchbend + " | Tune: " + tune);
 		int cents = calculateNetCentChange();
+		//System.err.println("Pitch Shift (cents): " + cents);
 		if(lfo != null)
 		{
 			cents += (int)Math.round(lfo.getNextValue());
@@ -190,6 +202,16 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		double wheel = (double)Math.abs(lvl);
 		pitchbend = (int)Math.round((wheel/(double)0x7FFF) * maxcents);
 		if(lvl < 0) pitchbend *= -1;
+		updatePitch();
+	}
+	
+	public void setPitchBendDirect(int cents){
+		int abcents = Math.abs(cents);
+		if(abcents > this.max_pb){
+			max_pb = abcents;
+		}
+		
+		pitchbend = cents;
 		updatePitch();
 	}
 	
@@ -220,6 +242,7 @@ public class NinSynthSampleStream extends SynthSampleStream{
 			
 			ampratio_L = tonepan[0];
 			ampratio_R = tonepan[1];
+			//System.err.println("Pan Ratios: " + ampratio_L + " | " + ampratio_R + " || Pan: 0x" + String.format("%02x", pan));
 		}
 		else
 		{
@@ -258,6 +281,7 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	{
 		adsr_phase = ADSR_PHASE_RELEASE;
 		env_state = rel.openStream((int)getSampleRate(), env_lvl);
+		//System.err.println("Phase = " + adsr_phase);
 	}
 	
 	private void advanceEnvelope()
@@ -283,8 +307,8 @@ public class NinSynthSampleStream extends SynthSampleStream{
 			//if(env_state.done()) sus_end = true;
 			break;
 		case ADSR_PHASE_RELEASE:
-			env_lvl = env_state.getNextAmpRatio();
-			if(env_state.done()) rel_end = true;
+			if(env_state.done()) {rel_end = true; env_lvl = 0.0;}
+			else{env_lvl = env_state.getNextAmpRatio();}
 			break;
 		}
 	}
@@ -293,6 +317,7 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	{
 		//System.err.println("Released!");
 		enterRelease();
+		//rel_end = true;
 	}
 	
 	public boolean releaseSamplesRemaining()
@@ -308,6 +333,7 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		double[] arr = new double[2];
 		arr[0] = ampratio_L;
 		arr[1] = ampratio_R;
+		//System.err.println("Pan Ratios: " + arr[0] + " | " + arr[1]);
 		return arr;
 	}
 	
@@ -321,8 +347,10 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	public int[] nextSample() throws InterruptedException {
 
 		int[] raw = null;
-		if(sr_interpolator != null) raw = sr_interpolator.nextSample();
-		else raw = pitch_interpolator.nextSample();
+		//if(rel_end) return new int[1];
+		//if(sr_interpolator != null) raw = sr_interpolator.nextSample();
+		//else raw = pitch_interpolator.nextSample();
+		raw = pitch_interpolator.nextSample();
 		if(raw == null) return new int[this.getChannelCount()];
 		
 		//Volume
@@ -331,11 +359,12 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		for(int i = 0; i < ccount; i++)
 		{
 			double mult = (double)raw[i] * volume * ch_vol * env_lvl;
+			//double mult = (double)raw[i] * volume * ch_vol;
 			out[i] = saturate((int)Math.round(mult));
 		}
 		
 		advanceEnvelope();
-		
+		//System.err.println(String.format("Played: " + played + " || Voice Output: %04x", out[0]));
 		return out;
 	}
 

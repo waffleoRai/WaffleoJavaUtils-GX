@@ -23,6 +23,7 @@ public class NoteEvent extends NSEvent{
 	
 	public void execute(NinTrack track)
 	{
+		//System.err.println("hi :)");
 		track.playNote(getNote(), getVelocity(), getTicks());
 	}
 	

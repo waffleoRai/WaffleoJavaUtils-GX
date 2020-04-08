@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import waffleoRai_Compression.nintendo.NinLZ;
 import waffleoRai_Containers.ArchiveDef;
 import waffleoRai_Files.Converter;
 import waffleoRai_Utils.DirectoryNode;
@@ -23,7 +24,7 @@ public class NARC extends NDKDSFile{
 	/*----- Constants -----*/
 	
 	public static final int TYPE_ID = 0x4e415243;
-	public static final String DEFO_ENG_STR = "NARC DS Archive";
+	public static final String DEFO_ENG_STR = "Nintendo Nitro Data Archive";
 	
 	public static final String MAGIC = "NARC";
 	
@@ -32,6 +33,8 @@ public class NARC extends NDKDSFile{
 	public static final String MAGIC_GMIF = "GMIF";
 
 	/*----- Instance Variables -----*/
+	
+	private boolean lz_gmif; //GMIF is LZ77 (Yaz) compressed
 	
 	private DirectoryNode root;
 	private List<FileNode> raw;
@@ -57,11 +60,22 @@ public class NARC extends NDKDSFile{
 	
 	public static NARC readNARC(FileBuffer file, long stpos) throws UnsupportedFileTypeException
 	{
+		//System.err.println("File size: 0x" + Long.toHexString(file.getFileSize()));
 		NARC arc = new NARC(file); //This takes care of the DS header
+		
+		//Check GMIF for compression tag
+		FileBuffer gmif = arc.getSectionData(MAGIC_GMIF);
+		long cpos = gmif.findString(0, 0x10, MAGIC_GMIF);
+		if(cpos != 0) throw new FileBuffer.UnsupportedFileTypeException("NARC.readNARC || GMIF magic number not found!");
+		cpos += 8; //Would be offset of tag
+		int ctag = gmif.intFromFile(cpos);
+		if(ctag == 0x37375A4C){
+			arc.lz_gmif = true;
+		}
 		
 		//BTAF
 		FileBuffer btaf = arc.getSectionData(MAGIC_BTAF);
-		long cpos = btaf.findString(0, 0x10, MAGIC_BTAF);
+		cpos = btaf.findString(0, 0x10, MAGIC_BTAF);
 		if(cpos != 0) throw new FileBuffer.UnsupportedFileTypeException("NARC.readNARC || BTAF magic number not found!");
 		
 		cpos += 8;
@@ -80,7 +94,7 @@ public class NARC extends NDKDSFile{
 		long name_off = cpos + 8;
 		
 		cpos+=8;
-		//Get # of directories
+		//Get # of directories (from root dir record)
 		int dcount = Short.toUnsignedInt(btnf.shortFromFile(cpos+6));
 		//System.err.println("Dir Count: " + dcount);
 		
@@ -117,7 +131,8 @@ public class NARC extends NDKDSFile{
 					//Is dir
 					strlen &= 0x7F;
 					String name = btnf.getASCII_string(noff, strlen); noff+=strlen;
-					int didx = Byte.toUnsignedInt(btnf.getByte(noff)); noff+=2;
+					int didx = Short.toUnsignedInt(btnf.shortFromFile(noff)); noff+=2;
+					didx &= 0xFFF; //That first F always there?
 					
 					dirs[didx].setFileName(name);
 					dirs[didx].setParent(dirs[i]);
@@ -135,15 +150,16 @@ public class NARC extends NDKDSFile{
 		
 		//Dir 0 is the root node...
 		arc.root = dirs[0];
-		if(arc.root.getFileName().isEmpty()) arc.root.setFileName("root");
+		if(arc.root.getFileName().isEmpty()) arc.root.setFileName("fsroot");
 		arc.raw = new LinkedList<FileNode>();
 		
 		//Fill in pointers & note raw files...
 		//Pointers rescaled to be relative to ENTIRE NARC FILE
 		long gmif_off = arc.getOffsetToSection(MAGIC_GMIF);
+		long gmif_len = gmif.getFileSize();
 		for(int i = 0; i < fat.length; i++)
 		{
-			long off = fat[i][0] + gmif_off;
+			long off = fat[i][0] + gmif_off + 8;
 			long len = fat[i][1] - fat[i][0];
 			
 			FileNode fn = nmap.get(i);
@@ -153,6 +169,14 @@ public class NARC extends NDKDSFile{
 				String rawname = "NARC_RAWFILE_" + String.format("%04x", i) + ".bin";
 				fn = new FileNode(null, rawname);
 				arc.raw.add(fn);
+			}
+			
+			if(arc.lz_gmif){
+				//Offset is different and node needs to be flagged as compressed
+				//Offset is relative to start of decompressed GMIF (?)
+				System.err.println("NARC.readNARC || -DEBUG- LZ compressed GMIF detected!");
+				off = fat[i][0] - 12;
+				fn.addCompressionChainNode(NinLZ.getDefinition(), gmif_off+12, gmif_len-12);
 			}
 			
 			fn.setOffset(off);
@@ -178,13 +202,28 @@ public class NARC extends NDKDSFile{
 	public DirectoryNode getArchiveTree()
 	{
 		DirectoryNode iroot = new DirectoryNode(null, "NARC");
-		root.setFileName("root");
-		root.copyAsDir(iroot);
+		//Only copy root if not empty...
+		if(!root.getChildren().isEmpty()){
+			
+			if(raw.isEmpty()){
+				//Just this root - don't need to name fsroot
+				List<FileNode> children = root.getChildren();
+				for(FileNode child : children) child.copy(iroot);
+			}
+			else{
+				root.setFileName("fsroot");
+				root.copyAsDir(iroot);		
+			}
+		}
 		
 		//Do the raws...
 		for(FileNode raw : raw) raw.copy(iroot);
 		
 		return iroot;
+	}
+	
+	public boolean gmif_lz_compressed(){
+		return this.lz_gmif;
 	}
 	
 	/*----- Setters -----*/
@@ -232,6 +271,8 @@ public class NARC extends NDKDSFile{
 			
 			return arc.getArchiveTree();
 		}
+		
+		public String getDefaultExtension() {return "narc";}
 		
 	}
 	

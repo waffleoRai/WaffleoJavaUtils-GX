@@ -9,7 +9,6 @@ import javax.sound.sampled.AudioInputStream;
 import waffleoRai_Sound.BitDepth;
 import waffleoRai_Sound.Sound;
 import waffleoRai_Sound.WAV;
-import waffleoRai_Sound.WAV.LoopType;
 import waffleoRai_SoundSynth.AudioSampleStream;
 import waffleoRai_SoundSynth.soundformats.game.PSXVAGSampleStream;
 import waffleoRai_Utils.FileBuffer;
@@ -613,5 +612,12 @@ public class PSXVAG implements Sound{
 	{
 		return new PSXVAGSampleStream(this);
 	}
+	
+	public AudioSampleStream createSampleStream(boolean loop){
+		return new PSXVAGSampleStream(this, loop);
+	}
+	
+	public void setActiveTrack(int tidx){}
+	public int countTracks(){return 1;}
 	
 }

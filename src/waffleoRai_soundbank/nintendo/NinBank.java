@@ -15,6 +15,7 @@ import waffleoRai_soundbank.SimpleBank;
 import waffleoRai_soundbank.SimpleInstrument;
 import waffleoRai_soundbank.SimplePreset;
 import waffleoRai_soundbank.SingleBank;
+import waffleoRai_soundbank.SoundbankNode;
 import waffleoRai_soundbank.SimpleInstrument.InstRegion;
 import waffleoRai_soundbank.SimplePreset.PresetRegion;
 
@@ -58,6 +59,28 @@ public abstract class NinBank {
 			if(n.getLinkAddress() == targetAddr) linkset.add(n);
 		}
 		return linkset;
+	}
+	
+	public SoundbankNode getBankTree(String bankname){
+		SoundbankNode root = new SoundbankNode(null, bankname,SoundbankNode.NODETYPE_BANK);
+		
+		int i = 0; //Bank index
+		int j = 0; //Program index
+		SoundbankNode bank = new SoundbankNode(root, String.format("Bank %03d", i++),SoundbankNode.NODETYPE_BANK);
+		for(NinBankNode child : topNodes){
+			if(!child.isEmpty()){
+				child.toSoundbankNode(bank, j);
+			}
+			j++;
+			
+			if(j >= 128){
+				//New bank
+				bank = new SoundbankNode(root, String.format("Bank %03d", i++),SoundbankNode.NODETYPE_BANK);
+				j = 0;
+			}
+		}
+		
+		return root;
 	}
 	
 	/*--- Conversion ---*/

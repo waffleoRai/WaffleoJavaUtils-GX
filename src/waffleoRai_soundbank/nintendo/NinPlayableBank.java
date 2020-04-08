@@ -52,6 +52,7 @@ public class NinPlayableBank implements SynthBank{
 	@Override
 	public SynthProgram getProgram(int bankIndex, int programIndex) {
 		if(programIndex < 0 || programIndex >= programs.length) return null;
+		//System.err.println("NinPlayableBank.getProgram || Bank = " + bankIndex + ", Prog = " + programIndex + " returning null? " + (programs[programIndex] == null));
 		return programs[programIndex];
 	}
 	

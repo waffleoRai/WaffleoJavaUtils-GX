@@ -37,9 +37,11 @@ public class NinPlayableProgram implements SynthProgram{
 			throws InterruptedException {
 		NinTone tone = art_data.getToneForKey(pitch);
 		if(tone == null) return null;
+		//System.err.println("Hi :)");
 		
 		int war = tone.getWARNumber();
 		int wave = tone.getWaveNumber();
+		//System.err.println("Tone -- SWAR: " + war + " SWAV: " + wave);
 		
 		AudioSampleStream str = sample_map.openSampleStream(war, wave);
 		NinSynthSampleStream sstr = new NinSynthSampleStream(str, tone, pitch, velocity, targetSampleRate);

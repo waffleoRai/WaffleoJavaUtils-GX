@@ -5,6 +5,7 @@ import waffleoRai_Sound.nintendo.NinSound;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_soundbank.SimpleInstrument;
 import waffleoRai_soundbank.SimplePreset;
+import waffleoRai_soundbank.SoundbankNode;
 import waffleoRai_soundbank.SimpleInstrument.InstRegion;
 import waffleoRai_soundbank.adsr.ADSRMode;
 import waffleoRai_soundbank.adsr.Attack;
@@ -181,7 +182,8 @@ public class NinTone {
 	public int getCoarseTune()
 	{
 		//This is a guess
-		return (int)pitch - 1;
+		return (int)pitch;
+		//return (int)pitch - 1;
 	}
 	
 	public int getFineTune()
@@ -252,6 +254,28 @@ public class NinTone {
 		return true;
 	}
 
+	public void addMetadataToNode(SoundbankNode node){
+
+		node.addMetadataEntry("Wavearc Index", Integer.toString(warNumber));
+		node.addMetadataEntry("Wave Index", Integer.toString(waveNumber));
+		
+		node.addMetadataEntry("Attack Raw", String.format("0x%02x", attack));
+		node.addMetadataEntry("Hold Raw", String.format("0x%02x", hold));
+		node.addMetadataEntry("Decay Raw", String.format("0x%02x", decay));
+		node.addMetadataEntry("Sustain Raw", String.format("0x%02x", sustain));
+		node.addMetadataEntry("Release Raw", String.format("0x%02x", release));
+		
+		node.addMetadataEntry("Note Off Type", Integer.toString(noteOffType));
+		node.addMetadataEntry("Alt Assign", Integer.toString(altAssign));
+		
+		node.addMetadataEntry("Volume", String.format("0x%02x", volume));
+		node.addMetadataEntry("Pan", String.format("0x%02x", pan));
+		node.addMetadataEntry("Pan (Surround)", String.format("0x%02x", surroundPan));
+		
+		node.addMetadataEntry("Tune", Float.toString(pitch));
+		node.addMetadataEntry("Key Range (Tone)", minNote + " - " + maxNote);
+	}
+	
 	public void printInfo(int tabs)
 	{
 		StringBuilder tabsb = new StringBuilder(16);
@@ -276,5 +300,6 @@ public class NinTone {
 		System.out.println(tabstr + "Min Note: 0x" + Integer.toHexString(minNote));
 		System.out.println(tabstr + "Max Note: 0x" + Integer.toHexString(maxNote));
 	}
+
 	
 }

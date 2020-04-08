@@ -114,6 +114,7 @@ public class DSWave extends NinWave{
 		return this;
 	}
 	
-	
+	public void setActiveTrack(int tidx){}
+	public int countTracks(){return 1;}
 
 }

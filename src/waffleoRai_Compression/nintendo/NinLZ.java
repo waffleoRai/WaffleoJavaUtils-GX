@@ -164,7 +164,7 @@ public class NinLZ {
 				return null;
 			}
 			
-			
+			//System.err.println("File " + temppath + " exists? " + (FileBuffer.fileExists(temppath)));
 			return temppath;
 		}
 		

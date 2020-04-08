@@ -12,6 +12,7 @@ public class PSXVAGSampleStream implements AudioSampleStream{
 	
 	private PSXVAG source;
 	
+	private boolean loopable;
 	private int next_chunk;
 	private int loop_chunk;
 	//private int end_chunk;
@@ -32,14 +33,22 @@ public class PSXVAGSampleStream implements AudioSampleStream{
 	
 	public PSXVAGSampleStream(PSXVAG src)
 	{
+		this(src, true);
+	}
+	
+	public PSXVAGSampleStream(PSXVAG src, boolean loopable)
+	{
 		source = src;
 		spos = 0;
 		//end_chunk = src.countChunks();
-		if(src.loops()) loop_chunk = src.getLoopPointChunkIndex();
+		if(src.loops() && loopable) loop_chunk = src.getLoopPointChunkIndex();
 		else loop_chunk = -1;
 		Chunk c = source.getChunk(next_chunk++);
 		now_samps = c.decompressSamples(s1, s2); //Decomp first chunk
 		firstpass = true;
+		
+		//Loopable only loops if source loops
+		if(src.loops()) this.loopable = loopable;
 	}
 	
 	/*----- Getters -----*/
@@ -85,7 +94,7 @@ public class PSXVAGSampleStream implements AudioSampleStream{
 		//if(next_chunk >= end_chunk)
 		if(c.isEnd()) //Prepare to loop or zero fill
 		{
-			if(!source.loops())
+			if(!source.loops() || !loopable)
 			{
 				//oneshot_end = true;
 				//System.err.println("I don't loop!");
@@ -133,6 +142,9 @@ public class PSXVAGSampleStream implements AudioSampleStream{
 		
 	}
 	
-	
+	public boolean done(){
+		if(loopable) return false;
+		return !firstpass;
+	}
 
 }

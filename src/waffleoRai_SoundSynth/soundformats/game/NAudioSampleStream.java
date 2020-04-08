@@ -15,11 +15,13 @@ public class NAudioSampleStream implements AudioSampleStream{
 	
 	private int encodingType;
 	private NinStreamableSound source;
+	private int[] src_channels; //Which channels to pull samples from
 	
 	private int pos;
 	
 	private int loopStart;
 	private int loopEnd;
+	//private boolean doneFlag = false;
 	
 	private int bitDepth;
 	
@@ -32,9 +34,33 @@ public class NAudioSampleStream implements AudioSampleStream{
 	
 	/*----- Construction -----*/
 	
-	public NAudioSampleStream(NinStreamableSound src)
-	{
+	public NAudioSampleStream(NinStreamableSound src){
+		//System.err.print("NAudioSample: Constructing");
+		int ch = src.totalChannels();
+		int[] use = new int[ch];
+		for(int i = 0; i < ch; i++) use[i] = i;
+		constructorCore(src, use, true);
+	}
+	
+	public NAudioSampleStream(NinStreamableSound src, int[] usechannels){
+		constructorCore(src, usechannels, true);
+	}
+	
+	public NAudioSampleStream(NinStreamableSound src, boolean loopable){
+		int ch = src.totalChannels();
+		int[] use = new int[ch];
+		for(int i = 0; i < ch; i++) use[i] = i;
+		constructorCore(src, use, loopable);
+	}
+	
+	public NAudioSampleStream(NinStreamableSound src, int[] usechannels, boolean loopable){
+		constructorCore(src, usechannels, loopable);
+	}
+	
+	private void constructorCore(NinStreamableSound src, int[] usechannels, boolean loopable){
+
 		source = src;
+		src_channels = usechannels;
 		encodingType = source.getEncodingType();
 		int ccount = src.totalChannels();
 		if(encodingType == NinSound.ENCODING_TYPE_DSP_ADPCM)
@@ -64,7 +90,7 @@ public class NAudioSampleStream implements AudioSampleStream{
 		else bitDepth = 16; //May change if 24 bit encodings come around in WiiU+
 		
 		
-		if(source.loops()){
+		if(source.loops() && loopable){
 			loopStart = source.getLoopFrame();
 			loopEnd = source.getLoopEndFrame();
 		}
@@ -72,8 +98,6 @@ public class NAudioSampleStream implements AudioSampleStream{
 			loopStart = -1;
 			loopEnd = source.totalFrames();
 		}
-		
-		
 	}
 	
 	public void addIMATable(NinStream.IMATable table){
@@ -92,7 +116,7 @@ public class NAudioSampleStream implements AudioSampleStream{
 			//Scales to signed 16 bit (from unsigned 8)
 			int ccount = target.length;
 			for(int i = 0; i < ccount; i++){
-				int raw = source.getRawDataPoint(i, pos);
+				int raw = source.getRawDataPoint(src_channels[i], pos);
 				raw -= 0x80;
 				double rat = (double)raw/127.0;
 				target[i] = (int)Math.round(rat * (double)0x7FFF);
@@ -110,7 +134,7 @@ public class NAudioSampleStream implements AudioSampleStream{
 			//Return as is!
 			int ccount = target.length;
 			for(int i = 0; i < ccount; i++){
-				target[i] = source.getRawDataPoint(i, pos);
+				target[i] = source.getRawDataPoint(src_channels[i], pos);
 			}
 			pos++;
 			return target;
@@ -124,8 +148,9 @@ public class NAudioSampleStream implements AudioSampleStream{
 		public int[] nextSample(int[] target) {
 			int ccount = target.length;
 			int addpos = 1;
-			for(int c = 0; c < ccount; c++)
+			for(int i = 0; i < ccount; i++)
 			{
+				int c = src_channels[i];
 				NinADPCM state = dsp_states[c];
 				if(state.newBlock())
 				{
@@ -134,11 +159,11 @@ public class NAudioSampleStream implements AudioSampleStream{
 					int n1 = source.getRawDataPoint(c, pos+1);
 					int samp = source.getRawDataPoint(c, pos+2);
 					state.setPS((n0 << 4) | n1);
-					target[c] = state.decompressNextNybble(samp);
+					target[i] = state.decompressNextNybble(samp);
 				}
 				else
 				{
-					target[c] = state.decompressNextNybble(source.getRawDataPoint(c, pos));
+					target[i] = state.decompressNextNybble(source.getRawDataPoint(c, pos));
 				}
 			}
 			pos += addpos;
@@ -158,7 +183,7 @@ public class NAudioSampleStream implements AudioSampleStream{
 					for(int c = 0; c < ccount; c++){
 						int block = pos/ima_block_tbl.samples_per_block;
 						//System.err.println("Pos 0x" + Integer.toHexString(pos) + " starts block " + block);
-						int idx = ima_block_tbl.init_idxs[c][block];
+						int idx = ima_block_tbl.init_idxs[src_channels[c]][block];
 						//int samp = ima_block_tbl.init_samps[c][block];
 						//ima_states[c].setState(samp, idx);
 						ima_states[c].setState(idx);
@@ -166,8 +191,8 @@ public class NAudioSampleStream implements AudioSampleStream{
 				}
 				
 				for(int c = 0; c < ccount; c++){
-					NinIMAADPCM state = ima_states[c];
-					int s = source.getRawDataPoint(c, pos);
+					NinIMAADPCM state = ima_states[src_channels[c]];
+					int s = source.getRawDataPoint(src_channels[c], pos);
 					target[c] = state.decompressNybble(s, (pos == loopStart));
 				}
 				
@@ -217,16 +242,20 @@ public class NAudioSampleStream implements AudioSampleStream{
 	@Override
 	public int[] nextSample() throws InterruptedException {
 		
-		int ccount = source.totalChannels();
+		//int ccount = source.totalChannels();
+		int ccount = src_channels.length;
 		if(pos >= loopEnd)
 		{
 			if(loopStart >= 0) loopMe();
-			else return new int[ccount];
+			else{
+				return new int[ccount];
+			}
 		}
 		
 		int[] out = new int[ccount];
 		out = callback.nextSample(out);
 		
+		//System.err.print("NAudioSample: Returning");
 		return out;
 	}
 
@@ -236,4 +265,9 @@ public class NAudioSampleStream implements AudioSampleStream{
 		
 	}
 
+	public boolean done(){
+		if(loopStart >= 0) return false;
+		return pos >= loopEnd;
+	}
+	
 }

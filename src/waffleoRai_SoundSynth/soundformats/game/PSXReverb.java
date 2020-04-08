@@ -76,5 +76,10 @@ public class PSXReverb implements Filter{
 		// TODO Auto-generated method stub
 		
 	}
+	
+	public boolean done(){
+		//TODO
+		return false;
+	}
 
 }

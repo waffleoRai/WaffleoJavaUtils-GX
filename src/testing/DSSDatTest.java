@@ -1,6 +1,8 @@
 package testing;
 
 import waffleoRai_Containers.nintendo.sar.DSSoundArchive;
+import waffleoRai_SeqSound.ninseq.DSSeq;
+import waffleoRai_SeqSound.ninseq.NinSeqSynthPlayer;
 import waffleoRai_Sound.nintendo.DSStream;
 import waffleoRai_Sound.nintendo.DSWarc;
 import waffleoRai_Sound.nintendo.NinWave;
@@ -45,8 +47,8 @@ public class DSSDatTest {
 			}*/
 			
 			//Try a stream
-			int strm_idx = 0;
-			DSStream strm = arc.getSTRM(strm_idx);
+			//int strm_idx = 0;
+			//DSStream strm = arc.getSTRM(strm_idx);
 			/*String outpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\BKIE_SDAT_STRM000.wav";
 			//strm.writeTrackAsWAV(outpath, 0);
 			AudioSampleStream str = strm.createSampleStream();
@@ -57,14 +59,23 @@ public class DSSDatTest {
 			int sbnk_idx = 5;
 			//Let's read a soundbank...
 			DSBank sbnk = arc.getSBNK(sbnk_idx);
+			//sbnk.printInfo();
 			//System.exit(2);
-			sbnk.printInfo();
-			String outpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\BKIE_SDAT_SBNK005.sf2";
+			//sbnk.printInfo();
+			//String outpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\BKIE_SDAT_SBNK005.sf2";
 			//No idea if this still works :P
-			SimpleBank bnk = sbnk.toSoundbank(swar, 0, "BKIE_SDAT_SBNK005");
-			SF2.writeSF2(bnk, "DSSDatTest", false, outpath);
+			//SimpleBank bnk = sbnk.toSoundbank(swar, 0, "BKIE_SDAT_SBNK005");
+			//SF2.writeSF2(bnk, "DSSDatTest", false, outpath);
 			
 			int sseq_idx = 18;
+			DSSeq seq = arc.getSSEQ(sseq_idx);
+			
+			//Alright... I guess I'll try playing it?
+			NinSeqSynthPlayer player = new NinSeqSynthPlayer(seq.getSequenceData(), sbnk.generatePlayableBank(swar, 0), 0);
+			player.setVariableValue(0, (short)17);
+			player.startAsyncPlaybackToDefaultOutputDevice();
+			
+			
 			
 		}
 		catch(Exception e)

@@ -51,6 +51,13 @@ public class DSSoundArchive extends NDKDSFile{
 	public static final int TYPE_BANK = 0x0601;
 	public static final int TYPE_WAVEARC = 0x0402;
 	
+	public static final String FNMETAKEY_INDEX = "SDATIDX";
+	public static final String FNMETAKEY_BANKID = "BANKID";
+	public static final String FNMETAKEY_VOLUME = "VOL";
+	public static final String FNMETAKEY_SSARNAMES = "MEMNAMES";
+	public static final String FNMETAKEY_WARC_STEM = "SWAR";
+	public static final String FNMETAKEY_SDATTYPE = "SDATTYPE";
+	
 	/*----- Instance Variables -----*/
 	
 	private String src_path;
@@ -82,7 +89,8 @@ public class DSSoundArchive extends NDKDSFile{
 		
 		public void addMetadata(FileNode fn)
 		{
-			fn.setMetadataValue("SDATIDX", Integer.toString(myidx));
+			fn.setMetadataValue(FNMETAKEY_INDEX, Integer.toString(myidx));
+			if(ext.contains("war")) fn.setMetadataValue(FNMETAKEY_SDATTYPE, MAGIC_WAR);
 		}
 		
 	}
@@ -97,11 +105,12 @@ public class DSSoundArchive extends NDKDSFile{
 		
 		public void addMetadata(FileNode fn)
 		{
-			fn.setMetadataValue("BANKID", Integer.toString(bankID));
-			fn.setMetadataValue("VOL", Integer.toString(vol));
+			fn.setMetadataValue(FNMETAKEY_BANKID, Integer.toString(bankID));
+			fn.setMetadataValue(FNMETAKEY_VOLUME, Integer.toString(vol));
 			fn.setMetadataValue("CPR", Integer.toString(cpr));
 			fn.setMetadataValue("PPR", Integer.toString(ppr));
 			fn.setMetadataValue("PLY", Integer.toString(ply));
+			fn.setMetadataValue(FNMETAKEY_SDATTYPE, MAGIC_SEQ);
 		}
 	}
 	
@@ -124,7 +133,8 @@ public class DSSoundArchive extends NDKDSFile{
 				if(i != 0) sb.append(',');
 				sb.append(inner_names[i]);
 			}
-			fn.setMetadataValue("MEMNAMES", sb.toString());
+			fn.setMetadataValue(FNMETAKEY_SSARNAMES, sb.toString());
+			fn.setMetadataValue(FNMETAKEY_SDATTYPE, MAGIC_SAR);
 		}
 	}
 	
@@ -136,10 +146,11 @@ public class DSSoundArchive extends NDKDSFile{
 		
 		public void addMetadata(FileNode fn)
 		{
-			if(wavearcs[0] != 0xFFFF) fn.setMetadataValue("SWAR0", Integer.toString(wavearcs[0]));
-			if(wavearcs[1] != 0xFFFF) fn.setMetadataValue("SWAR1", Integer.toString(wavearcs[1]));
-			if(wavearcs[2] != 0xFFFF) fn.setMetadataValue("SWAR2", Integer.toString(wavearcs[2]));
-			if(wavearcs[3] != 0xFFFF) fn.setMetadataValue("SWAR3", Integer.toString(wavearcs[3]));
+			if(wavearcs[0] != 0xFFFF) fn.setMetadataValue(FNMETAKEY_WARC_STEM + "0", Integer.toString(wavearcs[0]));
+			if(wavearcs[1] != 0xFFFF) fn.setMetadataValue(FNMETAKEY_WARC_STEM + "1", Integer.toString(wavearcs[1]));
+			if(wavearcs[2] != 0xFFFF) fn.setMetadataValue(FNMETAKEY_WARC_STEM + "2", Integer.toString(wavearcs[2]));
+			if(wavearcs[3] != 0xFFFF) fn.setMetadataValue(FNMETAKEY_WARC_STEM + "3", Integer.toString(wavearcs[3]));
+			fn.setMetadataValue(FNMETAKEY_SDATTYPE, MAGIC_BNK);
 		}
 	}
 	
@@ -151,9 +162,10 @@ public class DSSoundArchive extends NDKDSFile{
 		
 		public void addMetadata(FileNode fn)
 		{
-			fn.setMetadataValue("VOL", Integer.toString(vol));
+			fn.setMetadataValue(FNMETAKEY_VOLUME, Integer.toString(vol));
 			fn.setMetadataValue("PRI", Integer.toString(pri));
 			fn.setMetadataValue("PLY", Integer.toString(ply));
+			fn.setMetadataValue(FNMETAKEY_SDATTYPE, MAGIC_STM);
 		}
 	}
 	
@@ -1076,6 +1088,83 @@ public class DSSoundArchive extends NDKDSFile{
 	
 	/*----- Other -----*/
 	
+	/*----- Node Linking -----*/
+	
+	private static String searchForFile(DirectoryNode dir, String typetag, String fid, String path){
+		path += dir.getFileName() + "/";
+		
+		List<DirectoryNode> cdirs = new LinkedList<DirectoryNode>();
+		List<FileNode> children = dir.getChildren();
+		
+		//Search this level first
+		for(FileNode child : children){
+			if(child instanceof DirectoryNode){
+				cdirs.add((DirectoryNode)child);
+			}
+			else{
+				//Look for type tag
+				//If has tag, look for matching ID
+				String metaval = child.getMetadataValue(FNMETAKEY_SDATTYPE);
+				if(metaval == null) continue;
+				if(!metaval.equals(typetag)) continue;
+				metaval = child.getMetadataValue(FNMETAKEY_INDEX);
+				if(metaval == null) continue;
+				if(metaval.equals(fid)) return path + child.getFileName();
+			}
+		}
+		
+		//Search dirs if nothing found
+		for(DirectoryNode child : cdirs){
+			String result = searchForFile(child, typetag, fid, path);
+			if(result != null) return result;
+		}
+		
+		return null;
+	}
+	
+	public static String findLinkedBank(FileNode seq){
+		//Returns relative path
+		//Get metadata bank id
+		String bankid = seq.getMetadataValue(FNMETAKEY_BANKID);
+		if(bankid == null) return null;
+		
+		//Now look for a bank with that SDATIDX
+		//Start with current directory, then move up
+		String path = "";
+		DirectoryNode dir = seq.getParent();
+		while(dir != null){
+			String match = searchForFile(dir, MAGIC_BNK, bankid, path);
+			if(match != null) return match;
+			path = "../" + path;
+			dir = dir.getParent();
+		}
+		
+		return null;
+	}
+	
+	public static String[] findLinkedWavearcs(FileNode bnk){
+
+		String[] matches = new String[4];
+		
+		for(int i = 0; i < 4; i++){
+			String warcid = bnk.getMetadataValue(FNMETAKEY_WARC_STEM + i);
+			if(warcid == null) continue;
+			
+			//Now look for a bank with that SDATIDX
+			//Start with current directory, then move up
+			String path = "";
+			DirectoryNode dir = bnk.getParent();
+			while(dir != null){
+				String match = searchForFile(dir, MAGIC_WAR, warcid, path);
+				if(match != null) matches[i] = match;
+				path = "../" + path;
+				dir = dir.getParent();
+			}
+		}
+		
+		return matches;
+	}
+	
 	/*----- Definition -----*/
 	
 	private static TypeDef static_def;
@@ -1118,6 +1207,7 @@ public class DSSoundArchive extends NDKDSFile{
 			return arc.getArchiveView();
 		}
 		
+		public String getDefaultExtension() {return "sdat";}
 	}
 	
 	public static TypeDef getTypeDef()
