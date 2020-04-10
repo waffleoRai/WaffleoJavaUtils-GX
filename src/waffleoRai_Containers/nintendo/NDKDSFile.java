@@ -28,7 +28,7 @@ public class NDKDSFile extends NDKFile{
 		
 		//Byte order mark
 		int bom = Short.toUnsignedInt(data.shortFromFile(cpos)); cpos += 2;
-		if(bom == 0xFFFE) data.setEndian(true);
+		if(bom == 0xFEFF) data.setEndian(true);
 		else data.setEndian(false);
 		//System.err.println("Big Endian: " + data.isBigEndian());
 		

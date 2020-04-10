@@ -1,5 +1,7 @@
 package waffleoRai_SeqSound.ninseq;
 
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Random;
 
 import javax.sound.sampled.LineUnavailableException;
@@ -46,6 +48,8 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 	private Random rng;
 	
 	private NinTrack[] nin_tracks;
+	
+	private List<NinSeqPlayerValueChangeListener> val_listeners;
 	
 	/*--- Inner Classes ---*/
 	
@@ -94,6 +98,8 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 	
 	public NinSeqSynthPlayer(NinSeqDataSource seq, SynthBank bank, long staddr){
 		
+		val_listeners = new LinkedList<NinSeqPlayerValueChangeListener>();
+		
 		super.allocateChannels(16);
 		super.setTickResolution(NinSeq.TICKS_PER_QNOTE);
 		
@@ -134,8 +140,8 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 		
 		for(int i = 0; i < 16; i++){super.channels[i] = new DefaultSynthChannel(samplerate, bitdepth);}
 		
-		registers = new ShortRegister[255];
-		for(int i = 0; i < 255; i++) registers[i] = new ShortRegister();
+		registers = new ShortRegister[256];
+		for(int i = 0; i < 256; i++) registers[i] = new ShortRegister();
 		rng = new Random();
 		
 		super.tracks = new PlayerTrack[16]; //Allocated by openTrack()
@@ -163,6 +169,12 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 	
 	public void setSequenceName(String name){this.seq_name = name;}
 	public void setBankName(String name){this.bnk_name = name;}
+	
+	public void addValueChangeListener(NinSeqPlayerValueChangeListener l){
+		val_listeners.add(l);
+	}
+	
+	public void clearValueChangeListeners(){val_listeners.clear();}
 	
 	/*--- NinSeq Control ---*/
 	
@@ -427,6 +439,9 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 	public void setVariableValue(int vidx, short value) {
 		System.err.println("$" + vidx + " = " + value);
 		registers[vidx].write(value);
+		for(NinSeqPlayerValueChangeListener l : val_listeners){
+			l.onValueChanged(vidx, value);
+		}
 	}
 	
 	public void setTrackPriority(int tidx, int pri) {
