@@ -106,6 +106,7 @@ public class NinTone {
 	
 	public int getWARNumber(){return this.warNumber;}
 	public int getWaveNumber(){return this.waveNumber;}
+	public WaveCoord getWaveCoordinate(){return new WaveCoord(this.warNumber, this.waveNumber);}
 	public int getAttack(){return this.attack;}
 	public int getDecay(){return this.decay;}
 	public int getSustain(){return this.sustain;}
@@ -301,5 +302,31 @@ public class NinTone {
 		System.out.println(tabstr + "Max Note: 0x" + Integer.toHexString(maxNote));
 	}
 
-	
+	public static class WaveCoord{
+		
+		public int war_number;
+		public int wav_number;
+		
+		public WaveCoord(int i_war, int i_wav){
+			war_number = i_war;
+			wav_number = i_wav;
+		}
+		
+		public boolean equals(Object o){
+			if(o == null) return false;
+			if(!(o instanceof WaveCoord)) return false;
+			
+			WaveCoord other = (WaveCoord)o;
+			if(this.war_number != other.war_number) return false;
+			if(this.wav_number != other.wav_number) return false;
+			
+			return true;
+		}
+		
+		public int hashCode(){
+			return ~war_number ^ wav_number;
+		}
+		
+	}
+
 }

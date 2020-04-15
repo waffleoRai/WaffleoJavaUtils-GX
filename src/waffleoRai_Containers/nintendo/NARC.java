@@ -313,6 +313,12 @@ public class NARC extends NDKDSFile{
 			arc.getArchiveTree().dumpTo(outpath);
 		}
 		
+		public void writeAsTargetFormat(FileNode node, String outpath) 
+				throws IOException, UnsupportedFileTypeException{
+			FileBuffer dat = node.loadDecompressedData();
+			writeAsTargetFormat(dat, outpath);
+		}
+		
 		public String changeExtension(String path)
 		{
 			return path;

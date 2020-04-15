@@ -1,15 +1,23 @@
 package waffleoRai_Sound.nintendo;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
 import waffleoRai_Containers.nintendo.NDKDSFile;
+import waffleoRai_Files.Converter;
+import waffleoRai_Files.FileClass;
 import waffleoRai_Sound.SampleChannel;
 import waffleoRai_Sound.Sound;
+import waffleoRai_Sound.SoundFileDefinition;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 public class DSStream extends NinStream{
 	
+	public static final int TYPE_ID = 0x4e53544d;
 	public static final String MAGIC = "STRM";
 	
 	public static DSStream readSTRM(FileBuffer file, long pos) throws UnsupportedFileTypeException{
@@ -197,5 +205,113 @@ public class DSStream extends NinStream{
 		return copy;
 	}
 
+	/*--- Definition ---*/
+	
+	private static DSStreamDef static_def;
+	
+	public static DSStreamDef getDefinition(){
+		if(static_def == null) static_def = new DSStreamDef();
+		return static_def;
+	}
+	
+	public static class DSStreamDef extends SoundFileDefinition{
+
+		private static final String DEFO_ENG_STR = "Nitro Audio Stream";
+		private static final String[] EXT_LIST = {"strm", "STRM", "nstm", "bnstm"};
+		
+		private String str;
+		
+		public DSStreamDef(){
+			str = DEFO_ENG_STR;
+		}
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(EXT_LIST.length);
+			for(String s : EXT_LIST)list.add(s);
+			return list;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.SOUND_STREAM;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		public String getDefaultExtension() {return "strm";}
+
+		public Sound readSound(FileNode file) {
+			//First look for magic. If there, include header read
+			//If not, assume internal
+			
+			try{
+				FileBuffer data = file.loadDecompressedData();	
+				return readSTRM(data, 0);
+			}
+			catch(IOException e){
+				e.printStackTrace();
+				return null;
+			} 
+			catch (UnsupportedFileTypeException e) {
+				e.printStackTrace();
+				return null;
+			}
+		}
+		
+	}
+	
+	/*--- Converter ---*/
+	
+	private static STRMConverter cdef;
+	
+	public static STRMConverter getDefaultConverter(){
+		if(cdef == null) cdef = new STRMConverter();
+		return cdef;
+	}
+	
+	public static class STRMConverter implements Converter{
+
+		public static final String DEFO_ENG_FROM = "Nitro Audio Stream (.strm)";
+		public static final String DEFO_ENG_TO = "Uncompressed PCM RIFF Wave File (.wav)";
+		
+		private String from_desc;
+		private String to_desc;
+		
+		public STRMConverter(){
+			from_desc = DEFO_ENG_FROM;
+			to_desc = DEFO_ENG_TO;
+		}
+		
+		public String getFromFormatDescription() {return from_desc;}
+		public String getToFormatDescription() {return to_desc;}
+		public void setFromFormatDescription(String s) {from_desc = s;}
+		public void setToFormatDescription(String s) {to_desc = s;}
+
+		public void writeAsTargetFormat(String inpath, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			writeAsTargetFormat(FileBuffer.createBuffer(inpath), outpath);
+		}
+
+		public void writeAsTargetFormat(FileBuffer input, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+
+			DSStream stream = DSStream.readSTRM(input, 0);
+			stream.writeTrackAsWAV(outpath, 0);
+		}
+
+		public void writeAsTargetFormat(FileNode node, String outpath) 
+				throws IOException, UnsupportedFileTypeException{
+			FileBuffer dat = node.loadDecompressedData();
+			writeAsTargetFormat(dat, outpath);
+		}
+		
+		public String changeExtension(String path) {
+			if(path == null) return null;
+			if(path.isEmpty()) return path;
+			
+			int lastdot = path.lastIndexOf('.');
+			if(lastdot < 0) return path + ".wav";
+			return path.substring(0, lastdot) + ".wav";
+		}
+		
+	}
+	
 	
 }

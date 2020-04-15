@@ -16,6 +16,7 @@ import waffleoRai_soundbank.SimpleInstrument;
 import waffleoRai_soundbank.SimplePreset;
 import waffleoRai_soundbank.SingleBank;
 import waffleoRai_soundbank.SoundbankNode;
+import waffleoRai_soundbank.nintendo.NinTone.WaveCoord;
 import waffleoRai_soundbank.SimpleInstrument.InstRegion;
 import waffleoRai_soundbank.SimplePreset.PresetRegion;
 
@@ -83,9 +84,53 @@ public abstract class NinBank {
 		return root;
 	}
 	
+	public Collection<Integer> getUsableBanks(){
+		Set<Integer> list = new HashSet<Integer>();
+		int count = topNodes.size();
+		if(count <= 128){
+			list.add(0);
+			return list;
+		}
+		
+		int p = 0;
+		int b = 0;
+		while(p < count){
+			for(int i = 0; i < 128; i++){
+				if(p >= count) break;
+				NinBankNode n = topNodes.get(p);
+				if(n.isEmpty()) continue;
+				list.add(b);
+				p++;
+			}
+			b++;
+		}
+		
+		
+		return list;
+	}
+	
+	public Collection<Integer> getUsablePrograms(){
+		Set<Integer> set = new HashSet<Integer>();
+		int count = topNodes.size();
+		
+		int p = 0;
+		while(p < count){
+			for(int i = 0; i < 128; i++){
+				if(p >= count) break;
+				NinBankNode n = topNodes.get(p);
+				if(n.isEmpty()) continue;
+				set.add(i);
+				p++;
+			}
+		}
+		
+		
+		return set;
+	}
+	
 	/*--- Conversion ---*/
 	
-	private void patchToPreset(NinBankNode node, SingleBank mybank, int pindex, Map<Long, SimpleInstrument> simap, Map<Integer, String> sndMap)
+	private void patchToPreset(NinBankNode node, SingleBank mybank, int pindex, Map<Long, SimpleInstrument> simap, Map<WaveCoord, String> sndMap)
 	{
 		if(node == null || mybank == null || simap == null || sndMap == null) return;
 		//String presetName = "PRESET_" + String.format("%03d", pindex);
@@ -216,16 +261,24 @@ public abstract class NinBank {
 	
 	public SimpleBank toSoundbank(WaveArchive soundarc, int bankIndex, String name)
 	{
+		WaveArchive[] warcs = {soundarc};
+		return toSoundbank(warcs, bankIndex, name);
+	}
+	
+	public SimpleBank toSoundbank(WaveArchive[] sounddat, int bankIndex, String name)
+	{
 		int bCount = (this.countSurfacePatches()/ 0x7F) + 1;
 		SimpleBank bank = new SimpleBank(name, "VersionUnknown", "Nintendo", bCount);
 		int bidx = bank.newBank(0, name);
 				
 		//Do the sounds
-		Set<Integer> siset = new HashSet<Integer>();
-		Map<Integer, String> sndMap = new HashMap<Integer, String>();
+		//Set<Integer> siset = new HashSet<Integer>();
+		//Map<Integer, String> sndMap = new HashMap<Integer, String>();
+		Set<WaveCoord> siset = new HashSet<WaveCoord>();
+		Map<WaveCoord, String> sndMap = new HashMap<WaveCoord, String>();
 		//for(RTone t : tones) siset.add(t.getWaveNumber());
-		for(NinBankNode n : topNodes) siset.addAll(n.getAllLocalWaveNumbers());
-		for(Integer i : siset)
+		for(NinBankNode n : topNodes) siset.addAll(n.getAllLocalWaveCoordinates());
+		/*for(Integer i : siset)
 		{
 			if(i < 0) continue;
 			//WiiBRWAV rwav = soundarc.getSoundAt(i);
@@ -234,6 +287,23 @@ public abstract class NinBank {
 			String soundKey = "RWAV_" + String.format("%04d", i);
 			bank.addSample(soundKey, wav);
 			sndMap.put(i, soundKey);
+		}*/
+		for(WaveCoord wc : siset){
+			int warci = wc.war_number;
+			int wavi = wc.wav_number;
+			
+			if(warci < 0) continue;
+			if(warci >= sounddat.length) continue;
+			WaveArchive arc = sounddat[warci];
+			
+			if(wavi < 0) continue;
+			if(wavi >= arc.countSounds()) continue;
+			NinWave wav = arc.getWave(wavi);
+			
+			if(wav == null) continue;
+			String soundKey = "SWave_" + warci + "-" + String.format("%04d", wavi);
+			bank.addSample(soundKey, wav);
+			sndMap.put(wc, soundKey);
 		}
 		
 		SingleBank mybank = bank.getBank(bidx);

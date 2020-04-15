@@ -58,6 +58,9 @@ public class DSSoundArchive extends NDKDSFile{
 	public static final String FNMETAKEY_WARC_STEM = "SWAR";
 	public static final String FNMETAKEY_SDATTYPE = "SDATTYPE";
 	
+	public static final String FNMETAKEY_BANKLINK = "BANKPATH";
+	public static final String FNMETAKEY_WARCLINK_STEM = "WARCPATH";
+	
 	/*----- Instance Variables -----*/
 	
 	private String src_path;
@@ -915,6 +918,7 @@ public class DSSoundArchive extends NDKDSFile{
 		Set<String> ingroup = new TreeSet<String>();
 		for(Group g : groups)
 		{
+			if(g.members.isEmpty()) continue;
 			DirectoryNode gnode = new DirectoryNode(root, g.symbol);
 			for(FileEntry m : g.members)
 			{
@@ -940,6 +944,7 @@ public class DSSoundArchive extends NDKDSFile{
 			fnode.setOffset(e.offset);
 			fnode.setLength(e.size);
 		}
+		if(dir.getChildCount() < 1) root.removeChild(dir);
 		
 		dir = new DirectoryNode(root, "SEQARC");
 		for(SEQArcEntry e : seqarc)
@@ -952,6 +957,7 @@ public class DSSoundArchive extends NDKDSFile{
 			fnode.setOffset(e.offset);
 			fnode.setLength(e.size);
 		}
+		if(dir.getChildCount() < 1) root.removeChild(dir);
 		
 		dir = new DirectoryNode(root, "BANK");
 		for(BANKEntry e : bank)
@@ -964,6 +970,7 @@ public class DSSoundArchive extends NDKDSFile{
 			fnode.setOffset(e.offset);
 			fnode.setLength(e.size);
 		}
+		if(dir.getChildCount() < 1) root.removeChild(dir);
 		
 		dir = new DirectoryNode(root, "WAVEARC");
 		for(FileEntry e : wavearc)
@@ -976,6 +983,7 @@ public class DSSoundArchive extends NDKDSFile{
 			fnode.setOffset(e.offset);
 			fnode.setLength(e.size);
 		}
+		if(dir.getChildCount() < 1) root.removeChild(dir);
 		
 		dir = new DirectoryNode(root, "PLAYER");
 		for(FileEntry e : player)
@@ -987,6 +995,7 @@ public class DSSoundArchive extends NDKDSFile{
 			fnode.setOffset(e.offset);
 			fnode.setLength(e.size);
 		}
+		if(dir.getChildCount() < 1) root.removeChild(dir);
 		
 		dir = new DirectoryNode(root, "PLAYER2");
 		for(FileEntry e : player2)
@@ -998,6 +1007,7 @@ public class DSSoundArchive extends NDKDSFile{
 			fnode.setOffset(e.offset);
 			fnode.setLength(e.size);
 		}
+		if(dir.getChildCount() < 1) root.removeChild(dir);
 		
 		dir = new DirectoryNode(root, "STRM");
 		for(STRMEntry e : strm)
@@ -1010,6 +1020,7 @@ public class DSSoundArchive extends NDKDSFile{
 			fnode.setOffset(e.offset);
 			fnode.setLength(e.size);
 		}
+		if(dir.getChildCount() < 1) root.removeChild(dir);
 		
 		return root;
 	}
@@ -1122,6 +1133,27 @@ public class DSSoundArchive extends NDKDSFile{
 		return null;
 	}
 	
+	public static String findLinkedBank(FileNode seq, int id){
+		//Returns relative path
+		//Get metadata bank id
+		String bankid = Integer.toString(id);
+		if(bankid == null) return null;
+		
+		//Now look for a bank with that SDATIDX
+		//Start with current directory, then move up
+		String path = "";
+		DirectoryNode dir = seq.getParent();
+		while(dir != null){
+			String match = searchForFile(dir, MAGIC_BNK, bankid, path);
+			if(match != null) return match;
+			path = "../" + path;
+			dir = dir.getParent();
+		}
+		
+		return null;
+	}
+	
+	
 	public static String findLinkedBank(FileNode seq){
 		//Returns relative path
 		//Get metadata bank id
@@ -1139,6 +1171,18 @@ public class DSSoundArchive extends NDKDSFile{
 			dir = dir.getParent();
 		}
 		
+		return null;
+	}
+	
+	public static String findLinkedWavearc(FileNode bnk, String warcid){
+		String path = "";
+		DirectoryNode dir = bnk.getParent();
+		while(dir != null){
+			String match = searchForFile(dir, MAGIC_WAR, warcid, path);
+			if(match != null) return match;
+			path = "../" + path;
+			dir = dir.getParent();
+		}
 		return null;
 	}
 	
@@ -1163,6 +1207,69 @@ public class DSSoundArchive extends NDKDSFile{
 		}
 		
 		return matches;
+	}
+	
+	public static DSBank loadLinkedBank(FileNode seq) throws IOException, UnsupportedFileTypeException{
+		String path = seq.getMetadataValue(FNMETAKEY_BANKLINK);
+		if(path == null){
+			//Check for ID.
+			String bnkid = seq.getMetadataValue(FNMETAKEY_BANKID);
+			if(bnkid == null){
+				System.err.println("DSSoundArchive.loadLinkedBank || No bank linked to provided node!");
+				return null;
+			}
+			path = findLinkedBank(seq);
+			if(path == null){
+				System.err.println("DSSoundArchive.loadLinkedBank || Path couldn't be found for bank with ID " + bnkid);
+				return null; //We're just not finding it...
+			}
+			//If path was found, mark in node
+			seq.setMetadataValue(FNMETAKEY_BANKLINK, path);
+		}
+		
+		DirectoryNode dir = seq.getParent();
+		FileNode bnknode = dir.getNodeAt(path); //SHOULD be able to interpret the ../
+		if(bnknode == null){
+			System.err.println("DSSoundArchive.loadLinkedBank || Couldn't find sbnk: Node not found at path " + path);
+			return null;
+		}
+		FileBuffer dat = bnknode.loadDecompressedData();
+		DSBank bank = DSBank.readSBNK(dat, 0);
+		
+		return bank;
+	}
+	
+	public static DSWarc[] loadLinkedWavearcs(FileNode bnk) throws IOException, UnsupportedFileTypeException{
+		DSWarc[] warcs = new DSWarc[4];
+
+		for(int i = 0; i < 4; i++){
+			//Check if path is marked.
+			String path = bnk.getMetadataValue(FNMETAKEY_WARCLINK_STEM + i);
+			if(path == null){
+				//Check for ID.
+				String warcid = bnk.getMetadataValue(FNMETAKEY_WARC_STEM + i);
+				if(warcid == null) continue; //There isn't one linked to this slot
+				path = findLinkedWavearc(bnk, warcid);
+				if(path == null){
+					System.err.println("DSSoundArchive.loadLinkedWavearcs || Couldn't find warc #" + i + ": ID = " + warcid);
+					continue; //We're just not finding it...
+				}
+				//If path was found, mark in node
+				bnk.setMetadataValue(FNMETAKEY_WARCLINK_STEM + i, path);
+			}
+			//Try to load from path
+			DirectoryNode dir = bnk.getParent();
+			FileNode warcnode = dir.getNodeAt(path); //SHOULD be able to interpret the ../
+			if(warcnode == null){
+				System.err.println("DSSoundArchive.loadLinkedWavearcs || Couldn't find warc #" + i + ": Node not found at path " + path);
+				continue;
+			}
+			FileBuffer dat = warcnode.loadDecompressedData();
+			DSWarc warc = DSWarc.readSWAR(dat, 0);
+			warcs[i] = warc;
+		}
+		
+		return warcs;
 	}
 	
 	/*----- Definition -----*/
@@ -1245,6 +1352,12 @@ public class DSSoundArchive extends NDKDSFile{
 		{
 			DSSoundArchive arc = DSSoundArchive.readSDAT(input);
 			arc.extractToDisk(outpath);
+		}
+		
+		public void writeAsTargetFormat(FileNode node, String outpath) 
+				throws IOException, UnsupportedFileTypeException{
+			FileBuffer dat = node.loadDecompressedData();
+			writeAsTargetFormat(dat, outpath);
 		}
 		
 		public String changeExtension(String path)

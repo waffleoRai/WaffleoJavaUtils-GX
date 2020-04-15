@@ -1,19 +1,30 @@
 package waffleoRai_soundbank.nintendo;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 
 import waffleoRai_Containers.nintendo.NDKDSFile;
 import waffleoRai_Containers.nintendo.NDKSectionType;
+import waffleoRai_Containers.nintendo.sar.DSSoundArchive;
+import waffleoRai_Files.Converter;
+import waffleoRai_Sound.nintendo.DSWarc;
+import waffleoRai_SoundSynth.SynthBank;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileNode;
+import waffleoRai_soundbank.SimpleBank;
+import waffleoRai_soundbank.SoundbankDef;
+import waffleoRai_soundbank.sf2.SF2;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 public class DSBank extends NinBank{
 	
 	/*--- Constants ---*/
 	
+	public static final int TYPE_ID = 0x4e424e4b;
 	public static final String MAGIC = "SBNK";
 
 	/*--- Construction/Parsing ---*/
@@ -176,6 +187,123 @@ public class DSBank extends NinBank{
 		if(flag == 17) return NinBankNode.TYPE_INST;
 		
 		return -1;
+	}
+	
+	/*--- Definition ---*/
+	
+	private static NitroSoundbankDef static_def;
+	
+	public static NitroSoundbankDef getDefinition(){
+		if(static_def == null) static_def = new NitroSoundbankDef();
+		return static_def;
+	}
+	
+	public static class NitroSoundbankDef extends SoundbankDef{
+
+		private static final String DEFO_ENG_STR = "Nitro SoundBank";
+		private static final String[] EXT_LIST = {"sbnk", "SBNK", "nbnk", "bnbnk"};
+		
+		private String str;
+		
+		public NitroSoundbankDef(){
+			str = DEFO_ENG_STR;
+		}
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(EXT_LIST.length);
+			for(String s : EXT_LIST)list.add(s);
+			return list;
+		}
+
+		public String getDescription() {return str;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		public String getDefaultExtension() {return "sbnk";}
+
+		public SynthBank getPlayableBank(FileNode file) {
+			//Needs to also load wavearcs...
+			try {
+				FileBuffer dat = file.loadDecompressedData();
+				DSBank bank = DSBank.readSBNK(dat, 0);
+				//Try to get warcs
+				DSWarc[] warcs = DSSoundArchive.loadLinkedWavearcs(file);
+				return bank.generatePlayableBank(warcs, 0);
+			} 
+			catch (IOException e) {
+				e.printStackTrace();
+				return null;
+			} 
+			catch (UnsupportedFileTypeException e) {
+				e.printStackTrace();
+				return null;
+			}
+		}
+		
+	}
+	
+	/*--- Converter ---*/
+	
+	private static SBNKConverter cdef;
+	
+	public static SBNKConverter getDefaultConverter(){
+		if(cdef == null) cdef = new SBNKConverter();
+		return cdef;
+	}
+	
+	public static class SBNKConverter implements Converter{
+
+		public static final String DEFO_ENG_FROM = "Nitro SoundBank (.sbnk)";
+		public static final String DEFO_ENG_TO = "SoundFont 2 (.sf2)";
+		
+		private String from_desc;
+		private String to_desc;
+		
+		public SBNKConverter(){
+			from_desc = DEFO_ENG_FROM;
+			to_desc = DEFO_ENG_TO;
+		}
+		
+		public String getFromFormatDescription() {return from_desc;}
+		public String getToFormatDescription() {return to_desc;}
+		public void setFromFormatDescription(String s) {from_desc = s;}
+		public void setToFormatDescription(String s) {to_desc = s;}
+
+		public void writeAsTargetFormat(String inpath, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			writeAsTargetFormat(FileBuffer.createBuffer(inpath), outpath);
+		}
+
+		public void writeAsTargetFormat(FileBuffer input, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			throw new UnsupportedFileTypeException("SBNK to SF2 conversion requires SWAR data!");
+		}
+		
+		public void writeAsTargetFormat(FileNode node, String outpath) 
+				throws IOException, UnsupportedFileTypeException{
+			
+			FileBuffer input = node.loadDecompressedData();
+			DSBank bnk = DSBank.readSBNK(input, 0);
+			
+			//Find WARCs
+			DSWarc[] warcs = DSSoundArchive.loadLinkedWavearcs(node);
+			
+			//See if there's a name
+			String name = node.getMetadataValue("TITLE");
+			if(name == null) name = node.getFileName();
+			
+			SimpleBank bank = bnk.toSoundbank(warcs, 0, name);
+			SF2.writeSF2(bank, "waffleoRai SBNK Converter", false, outpath);
+		}
+
+		public String changeExtension(String path) {
+			if(path == null) return null;
+			if(path.isEmpty()) return path;
+			
+			int lastdot = path.lastIndexOf('.');
+			if(lastdot < 0) return path + ".sf2";
+			return path.substring(0, lastdot) + ".sf2";
+		}
+		
 	}
 	
 

@@ -2,14 +2,19 @@ package waffleoRai_SeqSound.ninseq;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 import javax.sound.midi.Sequence;
 
 import waffleoRai_Containers.nintendo.NDKDSFile;
 import waffleoRai_Containers.nintendo.NDKSectionType;
+import waffleoRai_Files.Converter;
 import waffleoRai_SeqSound.MIDI;
+import waffleoRai_SeqSound.SoundSeqDef;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 /*
@@ -22,6 +27,7 @@ public class DSSeq
 	
 	/*--- Constants ---*/
 	
+	public static final int TYPE_ID = 0x53534551;
 	public static final String MAGIC = "SSEQ";
 	public static final String MAGIC_DATA = "DATA";
 	
@@ -147,5 +153,94 @@ public class DSSeq
 		}
 		return true;
 	}
+	
+	/*--- Definition ---*/
+	
+	private static NitroSeqDef static_def;
+	
+	public static NitroSeqDef getDefinition(){
+		if(static_def == null) static_def = new NitroSeqDef();
+		return static_def;
+	}
+	
+	public static class NitroSeqDef extends SoundSeqDef{
+
+		private static final String DEFO_ENG_STR = "Nitro Sound/Music Sequence";
+		private static final String[] EXT_LIST = {"sseq", "SSEQ", "nseq", "bnseq"};
+		
+		private String str;
+		
+		public NitroSeqDef(){
+			str = DEFO_ENG_STR;
+		}
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(EXT_LIST.length);
+			for(String s : EXT_LIST)list.add(s);
+			return list;
+		}
+
+		public String getDescription() {return str;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		public String getDefaultExtension() {return "sseq";}
+
+	}
+	
+	/*--- Converter ---*/
+	
+	private static SSEQConverter cdef;
+	
+	public static SSEQConverter getDefaultConverter(){
+		if(cdef == null) cdef = new SSEQConverter();
+		return cdef;
+	}
+	
+	public static class SSEQConverter implements Converter{
+
+		public static final String DEFO_ENG_FROM = "Nitro Sound/Music Sequence (.sseq)";
+		public static final String DEFO_ENG_TO = "MIDI Sound Sequence (.mid)";
+		
+		private String from_desc;
+		private String to_desc;
+		
+		public SSEQConverter(){
+			from_desc = DEFO_ENG_FROM;
+			to_desc = DEFO_ENG_TO;
+		}
+		
+		public String getFromFormatDescription() {return from_desc;}
+		public String getToFormatDescription() {return to_desc;}
+		public void setFromFormatDescription(String s) {from_desc = s;}
+		public void setToFormatDescription(String s) {to_desc = s;}
+
+		public void writeAsTargetFormat(String inpath, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			writeAsTargetFormat(FileBuffer.createBuffer(inpath), outpath);
+		}
+
+		public void writeAsTargetFormat(FileBuffer input, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			DSSeq seq = DSSeq.readSSEQ(input);
+			seq.writeMIDI(outpath, true);
+		}
+		
+		public void writeAsTargetFormat(FileNode node, String outpath) 
+				throws IOException, UnsupportedFileTypeException{
+			FileBuffer dat = node.loadDecompressedData();
+			writeAsTargetFormat(dat, outpath);
+		}
+
+		public String changeExtension(String path) {
+			if(path == null) return null;
+			if(path.isEmpty()) return path;
+			
+			int lastdot = path.lastIndexOf('.');
+			if(lastdot < 0) return path + ".mid";
+			return path.substring(0, lastdot) + ".mid";
+		}
+		
+	}
+	
 	
 }

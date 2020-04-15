@@ -14,6 +14,7 @@ import javax.swing.tree.TreeNode;
 import waffleoRai_Utils.Treenumeration;
 import waffleoRai_soundbank.SimpleInstrument;
 import waffleoRai_soundbank.SoundbankNode;
+import waffleoRai_soundbank.nintendo.NinTone.WaveCoord;
 import waffleoRai_soundbank.SimpleInstrument.InstRegion;
 
 public class NinBankNode implements TreeNode{
@@ -167,6 +168,22 @@ public class NinBankNode implements TreeNode{
 		else
 		{
 			for(NinBankNode n : children)n.addAllLocalWaveNumbers(set);
+		}
+	}
+	
+	public Set<WaveCoord> getAllLocalWaveCoordinates(){
+		Set<WaveCoord> set = new HashSet<WaveCoord>();
+		this.addAllLocalWaveCoordinates(set);
+		return set;
+	}
+	
+	private void addAllLocalWaveCoordinates(Set<WaveCoord> set)
+	{
+		if(isLink()) return;
+		if(tone != null) set.add(tone.getWaveCoordinate());
+		else
+		{
+			for(NinBankNode n : children)n.addAllLocalWaveCoordinates(set);
 		}
 	}
 	
@@ -523,7 +540,7 @@ public class NinBankNode implements TreeNode{
 		}
 	}
 	
-	private void toInstRegions(SimpleInstrument inst, Map<Integer, String> sndKeys, byte minkey, byte maxkey)
+	private void toInstRegions(SimpleInstrument inst, Map<WaveCoord, String> sndKeys, byte minkey, byte maxkey)
 	{
 		//System.err.println("-DEBUG- Converting to regions inst " + Long.toHexString(this.getLocalAddress()));
 		if(isLink())
@@ -544,7 +561,7 @@ public class NinBankNode implements TreeNode{
 				if(tone.getMaxNote() < minkey) return;
 				//System.err.println("-DEBUG- Note range passed!");
 				
-				int ridx = inst.newRegion(sndKeys.get(tone.getWaveNumber()));
+				int ridx = inst.newRegion(sndKeys.get(tone.getWaveCoordinate()));
 				InstRegion reg = inst.getRegion(ridx);
 				tone.toInstRegion(reg, true);
 				//System.err.println("-DEBUG- Generated Region Range: " + String.format("%02x", reg.getMinKey()) + "-" + String.format("%02x", reg.getMaxKey()));
@@ -567,7 +584,7 @@ public class NinBankNode implements TreeNode{
 		}
 	}
 	
-	public SimpleInstrument toFlatInstrument(Map<Integer, String> sndKeys)
+	public SimpleInstrument toFlatInstrument(Map<WaveCoord, String> sndKeys)
 	{
 		String pfix = "INST";
 		if(tone != null) pfix = "TONE";
@@ -582,7 +599,7 @@ public class NinBankNode implements TreeNode{
 			//Assumed tone
 			if(tone != null)
 			{
-				int ridx = inst.newRegion(sndKeys.get(tone.getWaveNumber()));
+				int ridx = inst.newRegion(sndKeys.get(tone.getWaveCoordinate()));
 				InstRegion reg = inst.getRegion(ridx);
 				tone.toInstRegion(reg, false);
 			}
