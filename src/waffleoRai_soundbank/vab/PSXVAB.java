@@ -72,6 +72,8 @@ public class PSXVAB implements SynthBank{
 	private boolean i1;
 	private VABSynthProgram[] playables;
 	
+	private String name;
+	
 	/* ----- Inner Classes ----- */
 	
 	public static class Program
@@ -1477,7 +1479,11 @@ public class PSXVAB implements SynthBank{
 		return samples.size();
 	}
 	
+	public String getName(){return name;}
+	
 	/* ----- Setters ----- */
+	
+	public void setName(String s){name = s;}
 	
 	/* ----- Playback ----- */
 	

@@ -48,10 +48,20 @@ public class NinSeqDataSource {
 		while(cpos < sz)
 		{
 			long spos = cpos;
-			if(et1 && et2)
+			if(et1)
 			{
 				byte b = data_source.getByte(cpos);
-				if(b == 0x00) break;
+				if(b == 0x00){
+					if(et2) break;
+					//Otherwise check to see if enough bytes follow the 0 to be read as full command
+					try{
+						NinSeqParser.parseEvent(data_source, cpos, player_mode, false);
+					}
+					catch(Exception x){
+						//Probably too short
+						break;
+					}
+				}
 			}
 			NSEvent ev = NinSeqParser.parseEvent(data_source, cpos, player_mode, false);
 			
@@ -63,6 +73,15 @@ public class NinSeqDataSource {
 			events.put(cpos, ev);
 			ev.setAddress(cpos);
 			cpos += ev.getSerialSize();
+			
+			//Debug
+			/*byte[] ser = ev.serializeEvent(false);
+			System.err.println("Event (" + ser.length + " bytes) at 0x" + Long.toHexString(ev.getAddress()));
+			for(int i = 0; i < ser.length; i++){
+				System.err.print(String.format("%02x ", ser[i]));
+			}
+			System.err.println();*/
+			
 			if(ev.getCommand() == NSCommand.TRACK_END)
 			{
 				if(!et1) et1 = true;

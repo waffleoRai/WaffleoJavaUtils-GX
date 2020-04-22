@@ -239,6 +239,10 @@ public class DSBank extends NinBank{
 			}
 		}
 		
+		public String getBankIDKey(FileNode file){
+			return file.getMetadataValue(DSSoundArchive.FNMETAKEY_INDEX);
+		}
+		
 	}
 	
 	/*--- Converter ---*/

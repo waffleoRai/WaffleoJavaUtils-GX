@@ -115,6 +115,7 @@ public class NinTrack
 		
 		loopStart = -1L;
 		loopEnd = -1L;
+		//System.err.println("Track created " + index + " Start Address: 0x" + Long.toHexString(trackPos));
 	}
 	
 	private void resetDefaults()
@@ -217,6 +218,7 @@ public class NinTrack
 		Map<Long, Integer> jumpMap = new HashMap<Long, Integer>();
 		Map<Long, Integer> cjumpMap = new HashMap<Long, Integer>();
 		long lastpos = trackPos;
+		//System.err.println("Calling nextEvent: demarcateLoop (1)");
 		NSEvent e = nextEvent();
 		long maxAddr = src.getMaxAddress();
 		while((e != null) && (e.getCommand() != NSCommand.TRACK_END) && (trackPos < maxAddr))
@@ -242,6 +244,7 @@ public class NinTrack
 			}
 			
 			lastpos = trackPos;
+			//System.err.println("Calling nextEvent: demarcateLoop (2)");
 			e = nextEvent();
 		}
 		
@@ -284,6 +287,7 @@ public class NinTrack
 				}
 			}
 		}
+		//trackPos = 0;
 	}
 	
 	/* ----- Play ----- */
@@ -327,6 +331,7 @@ public class NinTrack
 		while(remainingWait <= 0 && !trackEnd)
 		{
 			//Execute events until the next wait is set!
+			//System.err.println("Calling nextEvent: onTick");
 			NSEvent e = nextEvent();
 			e.execute(this);
 			lastEvents.add(e);
@@ -348,6 +353,8 @@ public class NinTrack
 		while(remainingWait <= 0 && !trackEnd)
 		{
 			//Execute events until the next wait is set!
+			//System.err.println("Track " + this.trackIndex + " address: 0x" + Long.toHexString(trackPos));
+			//System.err.println("Calling nextEvent: onTickFlagLoop");
 			NSEvent e = nextEvent();
 			e.execute(this);
 			lastEvents.add(e);
@@ -685,6 +692,7 @@ public class NinTrack
 	
 	protected void call(int ja)
 	{
+		//System.err.println("Track " + this.trackIndex + " calling 0x" + ja);
 		if(!player.jumpsAllowed()) return;
 		//stack.push(new StackNode(STACK_NODE_TYPE_RA,(int)lastPos));
 		stack.push(new StackNode(STACK_NODE_TYPE_RA,(int)trackPos));
@@ -693,6 +701,7 @@ public class NinTrack
 	
 	protected void jump(int ja)
 	{
+		//System.err.println("Track " + this.trackIndex + " jumping to 0x" + ja);
 		if(!player.jumpsAllowed()) return;
 		//Check if it's a loop point...
 		if(lastPos == loopEnd) iLooped = true;
@@ -720,6 +729,7 @@ public class NinTrack
 	
 	protected void returnToCallAddr()
 	{
+		//System.err.println("Track " + this.trackIndex + " returning.");
 		if(!player.jumpsAllowed()) return;
 		StackNode node = stack.pop();
 		if(node != null) trackPos = node.value;

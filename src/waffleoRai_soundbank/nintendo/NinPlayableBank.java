@@ -13,6 +13,8 @@ public class NinPlayableBank implements SynthBank{
 	private NinPlayableProgram[] programs;
 	private SBNKSampleMap samples;
 	
+	private String name;
+	
 	/*----- Construction -----*/
 	
 	public NinPlayableBank(NinBank bnk, WaveArchive war){
@@ -56,11 +58,16 @@ public class NinPlayableBank implements SynthBank{
 		return programs[programIndex];
 	}
 	
+	public String getName(){return name;}
+	
+	public String toString(){return name;}
+	
 	/*----- Setters -----*/
 	
 	public void addSWAR(WaveArchive warc, int idx){
 		samples.loadWaveArchive(warc, idx);
 	}
 	
-
+	public void setName(String s){name = s;}
+	
 }

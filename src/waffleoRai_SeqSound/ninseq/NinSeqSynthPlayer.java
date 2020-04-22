@@ -15,6 +15,9 @@ import waffleoRai_SoundSynth.general.DefaultSynthChannel;
 
 public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 
+	//make sure to flag loops in the super class.
+	//Otherwise exporter will go for eternity. You don't want that.
+	
 	/*--- Constants ---*/
 	
 	public static final int SRC_SSEQ = 1; //DS SSEQ
@@ -73,6 +76,7 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 		public void onTick(long tick) throws InterruptedException {
 			//Change to just onTick if getting lag??? Probably won't help much.
 			track.onTickFlagLoop();
+			if(track.loopedOnLastTick()) incrementLoopNumber();
 		}
 
 		public void resetTo(long tick) {

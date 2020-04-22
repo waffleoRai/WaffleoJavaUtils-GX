@@ -1,6 +1,7 @@
 package testing;
 
 import waffleoRai_Containers.nintendo.sar.DSSoundArchive;
+import waffleoRai_Containers.nintendo.sar.DSSoundArchive.SEQEntry;
 import waffleoRai_SeqSound.ninseq.DSSeq;
 import waffleoRai_SeqSound.ninseq.NinSeqSynthPlayer;
 import waffleoRai_Sound.nintendo.DSStream;
@@ -9,6 +10,7 @@ import waffleoRai_Sound.nintendo.NinWave;
 import waffleoRai_SoundSynth.AudioSampleStream;
 import waffleoRai_SoundSynth.soundformats.WAVWriter;
 import waffleoRai_Utils.DirectoryNode;
+import waffleoRai_Utils.FileBuffer;
 import waffleoRai_soundbank.SimpleBank;
 import waffleoRai_soundbank.nintendo.DSBank;
 import waffleoRai_soundbank.sf2.SF2;
@@ -31,9 +33,9 @@ public class DSSDatTest {
 			
 			//Try reading a SWAR/SWAV
 			//Indices are for the Spirit Tracks overworld theme
-			int swar_idx = 0;
-			DSWarc swar = arc.getSWAR(swar_idx);
-			System.err.println("SWAV count: " + swar.countSounds());
+			//int swar_idx = 0;
+			//DSWarc swar = arc.getSWAR(swar_idx);
+			//System.err.println("SWAV count: " + swar.countSounds());
 			/*for(int i = 0; i < swar.countSounds(); i++)
 			{
 				String outpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\swar\\BKIE_SDAT_SWAR000_SWAV" + String.format("%03d", i) + ".wav";
@@ -56,9 +58,9 @@ public class DSSDatTest {
 			ww.write(strm.totalFrames());
 			ww.complete();*/
 			
-			int sbnk_idx = 5;
+			//int sbnk_idx = 5;
 			//Let's read a soundbank...
-			DSBank sbnk = arc.getSBNK(sbnk_idx);
+			//DSBank sbnk = arc.getSBNK(sbnk_idx);
 			//sbnk.printInfo();
 			//System.exit(2);
 			//sbnk.printInfo();
@@ -67,16 +69,21 @@ public class DSSDatTest {
 			//SimpleBank bnk = sbnk.toSoundbank(swar, 0, "BKIE_SDAT_SBNK005");
 			//SF2.writeSF2(bnk, "DSSDatTest", false, outpath);
 			
-			int sseq_idx = 18;
-			DSSeq seq = arc.getSSEQ(sseq_idx);
+			//int sseq_idx = 18;
+			//DSSeq seq = arc.getSSEQ(sseq_idx);
 			
 			//Alright... I guess I'll try playing it?
-			NinSeqSynthPlayer player = new NinSeqSynthPlayer(seq.getSequenceData(), sbnk.generatePlayableBank(swar, 0), 0);
-			player.setVariableValue(0, (short)17);
-			player.startAsyncPlaybackToDefaultOutputDevice();
+			//NinSeqSynthPlayer player = new NinSeqSynthPlayer(seq.getSequenceData(), sbnk.generatePlayableBank(swar, 0), 0);
+			//player.setVariableValue(0, (short)17);
+			//player.startAsyncPlaybackToDefaultOutputDevice();
 			
+			//Extract
+			String testpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\BKIE_sdat_28.sseq";
 			
-			
+			//Try to read ans see where it fails
+			FileBuffer dat = FileBuffer.createBuffer(testpath);
+			DSSeq seq = DSSeq.readSSEQ(dat);
+			seq.writeMIDI("C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\BKIE_sdat_28.mid", true);
 		}
 		catch(Exception e)
 		{

@@ -85,22 +85,26 @@ public abstract class NinBank {
 	}
 	
 	public Collection<Integer> getUsableBanks(){
+		//System.err.println("NinBank.getUsableBanks || Called");
 		Set<Integer> list = new HashSet<Integer>();
 		int count = topNodes.size();
 		if(count <= 128){
 			list.add(0);
+			//System.err.println("NinBank.getUsableBanks || Returning 0 only...");
 			return list;
 		}
 		
 		int p = 0;
 		int b = 0;
 		while(p < count){
+			//System.err.println("NinBank.getUsableBanks || b = " + b);
 			for(int i = 0; i < 128; i++){
 				if(p >= count) break;
 				NinBankNode n = topNodes.get(p);
 				if(n.isEmpty()) continue;
 				list.add(b);
 				p++;
+				//System.err.println("NinBank.getUsableBanks || p = " + p);
 			}
 			b++;
 		}
@@ -110,6 +114,7 @@ public abstract class NinBank {
 	}
 	
 	public Collection<Integer> getUsablePrograms(){
+		//System.err.println("NinBank.getUsablePrograms || Called");
 		Set<Integer> set = new HashSet<Integer>();
 		int count = topNodes.size();
 		
@@ -117,10 +122,10 @@ public abstract class NinBank {
 		while(p < count){
 			for(int i = 0; i < 128; i++){
 				if(p >= count) break;
-				NinBankNode n = topNodes.get(p);
+				//System.err.println("NinBank.getUsablePrograms || p = " + p);
+				NinBankNode n = topNodes.get(p++);
 				if(n.isEmpty()) continue;
 				set.add(i);
-				p++;
 			}
 		}
 		

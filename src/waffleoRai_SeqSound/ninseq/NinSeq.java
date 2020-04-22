@@ -1,5 +1,6 @@
 package waffleoRai_SeqSound.ninseq;
 
+import java.util.List;
 
 /*
  * Sources:
@@ -11,7 +12,7 @@ package waffleoRai_SeqSound.ninseq;
  *  - SSEQPlayer (https://github.com/kode54/SSEQPlayer)
  */
 
-public class NinSeq {
+public interface NinSeq {
 	
 	/* ----- Constants ----- */
 	
@@ -34,5 +35,20 @@ public class NinSeq {
 	public static final int COMMAND_TYPE_CF_ONLY = 0x0C;
 	
 	public static final int NO_DEFAULT_VALUE = -1;
+	
+	/* ----- Methods ----- */
+	
+	public NinSeqDataSource getSequenceData();
+	public boolean writeMIDI(String path, boolean verbose);
+	public boolean writeMIDI(int lblidx, String path, boolean verbose);
+	
+	public short getVariable(int idx);
+	public void setVariable(int idx, short val);
+	public String getName();
+	public void setName(String s);
+	
+	public int getLabelCount();
+	public NinSeqLabel getLabel(int idx);
+	public List<NinSeqLabel> getLabels();
 	
 }

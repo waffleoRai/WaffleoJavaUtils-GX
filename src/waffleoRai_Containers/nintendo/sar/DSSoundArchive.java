@@ -108,6 +108,7 @@ public class DSSoundArchive extends NDKDSFile{
 		
 		public void addMetadata(FileNode fn)
 		{
+			super.addMetadata(fn);
 			fn.setMetadataValue(FNMETAKEY_BANKID, Integer.toString(bankID));
 			fn.setMetadataValue(FNMETAKEY_VOLUME, Integer.toString(vol));
 			fn.setMetadataValue("CPR", Integer.toString(cpr));
@@ -129,6 +130,7 @@ public class DSSoundArchive extends NDKDSFile{
 		
 		public void addMetadata(FileNode fn)
 		{
+			super.addMetadata(fn);
 			if(inner_names == null) return;
 			StringBuilder sb = new StringBuilder(1024);
 			for(int i = 0; i < inner_names.length; i++)
@@ -149,6 +151,7 @@ public class DSSoundArchive extends NDKDSFile{
 		
 		public void addMetadata(FileNode fn)
 		{
+			super.addMetadata(fn);
 			if(wavearcs[0] != 0xFFFF) fn.setMetadataValue(FNMETAKEY_WARC_STEM + "0", Integer.toString(wavearcs[0]));
 			if(wavearcs[1] != 0xFFFF) fn.setMetadataValue(FNMETAKEY_WARC_STEM + "1", Integer.toString(wavearcs[1]));
 			if(wavearcs[2] != 0xFFFF) fn.setMetadataValue(FNMETAKEY_WARC_STEM + "2", Integer.toString(wavearcs[2]));
@@ -165,6 +168,7 @@ public class DSSoundArchive extends NDKDSFile{
 		
 		public void addMetadata(FileNode fn)
 		{
+			super.addMetadata(fn);
 			fn.setMetadataValue(FNMETAKEY_VOLUME, Integer.toString(vol));
 			fn.setMetadataValue("PRI", Integer.toString(pri));
 			fn.setMetadataValue("PLY", Integer.toString(ply));
@@ -1102,8 +1106,9 @@ public class DSSoundArchive extends NDKDSFile{
 	/*----- Node Linking -----*/
 	
 	private static String searchForFile(DirectoryNode dir, String typetag, String fid, String path){
-		path += dir.getFileName() + "/";
+		//path += dir.getFileName() + "/";
 		
+		//System.err.println("Searching: " + dir.getFileName());
 		List<DirectoryNode> cdirs = new LinkedList<DirectoryNode>();
 		List<FileNode> children = dir.getChildren();
 		
@@ -1115,10 +1120,13 @@ public class DSSoundArchive extends NDKDSFile{
 			else{
 				//Look for type tag
 				//If has tag, look for matching ID
+				//System.err.println("Checking: " + child.getFileName());
 				String metaval = child.getMetadataValue(FNMETAKEY_SDATTYPE);
+				//System.err.println("Meta Type: " + metaval);
 				if(metaval == null) continue;
 				if(!metaval.equals(typetag)) continue;
 				metaval = child.getMetadataValue(FNMETAKEY_INDEX);
+				//System.err.println("Index: " + metaval);
 				if(metaval == null) continue;
 				if(metaval.equals(fid)) return path + child.getFileName();
 			}
@@ -1126,7 +1134,8 @@ public class DSSoundArchive extends NDKDSFile{
 		
 		//Search dirs if nothing found
 		for(DirectoryNode child : cdirs){
-			String result = searchForFile(child, typetag, fid, path);
+			//System.err.println("Child: " + child.getFileName());
+			String result = searchForFile(child, typetag, fid, path + child.getFileName() + "/");
 			if(result != null) return result;
 		}
 		
@@ -1152,12 +1161,12 @@ public class DSSoundArchive extends NDKDSFile{
 		
 		return null;
 	}
-	
-	
+		
 	public static String findLinkedBank(FileNode seq){
 		//Returns relative path
 		//Get metadata bank id
 		String bankid = seq.getMetadataValue(FNMETAKEY_BANKID);
+		//System.err.println("Bank ID: " + bankid);
 		if(bankid == null) return null;
 		
 		//Now look for a bank with that SDATIDX
@@ -1226,6 +1235,7 @@ public class DSSoundArchive extends NDKDSFile{
 			//If path was found, mark in node
 			seq.setMetadataValue(FNMETAKEY_BANKLINK, path);
 		}
+		//System.err.println("Bank path: " + path);
 		
 		DirectoryNode dir = seq.getParent();
 		FileNode bnknode = dir.getNodeAt(path); //SHOULD be able to interpret the ../
@@ -1257,6 +1267,7 @@ public class DSSoundArchive extends NDKDSFile{
 				//If path was found, mark in node
 				bnk.setMetadataValue(FNMETAKEY_WARCLINK_STEM + i, path);
 			}
+			//System.err.println("Warc path: " + path);
 			//Try to load from path
 			DirectoryNode dir = bnk.getParent();
 			FileNode warcnode = dir.getNodeAt(path); //SHOULD be able to interpret the ../

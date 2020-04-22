@@ -19,7 +19,7 @@ import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
-public class DSMultiSeq {
+public class DSMultiSeq implements NinSeq{
 	
 	/*--- Constants ---*/
 	
@@ -31,10 +31,13 @@ public class DSMultiSeq {
 	
 	private NinSeqDataSource seq;
 	private ArrayList<NinSeqLabel> labels;
+	private short[] playerInitVars;
+	
+	private String name;
 	
 	/*--- Construction/Parsing ---*/
 	
-	private DSMultiSeq(){}
+	private DSMultiSeq(){playerInitVars = new short[256];}
 	
 	public static DSMultiSeq readSSAR(FileBuffer dat, long offset) throws UnsupportedFileTypeException, IOException{
 
@@ -57,7 +60,7 @@ public class DSMultiSeq {
 		//Label data
 		for(int i = 0; i < lblcount; i++){
 			String name = "seq_" + String.format("%03d", i);
-			NinSeqLabel lbl = new NinSeqLabel(name, 0);
+			NinSeqLabel lbl = new NinSeqLabel(i, name, 0);
 			lbl.setAddress(Integer.toUnsignedLong(data.nextInt()));
 			lbl.setBankID(Short.toUnsignedInt(data.nextShort()));
 			lbl.setVolume(data.nextByte());
@@ -74,7 +77,6 @@ public class DSMultiSeq {
 		
 		return ssar;
 	}
-	
 	
 	/*--- Getters ---*/
 	
@@ -97,6 +99,24 @@ public class DSMultiSeq {
 		copy.addAll(labels);
 		return copy;
 	}
+	
+	public short getVariable(int idx){
+		if(idx < 0) return 0;
+		if(idx >= 256) return 0;
+		return playerInitVars[idx];
+	}
+	
+	public String getName(){return name;}
+	
+	/*--- Setters ---*/
+	
+	public void setVariable(int idx, short val){
+		if(idx < 0) return;
+		if(idx >= 256) return;
+		playerInitVars[idx] = val;
+	}
+	
+	public void setName(String s){s = name;}
 	
 	/*--- Conversion ---*/
 	
@@ -160,6 +180,10 @@ public class DSMultiSeq {
 		}
 		
 		return converter;
+	}
+	
+	public boolean writeMIDI(String path, boolean verbose){
+		return writeMIDI(0, path, verbose);
 	}
 	
 	public boolean writeMIDI(int lblidx, String path, boolean verbose)

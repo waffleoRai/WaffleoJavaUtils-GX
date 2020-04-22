@@ -262,6 +262,7 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 		t.setMidiIfMode(this.if_branch_mode);
 		t.setMidiRandomMode(this.rand_use_mode);
 		t.setMidiVarMode(this.var_use_mode);
+		tracks[tidx].rewind();
 	}
 	
 	public void play()
@@ -283,8 +284,9 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 					//Do everything in each track for the tick...
 					for(int i = 0; i < 16; i++)
 					{
-						if(tracks[i] != null && !tracks[i].trackEnded()) markLoopStart(i);
+						if(tracks[i] != null && !tracks[i].trackEnded()) 
 						{
+							//System.err.println("Track " + i);
 							tracks[i].onTickFlagLoop();
 							if(tracks[i].loopStartOnLastTick()) markLoopStart(i);
 							if(tracks[i].loopedOnLastTick()) markLoopEnd(i);

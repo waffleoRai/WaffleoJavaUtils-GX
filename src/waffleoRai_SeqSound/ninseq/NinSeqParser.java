@@ -45,6 +45,8 @@ public class NinSeqParser {
 	
 	private static NoteEvent parseNoteEvent(NSCommand cmd, FileBuffer src, long pos, boolean plimit)
 	{
+		//TODO padding 0s at end might be deferred to this parser.
+		
 		long cpos = pos;
 		int note = Byte.toUnsignedInt(src.getByte(cpos)); cpos++;
 		int vel = Byte.toUnsignedInt(src.getByte(cpos)); cpos++;

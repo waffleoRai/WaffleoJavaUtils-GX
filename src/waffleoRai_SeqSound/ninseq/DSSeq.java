@@ -4,6 +4,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedList;
 import java.util.List;
 
 import javax.sound.midi.Sequence;
@@ -22,8 +23,7 @@ import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
  * It's a swell name
  */
 
-public class DSSeq 
-{
+public class DSSeq implements NinSeq{
 	
 	/*--- Constants ---*/
 	
@@ -37,9 +37,11 @@ public class DSSeq
 	private NinSeqDataSource seq;
 	private short[] playerInitVars;
 	
+	private String name;
+	
 	/*--- Construction/Parsing ---*/
 	
-	private DSSeq(){playerInitVars = new short[255];}
+	private DSSeq(){playerInitVars = new short[256];}
 	
 	public static DSSeq readSSEQ(FileBuffer src) throws UnsupportedFileTypeException, IOException
 	{
@@ -62,6 +64,28 @@ public class DSSeq
 	{
 		return seq;
 	}
+	
+	public short getVariable(int idx){
+		if(idx < 0) return 0;
+		if(idx >= 256) return 0;
+		return playerInitVars[idx];
+	}
+	
+	public String getName(){return name;}
+	
+	public int getLabelCount(){return 0;}
+	public NinSeqLabel getLabel(int idx){return null;}
+	public List<NinSeqLabel> getLabels(){return new LinkedList<NinSeqLabel>();}
+	
+	/*--- Setters ---*/
+	
+	public void setVariable(int idx, short val){
+		if(idx < 0) return;
+		if(idx >= 256) return;
+		playerInitVars[idx] = val;
+	}
+	
+	public void setName(String s){s = name;}
 	
 	/*--- Conversion ---*/
 	
@@ -136,6 +160,10 @@ public class DSSeq
 			return false;
 		}
 		return true;
+	}
+	
+	public boolean writeMIDI(int lblidx, String path, boolean verbose){
+		return writeMIDI(path, verbose);
 	}
 	
 	/*--- View ---*/
