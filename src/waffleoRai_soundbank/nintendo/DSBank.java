@@ -133,11 +133,13 @@ public class DSBank extends NinBank{
 		{
 			if((i != 0) && (maxs[i] == 0)) break;
 			//Skip type only because I don't know what to do with it...
-			cpos += 2;
+			//cpos += 2;
+			short ltype = src.shortFromFile(cpos); cpos += 2;
 			
 			NinBankNode cnode = new NinBankNode(NinBankNode.TYPE_TONE, data_off + stpos, node);
 			parseType1S(src, cpos, cnode);
 			cpos += 10;
+			cnode.getTone().setDataLocationType(ltype);
 			
 			//Set range
 			byte min = 0;
@@ -154,17 +156,19 @@ public class DSBank extends NinBank{
 		long cpos = stpos;
 		int min = Byte.toUnsignedInt(src.getByte(cpos)); cpos++;
 		int max = Byte.toUnsignedInt(src.getByte(cpos)); cpos++;
-		cpos += 2; //Unknown
+		//cpos += 2; //Unknown
 		int rcount = max - min + 1;
 
 		for(int i = 0; i < rcount; i++)
 		{
 			//Skip type only because I don't know what to do with it...
-			cpos += 2;
+			//cpos += 2;
+			short ltype = src.shortFromFile(cpos); cpos += 2;
 			
 			NinBankNode cnode = new NinBankNode(NinBankNode.TYPE_TONE, data_off + stpos, node);
 			parseType1S(src, cpos, cnode);
 			cpos += 10;
+			cnode.getTone().setDataLocationType(ltype);
 			
 			//Set range
 			int note = min + i;

@@ -180,6 +180,12 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 	
 	public void clearValueChangeListeners(){val_listeners.clear();}
 	
+	public void debugTagChannel(int idx, boolean b){
+		if(idx < 0) return;
+		if(idx >= 16) return;
+		super.channels[idx].tagMe(b, idx);
+	}
+	
 	/*--- NinSeq Control ---*/
 	
 	//-- Play

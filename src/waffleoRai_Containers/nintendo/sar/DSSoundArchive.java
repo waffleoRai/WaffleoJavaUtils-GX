@@ -1062,6 +1062,15 @@ public class DSSoundArchive extends NDKDSFile{
 		return seq;
 	}
 	
+	public int getSSEQIndex(String symb){
+		int i = 0;
+		for(SEQEntry s : seq){
+			if(s.symbol.equals(symb)) return i;
+			i++;
+		}
+		return -1;
+	}
+	
 	public BANKEntry getSBNKMetadata(int idx){
 		if(idx < 0 || idx > bank.size()) return null;
 		return bank.get(idx);

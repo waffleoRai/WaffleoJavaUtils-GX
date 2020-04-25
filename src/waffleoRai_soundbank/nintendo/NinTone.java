@@ -145,6 +145,8 @@ public class NinTone {
 		maxNote = max;
 	}
 	
+	public void setDataLocationType(int i){dataLocationType = i;}
+	
 	public boolean isEmpty(){return this.waveNumber < 0;}
 	
 	public Attack scaleAttackToMillis()

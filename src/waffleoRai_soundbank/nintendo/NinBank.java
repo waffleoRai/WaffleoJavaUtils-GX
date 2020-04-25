@@ -338,7 +338,7 @@ public abstract class NinBank {
 					//Just convert to instrument and wrap
 					NinTone tone = pnode.getTone();
 					if(tone == null) break;
-					String skey = sndMap.get(tone.getWaveNumber());
+					String skey = sndMap.get(tone.getWaveCoordinate()); 
 					pidx = mybank.newPreset(i, presetName, 1);
 					preset = mybank.getPreset(pidx);
 					iidx = preset.newInstrument("TONE_" + Long.toHexString(addr), 1);

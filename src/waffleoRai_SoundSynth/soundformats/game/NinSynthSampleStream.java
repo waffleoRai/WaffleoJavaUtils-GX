@@ -84,6 +84,8 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		rel = art.getReleaseData();
 		hold = art.getHold();
 		
+		sl = (double)sus.getLevel16()/(double)0x7FFF;
+		
 		//System.err.println("Attack: " + att.getTime());
 		//System.err.println("Decay: " + dec.getTime());
 		//System.err.println("Sustain: 0x" + String.format("%04x", sus.getLevel16()));
@@ -258,6 +260,8 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	
 	private void enterAttack()
 	{
+		/*if(super.debug_tag >= 0) {System.err.println("VoiceTag " + debug_tag + ": Attack phase entered! ATT -- " + 
+								att.getTime() + "ms" + " / " + att.getMode());}*/
 		adsr_phase = ADSR_PHASE_ATTACK;
 		env_state = att.openStream((int)getSampleRate());
 		env_lvl = 0.0;
@@ -265,6 +269,8 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	
 	private void enterDecay()
 	{
+		/*if(super.debug_tag >= 0) {System.err.println("VoiceTag " + debug_tag + ": Decay phase entered! DEC -- " + 
+									dec.getTime() + "ms" + " / " + dec.getMode());}*/
 		adsr_phase = ADSR_PHASE_DECAY;
 		env_state = dec.openStream((int)getSampleRate(), sl);
 		env_lvl = 1.0;
@@ -272,6 +278,8 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	
 	private void enterSustain()
 	{
+		/*if(super.debug_tag >= 0) {System.err.println("VoiceTag " + debug_tag + ": Sustain phase entered! SUS -- "  
+				sus.getTime() + "ms" + " / " + sus.getMode() + " / " + String.format("0x%04x", sus.getLevel16()));}*/
 		adsr_phase = ADSR_PHASE_SUSTAIN;
 		env_state = sus.openStream((int)getSampleRate());
 		env_lvl = sl;
@@ -279,6 +287,8 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	
 	private void enterRelease()
 	{
+		/*if(super.debug_tag >= 0) {System.err.println("VoiceTag " + debug_tag + ": Release phase entered! REL -- " + 
+				dec.getTime() + "ms" + " / " + dec.getMode());}*/
 		adsr_phase = ADSR_PHASE_RELEASE;
 		env_state = rel.openStream((int)getSampleRate(), env_lvl);
 		//System.err.println("Phase = " + adsr_phase);
@@ -307,8 +317,13 @@ public class NinSynthSampleStream extends SynthSampleStream{
 			//if(env_state.done()) sus_end = true;
 			break;
 		case ADSR_PHASE_RELEASE:
-			if(env_state.done()) {rel_end = true; env_lvl = 0.0;}
-			else{env_lvl = env_state.getNextAmpRatio();}
+			if(env_state.done()) {
+				rel_end = true; env_lvl = 0.0;
+				//if(super.debug_tag >= 0){System.err.println("VoiceTag " + debug_tag + ": Release phase complete!");}
+			}
+			else{
+				env_lvl = env_state.getNextAmpRatio();
+			}
 			break;
 		}
 	}
@@ -347,14 +362,15 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	public int[] nextSample() throws InterruptedException {
 
 		int[] raw = null;
-		//if(rel_end) return new int[1];
+		int ccount = this.getChannelCount();
+		if(rel_end) return new int[ccount];
 		//if(sr_interpolator != null) raw = sr_interpolator.nextSample();
 		//else raw = pitch_interpolator.nextSample();
 		raw = pitch_interpolator.nextSample();
-		if(raw == null) return new int[this.getChannelCount()];
+		if(raw == null) return new int[ccount];
 		
 		//Volume
-		int ccount = this.getChannelCount();
+		//int ccount = this.getChannelCount();
 		int[] out = new int[ccount];
 		for(int i = 0; i < ccount; i++)
 		{
