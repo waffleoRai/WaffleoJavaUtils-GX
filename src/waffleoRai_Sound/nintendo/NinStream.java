@@ -98,7 +98,8 @@ public abstract class NinStream extends NinStreamableSound{
 			trg.channel_adpcm_info[0] = src.channel_adpcm_info[channel];
 		}
 		trg.rawSamples = new SampleChannel[1];
-		trg.rawSamples[0] = new SampleChannel(src.rawSamples[channel]);
+		//trg.rawSamples[0] = new SampleChannel(src.rawSamples[channel]);
+		trg.rawSamples[0] = src.rawSamples[channel].copy();
 		
 		trg.tracks = new ArrayList<Track>(src.tracks.size() + 1);
 		trg.tracks.addAll(src.tracks);

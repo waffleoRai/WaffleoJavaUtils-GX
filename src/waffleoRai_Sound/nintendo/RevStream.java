@@ -5,6 +5,9 @@ import java.util.ArrayList;
 import waffleoRai_Containers.nintendo.NDKRevolutionFile;
 import waffleoRai_Containers.nintendo.NDKSectionType;
 import waffleoRai_Sound.SampleChannel;
+import waffleoRai_Sound.SampleChannel16;
+import waffleoRai_Sound.SampleChannel4;
+import waffleoRai_Sound.SampleChannel8;
 import waffleoRai_Sound.Sound;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -169,7 +172,22 @@ public class RevStream extends NinStream {
 		
 		//Data
 		cpos = abs_data_off;
-		for(int c = 0; c < wav.channelCount; c++) wav.rawSamples[c] = SampleChannel.createArrayChannel(sampCount);
+		//for(int c = 0; c < wav.channelCount; c++) wav.rawSamples[c] = SampleChannel.createArrayChannel(sampCount);
+		switch(wav.encodingType){
+		case NinSound.ENCODING_TYPE_DSP_ADPCM:
+			for(int c = 0; c < wav.channelCount; c++){
+				SampleChannel4 ch4 = new SampleChannel4(sampCount);
+				ch4.setNybbleOrder(true);
+				wav.rawSamples[c] = ch4;
+			}
+			break;
+		case NinSound.ENCODING_TYPE_PCM8:
+			for(int c = 0; c < wav.channelCount; c++) wav.rawSamples[c] = new SampleChannel8(sampCount);
+			break;
+		case NinSound.ENCODING_TYPE_PCM16: 
+			for(int c = 0; c < wav.channelCount; c++) wav.rawSamples[c] = new SampleChannel16(sampCount);
+			break;
+		}
 		for(int b = 0; b < blockCount-1; b++)
 		{
 			for(int c = 0; c < wav.channelCount; c++)

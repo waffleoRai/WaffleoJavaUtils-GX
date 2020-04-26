@@ -49,4 +49,10 @@ public class NinPlayableProgram implements SynthProgram{
 		return sstr;
 	}
 
+	public void free(){
+		art_data.clearKeyMapping();
+		//sample_map.free();
+		sample_map = null;
+	}
+	
 }

@@ -10,6 +10,8 @@ public class NinPlayableBank implements SynthBank{
 	
 	/*----- InstanceVariables -----*/
 	
+	private boolean closed = false;
+	
 	private NinPlayableProgram[] programs;
 	private SBNKSampleMap samples;
 	
@@ -53,9 +55,10 @@ public class NinPlayableBank implements SynthBank{
 	
 	@Override
 	public SynthProgram getProgram(int bankIndex, int programIndex) {
-		if(programIndex < 0 || programIndex >= programs.length) return null;
+		int idx = programIndex + (bankIndex << 8);
+		if(idx < 0 || idx >= programs.length) return null;
 		//System.err.println("NinPlayableBank.getProgram || Bank = " + bankIndex + ", Prog = " + programIndex + " returning null? " + (programs[programIndex] == null));
-		return programs[programIndex];
+		return programs[idx];
 	}
 	
 	public String getName(){return name;}
@@ -69,5 +72,20 @@ public class NinPlayableBank implements SynthBank{
 	}
 	
 	public void setName(String s){name = s;}
+	
+	public void free(){
+		if(closed) return;
+		
+		closed = true;
+		samples.free();
+		samples = null;
+		
+		for(int i = 0; i < programs.length; i++){
+			if(programs[i] != null) programs[i].free();
+			programs[i] = null;
+		}
+		
+		programs = null;
+	}
 	
 }

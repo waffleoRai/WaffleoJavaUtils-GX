@@ -33,7 +33,7 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	private int max_pb; //Max pb in cents
 	private int pitchbend; //Pitch bend in cents
 	
-	private double volume;
+	private double volume; //Velocity & patch volume
 	private double ch_vol;
 	private byte pan;
 	
@@ -48,8 +48,9 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	//Rev+ also has "Surround Pan" and "Alternate Assign"
 	//	Ignoring for now
 	
-	private UnbufferedWindowedSincInterpolator pitch_interpolator;
-	private UnbufferedWindowedSincInterpolator sr_interpolator;
+	//private UnbufferedWindowedSincInterpolator pitch_interpolator;
+	//private UnbufferedWindowedSincInterpolator sr_interpolator;
+	private UnbufferedWindowedSincInterpolator interpolator;
 	
 	private Oscillator lfo;
 	
@@ -75,7 +76,9 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		unitykey = art.getOriginalKey() * 100;
 		tune = (art.getCoarseTune() * 100) + art.getFineTune();
 		
-		volume = (double)art.getVolume()/(double)0x7F;
+		double vrat = (double)art.getVolume()/127.0;
+		//volume = (vrat * vrat);
+		volume = vrat;
 		pan = (byte)art.getPan();
 		
 		att = art.getAttackData();
@@ -96,9 +99,12 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		played = 100 * (int)key;
 		//System.err.println("played = " + played);
 		
-		volume *= (double)vel/127.0;
+		vrat = (double)vel/127.0;
+		//volume *= (vrat * vrat);
+		volume *= vrat;
+		//System.err.println("velocity = " + vel);
 		
-		if(outSampleRate != input.getSampleRate())
+		/*if(outSampleRate != input.getSampleRate())
 		{
 			sr_interpolator = new UnbufferedWindowedSincInterpolator(source, 3);
 			sr_interpolator.setUseTargetSampleRate(true);
@@ -106,7 +112,9 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		}
 		
 		if(sr_interpolator != null) pitch_interpolator = new UnbufferedWindowedSincInterpolator(sr_interpolator, 2);
-		else pitch_interpolator = new UnbufferedWindowedSincInterpolator(source, 2);
+		else pitch_interpolator = new UnbufferedWindowedSincInterpolator(source, 2);*/
+		interpolator = new UnbufferedWindowedSincInterpolator(source, 2);
+		interpolator.setOutputSampleRate(outSampleRate);
 		updatePitch();
 		
 		calculateAmpRatios();
@@ -152,8 +160,9 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	
 	public float getSampleRate()
 	{
-		if(sr_interpolator != null) return sr_interpolator.getSampleRate();
-		else return source.getSampleRate();
+		/*if(sr_interpolator != null) return sr_interpolator.getSampleRate();
+		else return source.getSampleRate();*/
+		return interpolator.getSampleRate();
 	}
 	
 	public int getADSRPhase()
@@ -188,7 +197,8 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		{
 			cents += (int)Math.round(lfo.getNextValue());
 		}
-		pitch_interpolator.setPitchShift(cents);
+		//pitch_interpolator.setPitchShift(cents);
+		interpolator.setPitchShift(cents);
 	}
 	
 	@Override
@@ -366,7 +376,8 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		if(rel_end) return new int[ccount];
 		//if(sr_interpolator != null) raw = sr_interpolator.nextSample();
 		//else raw = pitch_interpolator.nextSample();
-		raw = pitch_interpolator.nextSample();
+		//raw = pitch_interpolator.nextSample();
+		raw = interpolator.nextSample();
 		if(raw == null) return new int[ccount];
 		
 		//Volume

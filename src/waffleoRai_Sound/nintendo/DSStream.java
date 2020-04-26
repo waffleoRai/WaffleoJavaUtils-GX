@@ -9,6 +9,9 @@ import waffleoRai_Containers.nintendo.NDKDSFile;
 import waffleoRai_Files.Converter;
 import waffleoRai_Files.FileClass;
 import waffleoRai_Sound.SampleChannel;
+import waffleoRai_Sound.SampleChannel16;
+import waffleoRai_Sound.SampleChannel4;
+import waffleoRai_Sound.SampleChannel8;
 import waffleoRai_Sound.Sound;
 import waffleoRai_Sound.SoundFileDefinition;
 import waffleoRai_Utils.FileBuffer;
@@ -69,7 +72,22 @@ public class DSStream extends NinStream{
 		strm.tracks.add(t);
 		
 		strm.rawSamples = new SampleChannel[strm.channelCount];
-		for(int i = 0; i < strm.channelCount; i++) strm.rawSamples[i] = SampleChannel.createArrayChannel(fcount);
+		//for(int i = 0; i < strm.channelCount; i++) strm.rawSamples[i] = SampleChannel.createArrayChannel(fcount);
+		switch(strm.encodingType){
+		case NinSound.ENCODING_TYPE_PCM8:
+			for(int i = 0; i < strm.channelCount; i++) strm.rawSamples[i] = new SampleChannel8(fcount);
+			break;
+		case NinSound.ENCODING_TYPE_PCM16:
+			for(int i = 0; i < strm.channelCount; i++) strm.rawSamples[i] = new SampleChannel16(fcount);
+			break;
+		case NinSound.ENCODING_TYPE_IMA_ADPCM:
+			for(int i = 0; i < strm.channelCount; i++){
+				SampleChannel4 chan = new SampleChannel4(fcount);
+				chan.setNybbleOrder(false);
+				strm.rawSamples[i] = chan;
+			}
+			break;
+		}
 		
 		//Main blocks
 		data.skipBytes(8);
@@ -198,9 +216,10 @@ public class DSStream extends NinStream{
 		//Copy samples
 		copy.rawSamples = new SampleChannel[1];
 		SampleChannel mine = rawSamples[channel];
-		int fcount = mine.countSamples();
-		copy.rawSamples[0] = SampleChannel.createArrayChannel(fcount);
-		for(int i = 0; i < fcount; i++) copy.rawSamples[0].addSample(mine.getSample(i));
+		//int fcount = mine.countSamples();
+		//copy.rawSamples[0] = SampleChannel.createArrayChannel(fcount);
+		copy.rawSamples[0] = mine.copy();
+		//for(int i = 0; i < fcount; i++) copy.rawSamples[0].addSample(mine.getSample(i));
 		
 		return copy;
 	}

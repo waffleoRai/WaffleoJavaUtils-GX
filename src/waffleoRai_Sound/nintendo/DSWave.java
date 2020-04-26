@@ -9,6 +9,9 @@ import waffleoRai_Containers.nintendo.NDKDSFile;
 import waffleoRai_Files.Converter;
 import waffleoRai_Files.FileClass;
 import waffleoRai_Sound.SampleChannel;
+import waffleoRai_Sound.SampleChannel16;
+import waffleoRai_Sound.SampleChannel4;
+import waffleoRai_Sound.SampleChannel8;
 import waffleoRai_Sound.Sound;
 import waffleoRai_Sound.SoundFileDefinition;
 import waffleoRai_Utils.FileBuffer;
@@ -86,14 +89,16 @@ public class DSWave extends NinWave{
 		switch(wave.encodingType){
 		case NinSound.ENCODING_TYPE_PCM8:
 			fcount = totalwords << 2; //Mult by 4 to get bytes
-			wave.rawSamples[0] = SampleChannel.createArrayChannel(fcount);
+			//wave.rawSamples[0] = SampleChannel.createArrayChannel(fcount);
+			wave.rawSamples[0] = new SampleChannel8(fcount);
 			//PCM8 is unsigned
 			for(int i = 0; i < fcount; i++) wave.rawSamples[0].addSample(Byte.toUnsignedInt(data.nextByte()));
 			wave.loopStart = looppoint << 2;
 			break;
 		case NinSound.ENCODING_TYPE_PCM16:
 			fcount = totalwords << 1; //Mult by 2 to get halfwords
-			wave.rawSamples[0] = SampleChannel.createArrayChannel(fcount);
+			//wave.rawSamples[0] = SampleChannel.createArrayChannel(fcount);
+			wave.rawSamples[0] = new SampleChannel16(fcount);
 			for(int i = 0; i < fcount; i++) wave.rawSamples[0].addSample((int)data.nextShort());
 			wave.loopStart = looppoint << 1;
 			break;
@@ -102,11 +107,15 @@ public class DSWave extends NinWave{
 			//System.err.println("\tFrame count: " + fcount + "(0x" + Integer.toHexString(fcount) + ")");
 			//System.err.println("Current Position: " + "0x" + Long.toHexString(data.getCurrentPosition()) + ")");
 			//LOWER nybble first!
-			wave.rawSamples[0] = SampleChannel.createArrayChannel(fcount);
+			//wave.rawSamples[0] = SampleChannel.createArrayChannel(fcount);
+			SampleChannel4 ch = new SampleChannel4(fcount);
+			ch.setNybbleOrder(false);
+			wave.rawSamples[0] = ch;
 			for(int i = 0; i < fcount; i+=2){
-				int b = Byte.toUnsignedInt(data.nextByte());
-				wave.rawSamples[0].addSample(b & 0xF);
-				wave.rawSamples[0].addSample((b >>> 4) & 0xF);
+				//int b = Byte.toUnsignedInt(data.nextByte());
+				//wave.rawSamples[0].addSample(b & 0xF);
+				//wave.rawSamples[0].addSample((b >>> 4) & 0xF);
+				ch.addByte(data.nextByte());
 			}
 			wave.loopStart = (looppoint << 3) - 8; //NOTE: assuming that the IMA init word is EXCLUDED
 			//System.err.println("\tLoop: " + String.format("%02x", loopflag) + " (" + wave.loops + ") -- " + looppoint + " > " + wave.loopStart);

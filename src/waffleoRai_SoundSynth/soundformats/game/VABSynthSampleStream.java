@@ -83,7 +83,8 @@ public class VABSynthSampleStream extends SynthSampleStream{
 		double v_bank = (double)bank.getVolume()/maxvol;
 		double v_prog = (double)prog.getVolume()/maxvol;
 		double v_tone = (double)tone.getVolume()/maxvol;
-		double v_vel = (double)vel/maxvol;
+		double vrat = (double)vel/maxvol;
+		double v_vel = (vrat * vrat);
 		//vol_net_prog = (byte)Math.round(maxvol * v_bank * v_prog * v_tone * v_vel);
 		vol_net_prog = v_bank * v_prog * v_tone;
 		vol_vel = v_vel;

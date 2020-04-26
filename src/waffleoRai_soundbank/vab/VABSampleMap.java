@@ -43,4 +43,8 @@ public class VABSampleMap implements SoundSampleMap{
 		return openSampleStream(index1);
 	}
 
+	public void free(){
+		//TODO
+	}
+	
 }

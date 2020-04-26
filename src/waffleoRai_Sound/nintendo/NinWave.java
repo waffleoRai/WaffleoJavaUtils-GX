@@ -23,7 +23,8 @@ public abstract class NinWave extends NinStreamableSound{
 			trg.channel_adpcm_info[0] = src.channel_adpcm_info[channel];
 		}
 		trg.rawSamples = new SampleChannel[1];
-		trg.rawSamples[0] = new SampleChannel(src.rawSamples[channel]);
+		//trg.rawSamples[0] = new SampleChannel(src.rawSamples[channel]);
+		trg.rawSamples[0] = src.rawSamples[channel].copy();
 	}
 	
 	/*--- Sound ---*/

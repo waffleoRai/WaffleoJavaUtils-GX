@@ -1,5 +1,6 @@
 package waffleoRai_soundbank.nintendo;
 
+import waffleoRai_Sound.PCMSound;
 import waffleoRai_Sound.nintendo.WaveArchive;
 import waffleoRai_SoundSynth.AudioSampleStream;
 import waffleoRai_SoundSynth.SoundSampleMap;
@@ -25,12 +26,26 @@ public class SBNKSampleMap implements SoundSampleMap{
 		maps[war_idx] = map;
 		int wcount = war.countSounds();
 		for(int i = 0; i < wcount; i++){
-			map.mapSample(i, war.getWave(i));
+			//extract to PCM and normalize
+			//System.err.println("Normalizing wav " + i + " --");
+			PCMSound pcm = war.getWave(i).getAsPCM();
+			pcm.normalizeAmplitude();
+			map.mapSample(i, pcm);
+			
+			/*String dpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\wavnormal";
+			try {
+				pcm.writeWAV(dpath + "\\swav" + war_idx+ "_" + String.format("%03d", i) + ".wav");
+				pcm.writeTxt(dpath + "\\swav" + war_idx+ "_" + String.format("%03d", i) + ".tsv");
+			} 
+			catch (IOException e) {e.printStackTrace();}*/
 		}
 		
 	}
 	
 	public void free(){
+		for(int i = 0; i < maps.length; i++){
+			if(maps[i] != null) maps[i].free();
+		}
 		maps = new BasicSoundSampleMap[4];
 	}
 

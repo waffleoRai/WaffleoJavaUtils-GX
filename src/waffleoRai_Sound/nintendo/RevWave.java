@@ -3,6 +3,9 @@ package waffleoRai_Sound.nintendo;
 import waffleoRai_Containers.nintendo.NDKRevolutionFile;
 import waffleoRai_Containers.nintendo.NDKSectionType;
 import waffleoRai_Sound.SampleChannel;
+import waffleoRai_Sound.SampleChannel16;
+import waffleoRai_Sound.SampleChannel4;
+import waffleoRai_Sound.SampleChannel8;
 import waffleoRai_Sound.Sound;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -109,10 +112,14 @@ public class RevWave extends NinWave{
 			FileBuffer data_sec = rev_file.getSectionData(NDKSectionType.DATA);
 			chdat_off = 8L;
 			long dpos = chdat_off;
-			SampleChannel ch = SampleChannel.createArrayChannel(nybble_count);
+			//SampleChannel ch = SampleChannel.createArrayChannel(nybble_count);
+			SampleChannel ch = null;
 			switch(wav.encodingType)
 			{
 			case NinSound.ENCODING_TYPE_DSP_ADPCM:
+				SampleChannel4 ch4 = new SampleChannel4(nybble_count);
+				ch4.setNybbleOrder(true);
+				ch = ch4;
 				for(int j = 0; j < nybble_count; j+=2)
 				{
 					int bi = Byte.toUnsignedInt(data_sec.getByte(dpos)); dpos++;
@@ -123,6 +130,7 @@ public class RevWave extends NinWave{
 				}
 				break;
 			case NinSound.ENCODING_TYPE_PCM8:
+				ch = new SampleChannel8(nybble_count);
 				for(int j = 0; j < nybble_count; j++)
 				{
 					int bi = Byte.toUnsignedInt(data_sec.getByte(dpos)); dpos++;
@@ -130,6 +138,7 @@ public class RevWave extends NinWave{
 				}
 				break;
 			case NinSound.ENCODING_TYPE_PCM16:
+				ch = new SampleChannel16(nybble_count);
 				for(int j = 0; j < nybble_count; j++)
 				{
 					int si = Short.toUnsignedInt(data_sec.shortFromFile(dpos)); dpos+=2;

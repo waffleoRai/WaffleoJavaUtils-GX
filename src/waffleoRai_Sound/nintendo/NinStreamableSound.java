@@ -1,7 +1,6 @@
 package waffleoRai_Sound.nintendo;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
@@ -9,6 +8,9 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 
 import waffleoRai_Sound.BitDepth;
+import waffleoRai_Sound.PCM16Sound;
+import waffleoRai_Sound.PCM24Sound;
+import waffleoRai_Sound.PCMSound;
 import waffleoRai_Sound.SampleChannel;
 import waffleoRai_Sound.Sound;
 import waffleoRai_Sound.WAV;
@@ -132,36 +134,6 @@ public abstract class NinStreamableSound implements Sound{
 		else return rawSamples[0].countSamples();
 	}
 	
-	private void refreshIterators(boolean loop)
-	{
-		activeIterators = new ArrayList<Iterator<Integer>>(channelCount);
-		for(int c = 0; c < channelCount; c++)
-		{
-			Iterator<Integer> it = rawSamples[c].iterator();
-			if(loop)
-			{
-				for(int j = 0; j < this.loopStart; j++)it.next();
-			}
-			activeIterators.add(it);
-		}
-	}
-	
-	private void resetDecomps()
-	{
-		decomps = new NinADPCM[channelCount];
-		for(int c = 0; c < channelCount; c++)
-		{
-			decomps[c] = new NinADPCM(channel_adpcm_info[c], NinSound.DSP_ADPCM_UNIT_SAMPLES);
-		}
-	}
-	
-	private void resetIMADecomps()
-	{
-		for(int c = 0; c < channelCount; c++){
-			ima_state[c].resetToStart();
-		}
-	}
-	
 	public Iterator<Integer> getRawChannelIterator(int channel)
 	{
 		if(channel < 0 || channel >= rawSamples.length) return null;
@@ -188,85 +160,8 @@ public abstract class NinStreamableSound implements Sound{
 		return ais;
 	}
 	
-	@Deprecated
-	public void jumpToFrame(int frame)
-	{
-		rewind();
-		for(int c = 0; c < channelCount; c++) nextSample(c);
-	}
-	
-	@Deprecated
-	public void rewind()
-	{
-		playEnd = false;
-		refreshIterators(false);
-		if(encodingType == NinSound.ENCODING_TYPE_DSP_ADPCM){resetDecomps();}
-		else if(encodingType == NinSound.ENCODING_TYPE_IMA_ADPCM){resetIMADecomps();}
-	}
-	
-	@Deprecated
-	public int nextSample(int channel)
-	{
-		//TODO: Don't use this, it's terrible.
-		//Check if iterator is expended
-		boolean ilooped = false;
-		if(!hasSamplesLeft(channel))
-		{
-			if(loops()) 
-			{
-				refreshIterators(true);
-				ilooped = true;
-			}
-			else
-			{
-				playEnd = true;
-				return 0;
-			}
-		}
-		
-		int s = 0;
-		if(encodingType == NinSound.ENCODING_TYPE_DSP_ADPCM)
-		{
-			int cs = activeIterators.get(channel).next();
-			if(ilooped) decomps[channel].setToLoop(loopStart);
-			if(decomps[channel].newBlock())
-			{
-				int n1 = cs;
-				int n2 = activeIterators.get(channel).next();
-				cs = activeIterators.get(channel).next();
-				decomps[channel].setPS((n1 << 4) | n2);
-			}
-			s = decomps[channel].decompressNextNybble(cs);
-		}
-		else if(encodingType == NinSound.ENCODING_TYPE_IMA_ADPCM)
-		{
-			int cs = activeIterators.get(channel).next();
-			if(ilooped) ima_state[channel].resetToLoop();
-			s = ima_state[channel].decompressNybble(cs, false);
-		}
-		else s = activeIterators.get(channel).next();
-		return s;
-	}
-	
-	@Deprecated
-	public int samplesLeft(int channel)
-	{
-		if(loops()) return -1;
-		if(playEnd) return 0;
-		return -2; //I'm too lazy and this would be too inefficient
-	}
-	
-	@Deprecated
-	public boolean hasSamplesLeft(int channel)
-	{
-		if(playEnd) return false;
-		return activeIterators.get(channel).hasNext();
-	}
-	
 	public int totalFrames(){return estimateFrames();}
 	public int totalChannels(){return this.channelCount;}
-	
-	public abstract Sound getSingleChannel(int channel);
 	
 	public int[] getRawSamples(int channel)
 	{
@@ -334,6 +229,26 @@ public abstract class NinStreamableSound implements Sound{
 	}
 	
 	/*--- Conversion ---*/
+	
+	public PCMSound getAsPCM(){
+		int frames = totalFrames();
+		AudioSampleStream str = createSampleStream(false);
+		
+		PCMSound snd = null;
+		if(str.getBitDepth() == 16){snd = PCM16Sound.createSound(str, frames);}
+		else if(str.getBitDepth() == 24) snd = PCM24Sound.createSound(str, frames);
+		
+		if(loops) snd.setLoopPoints(loopStart, totalFrames());
+		
+		return snd;
+	}
+	
+	public PCMSound getAsNormalizedPCM(){
+		PCMSound snd = getAsPCM();
+		if(snd == null) return null;
+		snd.normalizeAmplitude();
+		return snd;
+	}
 	
 	public boolean writeWAV(String path)
 	{
