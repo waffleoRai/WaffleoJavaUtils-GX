@@ -435,6 +435,15 @@ public class NinTrack
 		}
 		else
 		{
+			//First see if note is already playing. If it is, terminate and play new note.
+			//(This has been an issue with seqs that terminate notes ON the same tick as the 
+			// subsequent same note is to start)
+			//Pokemon is VERY bad about this.
+			PendingNote pn = pendingNotes.remove(playnote);
+			if(pn != null){
+				player.noteOff(trackIndex, pn.note);
+			}
+			
 			//If monophony is on, stop old note(s) and play this one instead
 			if(monophony)allNotesOff();
 			pendingNotes.put(playnote, new PendingNote(playnote, ticks+1));

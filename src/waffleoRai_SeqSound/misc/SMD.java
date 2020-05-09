@@ -2,7 +2,8 @@ package waffleoRai_SeqSound.misc;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.LinkedList;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import javax.sound.midi.InvalidMidiDataException;
@@ -12,12 +13,36 @@ import javax.sound.midi.Sequence;
 import javax.sound.midi.ShortMessage;
 import javax.sound.midi.Track;
 
+import waffleoRai_Files.Converter;
 import waffleoRai_SeqSound.MIDI;
+import waffleoRai_SeqSound.SoundSeqDef;
+import waffleoRai_SeqSound.misc.smd.*;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
+/*
+ * UPDATES
+ * 
+ * 2020.04.27 | 1.0.0
+ * 		Initial Documentation (class has been around since at least late 2017)
+ * 2020.04.27 | 2.0.0
+ * 		Structure overhaul to add playback interface (was geared toward MIDI conversion)
+ * 
+ */
+
+/**
+ * File/sequence wrapper class for ChunSoft SMD (music sequence) files
+ * found in Pokemon Mystery Dungeon 2 (Explorers of Time/Darkness)
+ * @version 2.0.0
+ * @since April 27, 2020
+ * @author Blythe Hospelhorn
+ *
+ */
 public class SMD 
 {
+	
+	public static final int TYPE_ID = 0x736d646c;
 	
 	public static final String MAGIC = "smdl";
 	public static final String SONG_MAGIC = "song";
@@ -70,48 +95,13 @@ public class SMD
 		return this.TicksPerQNote;
 	}
 	
+	public SMDTrack getTrack(int idx){
+		return tracks[idx];
+	}
+	
 	/*--- Setters ---*/
 	
 	/*--- Internal Structures ---*/
-	
-	private static class SMDTrack
-	{
-		
-		private List<SMDEvent> eventList;
-		private int trackID;
-		private int chanID;
-		
-		public SMDTrack()
-		{
-			this.eventList = new LinkedList<SMDEvent>();
-		}
-		
-		public void addEvent(SMDEvent e)
-		{
-			eventList.add(e);
-		}
-		
-		public SMDEvent getEvent(int i)
-		{
-			return eventList.get(i);
-		}
-		
-		public void setTrackID(int tID)
-		{
-			this.trackID = tID;
-		}
-		
-		public void setChannelID(int cID)
-		{
-			this.chanID = cID;
-		}
-		
-		public int getNumberEvents()
-		{
-			return this.eventList.size();
-		}
-		
-	}
 	
 	private static SMDEvent readEvent(FileBuffer src, long eOff)
 	{
@@ -120,7 +110,7 @@ public class SMD
 		if (op <= 0x7F)
 		{
 			byte keyFlags = src.getByte(eOff + 1);
-			NoteEvent n = new NoteEvent((byte)op, keyFlags);
+			SMDNoteEvent n = new SMDNoteEvent((byte)op, keyFlags);
 			int nBytes = n.getByteLength();
 			if (nBytes < 3) return n;
 			if (nBytes == 3)
@@ -149,15 +139,15 @@ public class SMD
 		}
 		else if (op < 0x90)
 		{
-			DeltaTimeEvent d = new DeltaTimeEvent((byte)op);
+			SMDDeltaTimeEvent d = new SMDDeltaTimeEvent((byte)op);
 			return d;
 		}
 		else
 		{
-			MiscType mt = MiscType.getType((byte)op);
+			SMDMiscType mt = SMDMiscType.getType((byte)op);
 			//System.out.println("op = 0x" + Integer.toHexString(op));
 			if (mt == null) return null;
-			MiscEvent m = new MiscEvent(mt);
+			SMDMiscEvent m = new SMDMiscEvent(mt);
 			for (int i = 0; i < mt.getParameterCount(); i++)
 			{
 				int p = Byte.toUnsignedInt(src.getByte(eOff + i + 1));
@@ -168,330 +158,7 @@ public class SMD
 
 	}
 	
-	private static interface SMDEvent
-	{
-		public int getByteLength();
-		public MiscType getType();
-		public int getChannel();
-		public void setChannel(int c);
-	}
-	
-	private static class NoteEvent implements SMDEvent
-	{
-		private int velocity;
-		
-		private int lBytes;
-		private int length;
-		
-		private int note; //(0 - F, not yet converted to midi scale)
-		private int octaveChange; //Signed value is how many octaves to move up or down if any
-		
-		private int channel;
-		
-		public NoteEvent(byte velocity, byte keyFlags)
-		{
-			this.velocity = Byte.toUnsignedInt(velocity);
-			this.readLenFlags(keyFlags);
-			this.readOctFlag(keyFlags);
-			this.readNote(keyFlags);
-		}
-		
-		private void readLenFlags(byte keyFlags)
-		{
-			int lb = (Byte.toUnsignedInt(keyFlags) >> 6) & 0x3;
-			this.lBytes = lb;
-			this.length = -1;
-		}
-		
-		private void readOctFlag(byte keyFlags)
-		{
-			int oc = (Byte.toUnsignedInt(keyFlags) >> 4) & 0x3;
-			switch(oc)
-			{
-			case 0: this.octaveChange = -2; break;
-			case 1: this.octaveChange = -1; break;
-			case 2: this.octaveChange = 0; break;
-			case 3: this.octaveChange = 1; break;
-			}
-		}
-		
-		private void readNote(byte keyFlags)
-		{
-			this.note = Byte.toUnsignedInt(keyFlags) & 0xF;
-		}
-		
-		public int getByteLength()
-		{
-			return 2 + lBytes;
-		}
-		
-		public void setLength(int ticks)
-		{
-			this.length = ticks;
-		}
-		
-		public MiscType getType()
-		{
-			return MiscType.NA_NOTE;
-		}
-		
-		public int getVelocity()
-		{
-			return velocity;
-		}
-		
-		public int getLength()
-		{
-			return length;
-		}
-		
-		public int getNote()
-		{
-			return note;
-		}
-		
-		public int getOctaveChange()
-		{
-			return this.octaveChange;
-		}
-		
-		public int getChannel()
-		{
-			return this.channel;
-		}
-		
-		public void setChannel(int c)
-		{
-			this.channel = c;
-		}
-		
-	}
-	
-	private static class DeltaTimeEvent implements SMDEvent
-	{
-		private int delayTime;
-		private int channel;
-		
-		public DeltaTimeEvent(byte opcode)
-		{
-			this.interpretDelayTime(opcode);
-		}
-		
-		private void interpretDelayTime(byte opcode)
-		{
-			int opi = Byte.toUnsignedInt(opcode);
-			switch(opi)
-			{
-			case 0x80: delayTime = 96; return;
-			case 0x81: delayTime = 72; return;
-			case 0x82: delayTime = 64; return;
-			case 0x83: delayTime = 48; return;
-			case 0x84: delayTime = 36; return;
-			case 0x85: delayTime = 32; return;
-			case 0x86: delayTime = 24; return;
-			case 0x87: delayTime = 18; return;
-			case 0x88: delayTime = 16; return;
-			case 0x89: delayTime = 12; return;
-			case 0x8A: delayTime = 9; return;
-			case 0x8B: delayTime = 8; return;
-			case 0x8C: delayTime = 6; return;
-			case 0x8D: delayTime = 4; return;
-			case 0x8E: delayTime = 3; return;
-			case 0x8F: delayTime = 2; return;
-			default: delayTime = -1; return;
-			}
-		}
-		
-		public int getByteLength()
-		{
-			return 1;
-		}
-		
-		public int getDelayTime()
-		{
-			return this.delayTime;
-		}
-	
-		public MiscType getType()
-		{
-			return MiscType.NA_DELTATIME;
-		}
-	
-		public int getChannel()
-		{
-			return this.channel;
-		}
-		
-		public void setChannel(int c)
-		{
-			this.channel = c;
-		}
-		
-	}
-	
-	private static enum MiscType
-	{
-		WAIT_AGAIN(0x90, 0, "WAIT_AGAIN"),
-		WAIT_ADD(0x91, 1, "WAIT_ADD"),
-		WAIT_1BYTE(0x92, 1, "WAIT_1BYTE"),
-		WAIT_2BYTE(0x93, 2, "WAIT_2BYTE"), //LE
-		TRACK_END(0x98, 0, "TRACK_END"),
-		LOOP_POINT(0x99, 0, "LOOP_POINT"),
-		SET_OCTAVE(0xA0, 1, "SET_OCTAVE"),
-		SET_TEMPO(0xA4, 1, "SET_TEMPO"),
-		SET_SAMPLE(0xAC, 1, "SET_SAMPLE"),
-		SET_MODU(0xBE, 1, "SET_MODU"),
-		SET_BEND(0xD7, 2, "SET_BEND"),
-		SET_VOLUME(0xE0, 1, "SET_VOLUME"),
-		SET_XPRESS(0xE3, 1, "SET_EXPRESS"),
-		SET_PAN(0xE8, 1, "SET_PAN"),
-		NA_NOTE(0x00, -1, "PLAY_NOTE"),
-		NA_DELTATIME(0x80, 1, "DELTATIME"),
-		UNK_9C(0x9C, 1, "UNK_9C"),
-		UNK_9D(0x9D, 0, "UNK_9D"),
-		UNK_A8(0xA8, 2, "UNK_A8"),
-		UNK_A9(0xA9, 1, "UNK_A9"),
-		UNK_AA(0xAA, 1, "UNK_AA"),
-		UNK_B2(0xB2, 1, "UNK_B2"),
-		UNK_B4(0xB4, 2, "UNK_B4"),
-		UNK_B5(0xB5, 1, "UNK_B5"),
-		UNK_BF(0xBF, 1, "UNK_BF"),
-		UNK_C0(0xC0, 0, "UNK_C0"),
-		UNK_D0(0xD0, 1, "UNK_D0"),
-		UNK_D1(0xD1, 1, "UNK_D1"),
-		UNK_D2(0xD2, 1, "UNK_D2"),
-		UNK_D4(0xD4, 3, "UNK_D4"),
-		UNK_D6(0xD6, 2, "UNK_D6"),
-		UNK_DB(0xDB, 1, "UNK_DB"),
-		UNK_DC(0xDC, 5, "UNK_DC"),
-		UNK_E2(0xE2, 3, "UNK_E2"),
-		UNK_EA(0xEA, 3, "UNK_EA"),
-		UNK_F6(0xF6, 1, "UNK_F6");
-		
-		private int op;
-		private int numParam;
-		private String sRep;
-		
-		private MiscType(int opcode, int nParam, String s)
-		{
-			this.op = opcode;
-			this.numParam = nParam;
-			this.sRep = s;
-		}
-		
-		public int getOpCode()
-		{
-			return this.op;
-		}
-		
-		public int getParameterCount()
-		{
-			return this.numParam;
-		}
-		
-		public static MiscType getType(byte opcode)
-		{
-			int oci = Byte.toUnsignedInt(opcode);
-			switch(oci)
-			{
-			case(0x90): return WAIT_AGAIN;
-			case(0x91): return WAIT_ADD;
-			case(0x92): return WAIT_1BYTE;
-			case(0x93): return WAIT_2BYTE;
-			case(0x98): return TRACK_END;
-			case(0x99): return LOOP_POINT;
-			case(0xA0): return SET_OCTAVE;
-			case(0xA4): return SET_TEMPO;
-			case(0xAC): return SET_SAMPLE;
-			case(0xBE): return SET_MODU;
-			case(0xD7): return SET_BEND;
-			case(0xE0): return SET_VOLUME;
-			case(0xE3): return SET_XPRESS;
-			case(0xE8): return SET_PAN;
-			case(0x9C): return UNK_9C;
-			case(0x9D): return UNK_9D;
-			case(0xA8): return UNK_A8;
-			case(0xA9): return UNK_A9;
-			case(0xAA): return UNK_AA;
-			case(0xB2): return UNK_B2;
-			case(0xB4): return UNK_B4;
-			case(0xB5): return UNK_B5;
-			case(0xBF): return UNK_BF;
-			case(0xC0): return UNK_C0;
-			case(0xD0): return UNK_D0;
-			case(0xD1): return UNK_D1;
-			case(0xD2): return UNK_D2;
-			case(0xD4): return UNK_D4;
-			case(0xD6): return UNK_D6;
-			case(0xDB): return UNK_DB;
-			case(0xDC): return UNK_DC;
-			case(0xE2): return UNK_E2;
-			case(0xEA): return UNK_EA;
-			case(0xF6): return UNK_F6;
-			default: return null;
-			}
-		}
-		
-		public String toString()
-		{
-			return sRep;
-		}
-		
-	}
-	
-	private static class MiscEvent implements SMDEvent
-	{
-		private MiscType type;
-		private int[] parameters;
-		private int channel;
-		
-		public MiscEvent(MiscType t)
-		{
-			type = t;
-			parameters = new int[type.getParameterCount()];
-		}
-		
-		public int getByteLength()
-		{
-			if (type != null)
-			{
-				return 1 + type.getParameterCount();
-			}
-			return -1;
-		}
-		
-		public MiscType getType()
-		{
-			return this.type;
-		}
-		
-		public int getParameter(int i)
-		{
-			if (i < 0) return -1;
-			if (i >= parameters.length) return -1;
-			return parameters[i];
-		}
-		
-		public void setParameter(int i, int p)
-		{
-			if (i < 0) return;
-			if (i >= parameters.length) return;
-			parameters[i] = p;
-		}
-		
-		public int getChannel()
-		{
-			return this.channel;
-		}
-		
-		public void setChannel(int c)
-		{
-			this.channel = c;
-		}
-		
-	}
-	
-	/*--- Instruction Interpretation ---*/
+	/*--- Instruction Parse ---*/
 	
 	private int getMidiNote(int relNote, int octave)
 	{
@@ -503,7 +170,7 @@ public class SMD
 		return mNote;
 	}
 	
-	private boolean readNote(NoteEvent n, Track t, CState state)
+	private boolean readNote(SMDNoteEvent n, Track t, CState state)
 	{
 		if (n == null) return false;
 		if (t == null) return false;
@@ -544,7 +211,7 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readDeltaTime(DeltaTimeEvent d, CState state)
+	private boolean readDeltaTime(SMDDeltaTimeEvent d, CState state)
 	{
 		if (d == null) return false;
 		if (state == null) state = new CState();
@@ -552,7 +219,7 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readWaitEvent(MiscEvent e, CState state)
+	private boolean readWaitEvent(SMDMiscEvent e, CState state)
 	{
 		if (e == null) return false;
 		if (state == null) state = new CState();
@@ -583,10 +250,10 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readTrackEndEvent(MiscEvent e, Track t, CState state)
+	private boolean readTrackEndEvent(SMDMiscEvent e, Track t, CState state)
 	{
 		if (e == null) return false;
-		if (e.getType() != MiscType.TRACK_END) return false;
+		if (e.getType() != SMDMiscType.TRACK_END) return false;
 		if (t == null) return false;
 		if (state == null) state = new CState();
 		try 
@@ -603,11 +270,11 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readLoopPointEvent(MiscEvent e, Track t, CState state)
+	private boolean readLoopPointEvent(SMDMiscEvent e, Track t, CState state)
 	{
 		//Saved as just a marker event
 		if (e == null) return false;
-		if (e.getType() != MiscType.LOOP_POINT) return false;
+		if (e.getType() != SMDMiscType.LOOP_POINT) return false;
 		if (t == null) return false;
 		if (state == null) state = new CState();
 		final String lp = "Loop Point";
@@ -625,19 +292,19 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readOctaveSet(MiscEvent e, CState state)
+	private boolean readOctaveSet(SMDMiscEvent e, CState state)
 	{
 		if (e == null) return false;
-		if (e.getType() != MiscType.SET_OCTAVE) return false;
+		if (e.getType() != SMDMiscType.SET_OCTAVE) return false;
 		if (state == null) state = new CState();
 		state.octCurrent = e.getParameter(0);
 		return true;
 	}
 	
-	private boolean readTempoSet(MiscEvent e, Track t, CState state)
+	private boolean readTempoSet(SMDMiscEvent e, Track t, CState state)
 	{
 		if (e == null) return false;
-		if (e.getType() != MiscType.SET_TEMPO) return false;
+		if (e.getType() != SMDMiscType.SET_TEMPO) return false;
 		if (t == null) return false;
 		if (state == null) state = new CState();
 		int bpm = e.getParameter(0);
@@ -660,10 +327,10 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readProgramChange(MiscEvent e, Track t, CState state)
+	private boolean readProgramChange(SMDMiscEvent e, Track t, CState state)
 	{
 		if (e == null) return false;
-		if (e.getType() != MiscType.SET_SAMPLE) return false;
+		if (e.getType() != SMDMiscType.SET_SAMPLE) return false;
 		if (t == null) return false;
 		if (state == null) state = new CState();
 		int chan = e.getChannel();
@@ -680,10 +347,10 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readModWheelChange(MiscEvent e, Track t, CState state)
+	private boolean readModWheelChange(SMDMiscEvent e, Track t, CState state)
 	{
 		if (e == null) return false;
-		if (e.getType() != MiscType.SET_MODU) return false;
+		if (e.getType() != SMDMiscType.SET_MODU) return false;
 		if (t == null) return false;
 		if (state == null) state = new CState();
 		int chan = e.getChannel();
@@ -700,10 +367,10 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readVolumeSet(MiscEvent e, Track t, CState state)
+	private boolean readVolumeSet(SMDMiscEvent e, Track t, CState state)
 	{
 		if (e == null) return false;
-		if (e.getType() != MiscType.SET_VOLUME) return false;
+		if (e.getType() != SMDMiscType.SET_VOLUME) return false;
 		if (t == null) return false;
 		if (state == null) state = new CState();
 		int chan = e.getChannel();
@@ -720,10 +387,10 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readPitchBendSet(MiscEvent e, Track t, CState state)
+	private boolean readPitchBendSet(SMDMiscEvent e, Track t, CState state)
 	{
 		if (e == null) return false;
-		if (e.getType() != MiscType.SET_BEND) return false;
+		if (e.getType() != SMDMiscType.SET_BEND) return false;
 		if (t == null) return false;
 		if (state == null) state = new CState();
 		int chan = e.getChannel();
@@ -745,10 +412,10 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readExpressionSet(MiscEvent e, Track t, CState state)
+	private boolean readExpressionSet(SMDMiscEvent e, Track t, CState state)
 	{
 		if (e == null) return false;
-		if (e.getType() != MiscType.SET_XPRESS) return false;
+		if (e.getType() != SMDMiscType.SET_XPRESS) return false;
 		if (t == null) return false;
 		if (state == null) state = new CState();
 		int chan = e.getChannel();
@@ -765,10 +432,10 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readPanChange(MiscEvent e, Track t, CState state)
+	private boolean readPanChange(SMDMiscEvent e, Track t, CState state)
 	{
 		if (e == null) return false;
-		if (e.getType() != MiscType.SET_PAN) return false;
+		if (e.getType() != SMDMiscType.SET_PAN) return false;
 		if (t == null) return false;
 		if (state == null) state = new CState();
 		int chan = e.getChannel();
@@ -785,7 +452,7 @@ public class SMD
 		return true;
 	}
 	
-	private boolean readUnknownEvent(MiscEvent e, Track t, CState state)
+	private boolean readUnknownEvent(SMDMiscEvent e, Track t, CState state)
 	{
 		//Saved as just a marker event
 		if (e == null) return false;
@@ -815,19 +482,19 @@ public class SMD
 	private boolean toMidiEvent(SMDEvent e, Track t, CState state)
 	{
 		if (e == null) return false;
-		if (e instanceof NoteEvent)
+		if (e instanceof SMDNoteEvent)
 		{
-			NoteEvent n = (NoteEvent)e;
+			SMDNoteEvent n = (SMDNoteEvent)e;
 			return readNote(n, t, state);
 		}
-		else if (e instanceof DeltaTimeEvent)
+		else if (e instanceof SMDDeltaTimeEvent)
 		{
-			DeltaTimeEvent d = (DeltaTimeEvent)e;
+			SMDDeltaTimeEvent d = (SMDDeltaTimeEvent)e;
 			return readDeltaTime(d, state);
 		}
-		else if (e instanceof MiscEvent)
+		else if (e instanceof SMDMiscEvent)
 		{
-			MiscEvent m = (MiscEvent)e;
+			SMDMiscEvent m = (SMDMiscEvent)e;
 			switch(m.getType())
 			{
 			case LOOP_POINT: return readLoopPointEvent(m, t, state);
@@ -873,6 +540,13 @@ public class SMD
 	}
 	
 	/*--- Parsing ---*/
+	
+	public static boolean isSMD(FileBuffer in, long stOff)
+	{
+		long magOff = in.findString(stOff, stOff + 0x10, MAGIC);
+		if (magOff != stOff) return false;
+		return true;
+	}
 	
 	private long readMainHeader(FileBuffer src, long stOff)
 	{
@@ -932,9 +606,9 @@ public class SMD
 			SMDEvent e = readEvent(src, cPos);
 			//System.out.println("parseTrack | Event at 0x" + Long.toHexString(cPos) + " is null: " + (e==null));
 			if (e == null) return null;
-			e.setChannel(t.chanID);
+			e.setChannel(t.getChannelID());
 			t.addEvent(e);
-			if (e.getType() == MiscType.TRACK_END) EOT = true;
+			if (e.getType() == SMDMiscType.TRACK_END) EOT = true;
 			long elen = Integer.toUnsignedLong(e.getByteLength());
 			cPos += elen;
 		}
@@ -973,7 +647,7 @@ public class SMD
 	/*--- Serialization ---*/
 	
 
-	/*--- Conversion ---*/
+	/*--- MIDI ---*/
 	
 	private class CState
 	{
@@ -1033,6 +707,11 @@ public class SMD
 	public static long SMD_2_MIDI(String inPath, long stPos, String outDir) throws IOException, UnsupportedFileTypeException, InvalidMidiDataException
 	{
 		FileBuffer in = FileBuffer.createBuffer(inPath, false);
+		return SMD_2_MIDI(in, stPos, outDir);
+	}
+
+	public static long SMD_2_MIDI(FileBuffer in, long stPos, String outDir) throws IOException, UnsupportedFileTypeException, InvalidMidiDataException
+	{
 		SMD mySMD = new SMD(in, stPos);
 		long smdSz = mySMD.getFileSize();
 		
@@ -1057,15 +736,8 @@ public class SMD
 		myMIDI.writeMIDI(outName);
 		return smdSz;
 	}
-	
-	public static boolean isSMD(FileBuffer in, long stOff)
-	{
-		long magOff = in.findString(stOff, stOff + 0x10, MAGIC);
-		if (magOff != stOff) return false;
-		return true;
-	}
-	
-	public String toString()
+
+	public void printToStderr()
 	{
 		String s = "";
 		s += "SMD ChunSoft Sequence File Structure ===============\n";
@@ -1083,15 +755,15 @@ public class SMD
 				s += "\t ----- Track " + (i + 1) + "\n";
 				SMDTrack t = this.tracks[i];
 				int nEv = t.getNumberEvents();
-				s += "\tTrack ID: " + t.trackID + "\n";
-				s += "\tChannel ID: " + t.chanID + "\n";
+				s += "\tTrack ID: " + t.getTrackID() + "\n";
+				s += "\tChannel ID: " + t.getChannelID() + "\n";
 				for (int j = 0; j < nEv; j++)
 				{
 					SMDEvent e = t.getEvent(j);
 					s += "\t\t";
-					if (e instanceof NoteEvent)
+					if (e instanceof SMDNoteEvent)
 					{
-						NoteEvent n = (NoteEvent)e;
+						SMDNoteEvent n = (SMDNoteEvent)e;
 						String[] pitches = {"C", "C#", "D", "D#",
 											"E", "F", "F#", "G",
 											"G#", "A", "A#", "B",
@@ -1102,15 +774,15 @@ public class SMD
 						s += "Pitch: " + pitches[n.getNote()] + " ";
 						s += "Len: " + n.getLength();	
 					}
-					else if (e instanceof DeltaTimeEvent)
+					else if (e instanceof SMDDeltaTimeEvent)
 					{
-						DeltaTimeEvent dte = (DeltaTimeEvent)e;
+						SMDDeltaTimeEvent dte = (SMDDeltaTimeEvent)e;
 						s += "DETLATIME_EVENT | ";
 						s += "Time: " + dte.getDelayTime() + " ";
 					}
-					else if (e instanceof MiscEvent)
+					else if (e instanceof SMDMiscEvent)
 					{
-						MiscEvent m = (MiscEvent)e;
+						SMDMiscEvent m = (SMDMiscEvent)e;
 						s += m.getType().toString() + " | ";
 						for (int k = 0; k < m.getType().getParameterCount(); k++)
 						{
@@ -1128,7 +800,101 @@ public class SMD
 		{
 			s += "SMD object contains no tracks.\n";
 		}
-		return s;
+		//return s;
+		System.err.println(s);
 	}
+	
+	/*--- Definition ---*/
+
+	private static SMDSeqDef static_def;
+	
+	public static SMDSeqDef getDefinition(){
+		if(static_def == null) static_def = new SMDSeqDef();
+		return static_def;
+	}
+	
+	public static class SMDSeqDef extends SoundSeqDef{
+
+		private static final String DEFO_ENG_STR = "Procyon SMD Sound/Music Sequence";
+		private static final String[] EXT_LIST = {"smd", "SMD", "smdl"};
+		
+		private String str;
+		
+		public SMDSeqDef(){
+			str = DEFO_ENG_STR;
+		}
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(EXT_LIST.length);
+			for(String s : EXT_LIST)list.add(s);
+			return list;
+		}
+
+		public String getDescription() {return str;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		public String getDefaultExtension() {return "smd";}
+
+	}
+	
+	/*--- Converter ---*/
+	
+	private static SMDConverter cdef;
+	
+	public static SMDConverter getDefaultConverter(){
+		if(cdef == null) cdef = new SMDConverter();
+		return cdef;
+	}
+	
+	public static class SMDConverter implements Converter{
+
+		public static final String DEFO_ENG_FROM = "Procyon Sound/Music Sequence (.smd)";
+		public static final String DEFO_ENG_TO = "MIDI Sound Sequence (.mid)";
+		
+		private String from_desc;
+		private String to_desc;
+		
+		public SMDConverter(){
+			from_desc = DEFO_ENG_FROM;
+			to_desc = DEFO_ENG_TO;
+		}
+		
+		public String getFromFormatDescription() {return from_desc;}
+		public String getToFormatDescription() {return to_desc;}
+		public void setFromFormatDescription(String s) {from_desc = s;}
+		public void setToFormatDescription(String s) {to_desc = s;}
+
+		public void writeAsTargetFormat(String inpath, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			writeAsTargetFormat(FileBuffer.createBuffer(inpath), outpath);
+		}
+
+		public void writeAsTargetFormat(FileBuffer input, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			try {SMD_2_MIDI(input, 0, outpath);} 
+			catch (InvalidMidiDataException e) {
+				e.printStackTrace();
+				throw new UnsupportedFileTypeException("MIDI Conversion Error");
+			}
+		}
+		
+		public void writeAsTargetFormat(FileNode node, String outpath) 
+				throws IOException, UnsupportedFileTypeException{
+			FileBuffer dat = node.loadDecompressedData();
+			writeAsTargetFormat(dat, outpath);
+		}
+
+		public String changeExtension(String path) {
+			if(path == null) return null;
+			if(path.isEmpty()) return path;
+			
+			int lastdot = path.lastIndexOf('.');
+			if(lastdot < 0) return path + ".mid";
+			return path.substring(0, lastdot) + ".mid";
+		}
+		
+	}
+	
+	
 	
 }

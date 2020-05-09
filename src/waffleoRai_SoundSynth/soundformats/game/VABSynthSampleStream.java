@@ -74,6 +74,7 @@ public class VABSynthSampleStream extends SynthSampleStream{
 	
 	public VABSynthSampleStream(AudioSampleStream src, PSXVAB bank, Program prog, Tone tone, byte key, byte vel, float outSampleRate) throws InterruptedException
 	{
+		//TODO
 		//source = src;
 		super(src);
 		//Program p = bank.getProgram(progIdx);
@@ -119,7 +120,7 @@ public class VABSynthSampleStream extends SynthSampleStream{
 		{
 			sr_interpolator = new UnbufferedWindowedSincInterpolator(volfilter, 2);
 			sr_interpolator.setOutputSampleRate(outSampleRate);
-			sr_interpolator.setUseTargetSampleRate(true);
+			//sr_interpolator.setUseTargetSampleRate(true);
 		}
 	}
 	

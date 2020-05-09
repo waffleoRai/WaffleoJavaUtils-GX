@@ -77,8 +77,8 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		tune = (art.getCoarseTune() * 100) + art.getFineTune();
 		
 		double vrat = (double)art.getVolume()/127.0;
-		//volume = (vrat * vrat);
-		volume = vrat;
+		volume = (vrat * vrat);
+		//volume = vrat;
 		pan = (byte)art.getPan();
 		
 		att = art.getAttackData();
@@ -100,9 +100,10 @@ public class NinSynthSampleStream extends SynthSampleStream{
 		//System.err.println("played = " + played);
 		
 		vrat = (double)vel/127.0;
-		//volume *= (vrat * vrat);
-		volume *= vrat;
+		volume *= (vrat * vrat);
+		//volume *= vrat;
 		//System.err.println("velocity = " + vel);
+		//System.err.println("volume multiplier = " + volume);
 		
 		/*if(outSampleRate != input.getSampleRate())
 		{
@@ -129,7 +130,7 @@ public class NinSynthSampleStream extends SynthSampleStream{
 	/*----- Getters -----*/
 	
 	public byte getKeyPlayed() {
-		return (byte)played;
+		return (byte)(played/100);
 	}
 	
 	public int getDelay() {
