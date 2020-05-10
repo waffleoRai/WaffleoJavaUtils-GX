@@ -56,7 +56,7 @@ public class SMDPlayer extends SequencePlayer{
 		int tcount = sequence.getNumberTracks();
 		tracks = new PlayerTrack[tcount];
 		for(int i = 0; i < tcount; i++){
-			if(i != 0 && i != 1) continue; //DEBUG
+			//if(i != 0 && i != 1) continue; //DEBUG
 			SMDTrack t = sequence.getTrack(i);
 			tracks[i] = t;
 			if(t != null) t.setPlayer(this);
