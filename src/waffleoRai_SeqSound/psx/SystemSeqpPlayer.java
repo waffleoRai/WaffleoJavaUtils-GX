@@ -193,24 +193,29 @@ public class SystemSeqpPlayer extends SystemSeqPlayer{
 			trackend = false;
 		}
 
-		
-		public void resetTo(long tick) {
+		public void resetTo(long tick, boolean loop) {
 			reset();
 		}
 
-		
 		public boolean trackEnd() {
 			return trackend;
 		}
 
-		
 		public void setMute(boolean b) {
 			mute = b;
 		}
 
-		
 		public boolean isMuted() {
 			return mute;
+		}
+		
+		public void clearPlaybackResources(){
+			if(events != null){
+				for(List<MidiMessage> l : events.values()){
+					l.clear();
+				}
+				events.clear();
+			}
 		}
 		
 	}
@@ -253,6 +258,13 @@ public class SystemSeqpPlayer extends SystemSeqPlayer{
 	public boolean done(){
 		//TODO
 		return false;
+	}
+
+
+	@Override
+	public void removeListener(Object o) {
+		// TODO Auto-generated method stub
+		
 	}
 
 

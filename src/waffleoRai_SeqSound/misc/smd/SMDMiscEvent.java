@@ -67,6 +67,23 @@ public class SMDMiscEvent implements SMDEvent{
 
 	public void execute(SMDTrack t) {if(callback == null) return; callback.execute(t);}
 	
+	/*--- Misc. ---*/
+	
+	public byte[] serializeMe(){
+		int pcount = 0;
+		if(parameters != null) pcount = parameters.length;
+		byte[] b = new byte[pcount+1];
+		
+		b[0] = (byte)type.getOpCode();
+		if(parameters != null){
+			for(int i = 0; i < pcount; i++){
+				b[i+1] = (byte)parameters[i];
+			}
+		}
+		
+		return b;
+	}
+	
 	/*--- Callbacks ---*/
 	
 	private static interface MiscEventCallback{

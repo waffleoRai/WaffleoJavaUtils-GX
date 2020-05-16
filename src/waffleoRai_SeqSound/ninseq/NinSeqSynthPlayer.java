@@ -79,7 +79,7 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 			if(track.loopedOnLastTick()) incrementLoopNumber();
 		}
 
-		public void resetTo(long tick) {
+		public void resetTo(long tick, boolean loop) {
 			//I'm feeling lazy - maybe I'll fill this in proper later...
 			track.rewind();
 		}
@@ -94,6 +94,10 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 
 		public boolean isMuted() {
 			return track.getInternalMute();
+		}
+		
+		public void clearPlaybackResources(){
+			track.gc();
 		}
 		
 	}

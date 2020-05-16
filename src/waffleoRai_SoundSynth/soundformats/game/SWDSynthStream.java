@@ -114,14 +114,14 @@ public class SWDSynthStream extends SynthSampleStream{
 		osc_pan.clear();
 		osc_pitch.clear();
 		
-		/*List<SWDOscillator> olist = prog.getOscillators();
+		List<SWDOscillator> olist = prog.getOscillators();
 		if(olist != null){
 			for(SWDOscillator o : olist){
 				if(o.getDestination() == SWD.OSC_DEST_VOLUME) osc_vol.add(o.spawnOscillator(sampleRate));
 				else if(o.getDestination() == SWD.OSC_DEST_PAN) osc_pan.add(o.spawnOscillator(sampleRate));
 				else if(o.getDestination() == SWD.OSC_DEST_PITCH) osc_pitch.add(o.spawnOscillator(sampleRate));
 			}
-		}*/
+		}
 		
 		pan_p = prog.getPan();
 		pan_r = reg.getPan();

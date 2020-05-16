@@ -23,6 +23,7 @@ import waffleoRai_soundbank.SimpleInstrument;
 import waffleoRai_soundbank.SimplePreset;
 import waffleoRai_soundbank.SingleBank;
 import waffleoRai_soundbank.SoundbankDef;
+import waffleoRai_soundbank.SoundbankNode;
 import waffleoRai_soundbank.sf2.SF2;
 
 //Thank you extremely specific PMD2 modding community!
@@ -393,6 +394,38 @@ public class SWD implements SynthBank{
 	public boolean hasSoundData(){return sounds != null;}
 	public boolean hasArticulationData(){return programs != null;}
 	
+	public int countWaveSlots(){
+		if(sounds == null) return 0;
+		return sounds.length;
+	}
+	
+	public SWDWave getWave(int idx){
+		if(sounds == null) return null;
+		if(idx < 0 || idx >= sounds.length) return null;
+		return sounds[idx];
+	}
+	
+	public SoundbankNode getSoundbankTree(){
+		SoundbankNode root = new SoundbankNode(null, fname, SoundbankNode.NODETYPE_BANK);
+		
+		if(programs != null){
+			for(int i = 0; i < programs.length; i++){
+				if(programs[i] != null) programs[i].toSoundbankNode(root);
+			}
+		}
+		
+		return root;
+	}
+	
+	public List<Integer> getUsablePrograms(){
+		List<Integer> list = new LinkedList<Integer>();
+		if(programs == null) return list;
+		for(int i = 0; i < programs.length; i++){
+			if(programs[i] != null) list.add(i);
+		}
+		return list;
+	}
+	
 	/*----- Setters -----*/
 	
 	public void setName(String s){fname = s;}
@@ -690,6 +723,48 @@ public class SWD implements SynthBank{
 			
 		//Load the data
 		return loadSoundDataFrom(SWD.readSWD(pnode.loadDecompressedData(), 0));
+	}
+	
+	public static SWD loadSMDPartner(FileNode smd) throws UnsupportedFileTypeException, IOException{
+		
+		//Check to see if partner is already linked...
+		FileNode swdnode = null;
+		String bpath = smd.getMetadataValue(FNMETAKEY_SMDPATH);
+		if(bpath != null){
+			swdnode = smd.getParent().getNodeAt(bpath);
+		}
+		
+		if(swdnode == null){
+			//Path didn't work or there was no path
+			//Look for a bank UID
+			String buid = smd.getMetadataValue(FNMETAKEY_SMDBANK);
+			if(buid != null){
+				bpath = findBankWithUID(buid, smd);
+				if(bpath != null){
+					smd.setMetadataValue(FNMETAKEY_SMDPATH, bpath);
+					swdnode = smd.getParent().getNodeAt(bpath);
+				}
+			}
+		}
+		
+		//If that didn't work, try finding an swd in the same dir with the same file name
+		if(swdnode == null){
+			bpath = findSMDPartner(smd);
+			if(bpath != null){
+				partnerSMD(smd, bpath);
+				swdnode = smd.getParent().getNodeAt(bpath);
+			}
+		}
+		
+		//If that still didn't work, will have to be assigned manually.
+		if(swdnode != null){
+			//But if it did, we can load it.
+			SWD swd = SWD.readSWD(swdnode.loadDecompressedData(), 0);
+			swd.loadPartnerSWD(swdnode);
+			return swd;
+		}
+		
+		return null;
 	}
 	
 	/*----- Definition -----*/

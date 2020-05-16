@@ -2,6 +2,7 @@ package waffleoRai_soundbank.procyon;
 
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_soundbank.Region;
+import waffleoRai_soundbank.SoundbankNode;
 import waffleoRai_soundbank.adsr.Attack;
 import waffleoRai_soundbank.adsr.Decay;
 import waffleoRai_soundbank.adsr.Release;
@@ -196,6 +197,31 @@ public class SWDRegion {
 		r.setSustain(getSustain());
 		r.setRelease(getRelease());
 		r.setHold(getHold());
+	}
+	
+	public void toSoundbankNode(SoundbankNode parent){
+		SoundbankNode reg = new SoundbankNode(parent, "SWDREG_" + String.format("%03d", index), SoundbankNode.NODETYPE_TONE);
+		
+		reg.addMetadataEntry("Bend Range", bendRange + " semitones");
+		reg.addMetadataEntry("Key Range", minKey + " - " + maxKey);
+		reg.addMetadataEntry("Velocity Range", minVel + " - " + maxVel);
+		reg.addMetadataEntry("WAVI Index", Integer.toString(wavi_idx));
+		reg.addMetadataEntry("Root Key", Integer.toString(unityKey));
+		reg.addMetadataEntry("Volume", Integer.toString(volume));
+		reg.addMetadataEntry("Pan", String.format("0x%02x", pan));
+		reg.addMetadataEntry("Keygroup", Integer.toString(keygroup));
+		
+		if(envFlag)reg.addMetadataEntry("Env Flag", "Set");
+		else reg.addMetadataEntry("Env Flag", "Unset");
+		
+		reg.addMetadataEntry("Envelope Multiplier", Integer.toString(envMult));
+		reg.addMetadataEntry("Attack Level", "0x" + String.format("%02x", this.attVol));
+		reg.addMetadataEntry("Attack", "0x" + String.format("%02x", att) + " (" + getAttack().getTime() + " ms)");
+		reg.addMetadataEntry("Decay", "0x" + String.format("%02x", dec) + " (" + getDecay().getTime() + " ms)");
+		reg.addMetadataEntry("Hold", "0x" + String.format("%02x", hold) + " (" + getHold() + " ms)");
+		reg.addMetadataEntry("Sustain", "0x" + String.format("%02x", this.sus));
+		reg.addMetadataEntry("Release", "0x" + String.format("%02x", rel) + " (" + getRelease().getTime() + " ms)");
+		reg.addMetadataEntry("Archdecay", "0x" + String.format("%02x", this.dec2));
 	}
 	
 	/*----- Debug -----*/

@@ -48,4 +48,29 @@ public class SMDDeltaTimeEvent implements SMDEvent{
 		return "DELTA_TIME: " + delayTime + " ticks";
 	}
 
+	public byte[] serializeMe(){
+		byte[] b = new byte[1];
+		
+		switch(delayTime){
+		case 2: b[0] = (byte)0x8F; break;
+		case 3: b[0] = (byte)0x8E; break;
+		case 4: b[0] = (byte)0x8D; break;
+		case 6: b[0] = (byte)0x8C; break;
+		case 8: b[0] = (byte)0x8B; break;
+		case 9: b[0] = (byte)0x8A; break;
+		case 12: b[0] = (byte)0x89; break;
+		case 16: b[0] = (byte)0x88; break;
+		case 18: b[0] = (byte)0x87; break;
+		case 24: b[0] = (byte)0x86; break;
+		case 32: b[0] = (byte)0x85; break;
+		case 36: b[0] = (byte)0x84; break;
+		case 48: b[0] = (byte)0x83; break;
+		case 64: b[0] = (byte)0x82; break;
+		case 72: b[0] = (byte)0x81; break;
+		case 96: b[0] = (byte)0x80; break;
+		}
+		
+		return b;
+	}
+	
 }

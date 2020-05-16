@@ -3,11 +3,12 @@ package waffleoRai_SeqSound.misc.smd;
 import javax.sound.sampled.SourceDataLine;
 
 import waffleoRai_SeqSound.misc.SMD;
+import waffleoRai_Sound.nintendo.NinSound;
 import waffleoRai_SoundSynth.PlayerTrack;
 import waffleoRai_SoundSynth.SequencePlayer;
+import waffleoRai_SoundSynth.SynthBank;
 import waffleoRai_SoundSynth.SynthChannel;
 import waffleoRai_SoundSynth.SynthProgram;
-import waffleoRai_soundbank.procyon.SWD;
 
 /*
  * UPDATES
@@ -32,15 +33,16 @@ import waffleoRai_soundbank.procyon.SWD;
  */
 public class SMDPlayer extends SequencePlayer{
 	
-	public static final int SAMPLE_RATE = 44100;
+	public static final int SAMPLE_RATE = NinSound.SAMPLERATE_DS;
 	public static final int BIT_DEPTH = 16;
 	
 	private SMD sequence;
-	private SWD bank;
+	//private SWD bank;
+	private SynthBank bank;
 	
 	private SMDSynthChannel[] smd_ch;
 	
-	public SMDPlayer(SMD seq, SWD bnk){
+	public SMDPlayer(SMD seq, SynthBank bnk){
 		super.setTickResolution(seq.getTicksPerQuartNote());
 		
 		sequence = seq;

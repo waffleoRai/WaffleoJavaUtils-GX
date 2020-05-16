@@ -252,7 +252,7 @@ public class SeqpPlayer extends SequencePlayer{
 			trackend = false;
 		}
 	
-		public void resetTo(long tick) {
+		public void resetTo(long tic, boolean loop) {
 			trackend = false;
 		}
 
@@ -266,6 +266,15 @@ public class SeqpPlayer extends SequencePlayer{
 
 		public boolean isMuted() {
 			return muted;
+		}
+		
+		public void clearPlaybackResources(){
+			if(events != null){
+				for(List<MidiMessage> l : events.values()){
+					l.clear();
+				}
+				events.clear();
+			}
 		}
 		
 	}

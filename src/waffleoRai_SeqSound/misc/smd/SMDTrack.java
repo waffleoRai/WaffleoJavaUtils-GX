@@ -50,7 +50,6 @@ public class SMDTrack implements PlayerTrack{
 	public void setChannelID(int cID){this.chanID = cID;}
 	public void setPlayer(SMDPlayer p){player = p; mapEvents();}
 	
-	
 	/*--- Player Init ---*/
 	
 	private void mapEvents(){
@@ -144,10 +143,11 @@ public class SMDTrack implements PlayerTrack{
 		//System.err.println("\t-->Tick Done!");
 	}
 	
-	public void resetTo(long tick){
+	public void resetTo(long tick, boolean loop){
 		mytick = tick;
 		track_end = false; 
-		if(active_notes != null) active_notes.clear();
+		if(!loop)active_notes.clear();
+		//if(active_notes != null) active_notes.clear();
 	}
 	
 	public boolean trackEnd(){return track_end;}
@@ -162,6 +162,10 @@ public class SMDTrack implements PlayerTrack{
 		tickmap.clear(); tickmap = null;
 		muted = false; track_end = false;
 		active_notes.clear(); active_notes = null;
+	}
+	
+	public void clearPlaybackResources(){
+		gc();
 	}
 	
 	/*--- Commands ---*/

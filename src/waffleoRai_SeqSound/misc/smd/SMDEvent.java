@@ -9,5 +9,7 @@ public interface SMDEvent {
 	
 	public long getWait();
 	public void execute(SMDTrack t) throws InterruptedException;
+	
+	public byte[] serializeMe();
 
 }

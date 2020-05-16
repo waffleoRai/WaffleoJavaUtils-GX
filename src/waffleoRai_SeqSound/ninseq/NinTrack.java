@@ -142,6 +142,10 @@ public class NinTrack
 		loopStartHit = false;
 	}
 	
+	public void gc(){
+		resetDefaults();
+	}
+	
 	/* ----- Getters ----- */
 	
 	public int getTrackIndex()

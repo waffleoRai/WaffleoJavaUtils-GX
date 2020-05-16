@@ -18,6 +18,8 @@ public class NinSound {
 	public static final int NOTEOFF_TYPE_RELEASE = 0;
 	public static final int NOTEOFF_TYPE_IGNORE = 1;
 	
+	public static final int SAMPLERATE_DS = 32768;
+	
 	//For DS (At least?) From VGMTrans NDSInstrSet.h
 	public static final int[] IMA_ADPCM_TABLE =
 	    {

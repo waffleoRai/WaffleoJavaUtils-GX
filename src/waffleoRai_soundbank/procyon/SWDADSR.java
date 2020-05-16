@@ -84,6 +84,7 @@ public class SWDADSR {
 	public static Attack getAttack(byte att_lvl, byte att_val, byte envmult){
 		int ms = getDuration_ms(att_val, envmult);
 		double lvl = (double)att_lvl/127.0;
+		if(ms == 0) ms = 1;
 		
 		Attack att = new Attack(ms, ADSRMode.LINEAR_DB); //Dunno the mode
 		att.setStartLevel(lvl);
@@ -93,6 +94,7 @@ public class SWDADSR {
 	
 	public static Decay getDecay(byte dec_val, byte envmult){
 		int ms = getDuration_ms(dec_val, envmult);
+		if(ms == 0) ms = 1;
 		
 		Decay d = new Decay(ms, ADSRMode.LINEAR_DB); //Dunno the mode
 
@@ -107,6 +109,7 @@ public class SWDADSR {
 	
 	public static Release getRelease(byte rel_val, byte envmult){
 		int ms = getDuration_ms(rel_val, envmult);
+		if(ms == 0) ms = 1;
 		
 		Release r = new Release(ms, ADSRMode.LINEAR_DB); //Dunno the mode
 

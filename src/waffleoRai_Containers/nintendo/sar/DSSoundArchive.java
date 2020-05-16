@@ -257,7 +257,8 @@ public class DSSoundArchive extends NDKDSFile{
 						if(iptr == 0) continue;
 						subnames[j] = symb.getASCII_string(iptr, '\0');
 					}
-					seqarc_names.set(i, subnames);
+					//seqarc_names.set(i, subnames);
+					seqarc_names.add(subnames);
 				}
 				namemap.put("SEQARC", arr);	
 			}

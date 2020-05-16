@@ -13,6 +13,7 @@ import waffleoRai_SoundSynth.soundformats.game.SWDSynthStream;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_soundbank.Region;
 import waffleoRai_soundbank.SimpleInstrument;
+import waffleoRai_soundbank.SoundbankNode;
 
 //Toss osc if destination is none!
 
@@ -92,6 +93,21 @@ public class SWDProgram implements SynthProgram{
 		}
 		
 		return list;
+	}
+	
+	public void toSoundbankNode(SoundbankNode parent){
+		SoundbankNode me = new SoundbankNode(parent, "SWDPROG_" + String.format("%03d", index), SoundbankNode.NODETYPE_PROGRAM);
+		
+		if(regions != null){
+			for(int i = 0; i < regions.length; i++){
+				if(regions[i] != null) regions[i].toSoundbankNode(me);
+			}
+		}
+		
+		me.addMetadataEntry("Volume", Integer.toString(volume));
+		me.addMetadataEntry("Pan", String.format("0x%02x", pan));
+		
+		//TODO maybe osc too
 	}
 	
 	/*----- Setters -----*/

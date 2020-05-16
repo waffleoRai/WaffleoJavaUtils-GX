@@ -60,4 +60,36 @@ public class SMDNoteEvent implements SMDEvent{
 		return "PLAY_NOTE: " + note + " oct " + octaveChange + " at v" + velocity + " for " + length;
 	}
 
+	public byte[] serializeMe(){
+
+		int blen = getByteLength();
+		byte[] b = new byte[blen];
+		b[0] = (byte)velocity;
+		int keyflag = 0;
+		switch(lBytes){
+		case 1: keyflag = 0x40; break;
+		case 2: keyflag = 0x80; break;
+		case 3: keyflag = 0xC0; break;
+		}
+		int oshift = octaveChange + 2;
+		keyflag |= (oshift & 0x3) << 4; 
+		keyflag |= (note & 0xF);
+		b[1] = (byte)keyflag;
+		
+		switch(lBytes){
+		case 1: b[2] = (byte)length; break;
+		case 2:
+			b[2] = (byte)((length >>> 8) & 0xFF);
+			b[3] = (byte)(length & 0xFF);
+			break;
+		case 3:
+			b[2] = (byte)((length >>> 16) & 0xFF);
+			b[3] = (byte)((length >>> 8) & 0xFF);
+			b[4] = (byte)(length & 0xFF);
+			break;
+		}
+		
+		return b;
+	}
+	
 }
