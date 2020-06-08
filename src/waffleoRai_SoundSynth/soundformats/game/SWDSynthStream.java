@@ -18,6 +18,8 @@ import waffleoRai_soundbank.procyon.SWDOscillator;
 import waffleoRai_soundbank.procyon.SWDProgram;
 import waffleoRai_soundbank.procyon.SWDRegion;
 
+//Pitch osc withheld for now - sound dreadful due to how interpolator functions
+
 public class SWDSynthStream extends SynthSampleStream{
 
 	/*----- Constants -----*/
@@ -27,6 +29,8 @@ public class SWDSynthStream extends SynthSampleStream{
 	public static final int ADSR_PHASE_DECAY = 2;
 	public static final int ADSR_PHASE_SUSTAIN = 3;
 	public static final int ADSR_PHASE_RELEASE = 4;
+	
+	public static final double PITCH_OSC_MAX = 100;
 	
 	/*----- InstanceVariables -----*/
 	
@@ -67,6 +71,10 @@ public class SWDSynthStream extends SynthSampleStream{
 	private int hold_remain; //Samples
 	private double sl;
 	private boolean rel_end;
+	
+	private int pitch_osc_ctr;
+	
+	//private boolean debugtag;
 	
 	/*----- Construction -----*/
 	
@@ -119,7 +127,7 @@ public class SWDSynthStream extends SynthSampleStream{
 			for(SWDOscillator o : olist){
 				if(o.getDestination() == SWD.OSC_DEST_VOLUME) osc_vol.add(o.spawnOscillator(sampleRate));
 				else if(o.getDestination() == SWD.OSC_DEST_PAN) osc_pan.add(o.spawnOscillator(sampleRate));
-				else if(o.getDestination() == SWD.OSC_DEST_PITCH) osc_pitch.add(o.spawnOscillator(sampleRate));
+				//else if(o.getDestination() == SWD.OSC_DEST_PITCH) osc_pitch.add(o.spawnOscillator(sampleRate));
 			}
 		}
 		
@@ -196,9 +204,13 @@ public class SWDSynthStream extends SynthSampleStream{
 	
 	private void updateNetVolume(boolean includeOsc){
 		volume = vol_ch * vol_p * vol_r * vol_v;
+		/*if(debug_tag >= 0){
+			System.err.println("Volume: " + vol_ch + " * " + vol_p + " * " + vol_r + " * " + vol_v + " = " + volume);
+		}*/
 		if(includeOsc){
 			for(Oscillator o : osc_vol){
 				double amt = o.getNextValue() * volume;
+				//System.err.println("amt = " + amt);
 				volume += amt;
 				if(volume < 0.0) volume = 0.0;
 				else if (volume > 1.0) volume = 1.0;
@@ -237,6 +249,7 @@ public class SWDSynthStream extends SynthSampleStream{
 		int diff = played - unitykey;
 		diff += tune;
 		diff += pitchbend;
+		//System.err.println("Pitch Bend: " + pitchbend + " cents");
 		return diff;
 	}
 
@@ -247,7 +260,8 @@ public class SWDSynthStream extends SynthSampleStream{
 		//LFOs
 		if(includeOsc){
 			for(Oscillator o : osc_pitch){
-				cents += (int)Math.round(1200.0 * o.getNextValue());
+				double val = o.getNextValue();
+				cents += (int)Math.round(PITCH_OSC_MAX * val);
 			}
 		}
 		interpolator.setPitchShift(cents);
@@ -265,10 +279,12 @@ public class SWDSynthStream extends SynthSampleStream{
 		double wheel = (double)Math.abs(lvl);
 		pitchbend = (int)Math.round((wheel/(double)0x7FFF) * maxcents);
 		if(lvl < 0) pitchbend *= -1;
+		//System.err.println("Pitch bend set: " + pitchbend + " cents");
 		updatePitch(false);
 	}
 	
 	public void setPitchBendDirect(int cents){
+		//System.err.println("Pitch bend set: " + cents + " cents");
 		int abcents = Math.abs(cents);
 		if(abcents > this.max_pb){
 			max_pb = abcents;
@@ -388,7 +404,15 @@ public class SWDSynthStream extends SynthSampleStream{
 		if(rel_end) return new int[ccount];
 
 		//Get interpolated sample
-		if(!osc_pitch.isEmpty()) updatePitch(true);
+		if(!osc_pitch.isEmpty()){
+			if(pitch_osc_ctr++ < 10){
+				for(Oscillator o : osc_pitch) o.getNextValue();
+			}
+			else{
+				updatePitch(true);
+				pitch_osc_ctr = 0;
+			}
+		}
 		raw = interpolator.nextSample();
 		if(raw == null) return new int[ccount];
 		
@@ -412,7 +436,6 @@ public class SWDSynthStream extends SynthSampleStream{
 	@Override
 	public void close() {
 		// TODO Auto-generated method stub
-		
 	}
 
 	

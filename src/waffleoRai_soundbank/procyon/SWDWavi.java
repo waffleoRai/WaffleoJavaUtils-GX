@@ -134,7 +134,7 @@ public class SWDWavi {
 	
 	public Sustain getSustain(){
 		if(s != null) return s;
-		s = SWDADSR.getSustain(sus);
+		s = SWDADSR.getSustain(sus, dec2, envMult);
 		return s;
 	}
 	

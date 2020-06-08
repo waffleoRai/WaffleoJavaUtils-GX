@@ -58,10 +58,13 @@ public class SMDPlayer extends SequencePlayer{
 		int tcount = sequence.getNumberTracks();
 		tracks = new PlayerTrack[tcount];
 		for(int i = 0; i < tcount; i++){
-			//if(i != 0 && i != 1) continue; //DEBUG
+			//if(i != 0 && i != 3) continue; //DEBUG
 			SMDTrack t = sequence.getTrack(i);
 			tracks[i] = t;
-			if(t != null) t.setPlayer(this);
+			if(t != null){
+				t.setPlayer(this);
+				t.linkChannel(smd_ch[t.getChannelID()]);
+			}
 		}
 	}
 
@@ -79,9 +82,10 @@ public class SMDPlayer extends SequencePlayer{
 	}
 
 	protected void putNextSample(SourceDataLine target) throws InterruptedException {
-		//System.err.println("Hi!");
+		//System.err.println("put sample cycle - start");
 		int[] samps = this.nextSample();
 		
+		//System.err.println("put sample cycle - sample retrieved");
 		if(samps == null) return;
 		int bcount = samps.length << 1;
 		byte[] bytes = new byte[bcount];
@@ -91,7 +95,9 @@ public class SMDPlayer extends SequencePlayer{
 			bytes[i++] = (byte)((samps[c] >>> 8) & 0xFF);
 		}
 		
+		//System.err.println("put sample cycle - write to line");
 		target.write(bytes, 0, bcount);
+		//System.err.println("put sample cycle - end");
 	}
 	
 	/**

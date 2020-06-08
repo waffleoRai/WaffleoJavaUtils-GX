@@ -221,6 +221,13 @@ import waffleoRai_soundbank.sf2.SF2;
  * EOD magic number denotes end of file
  */
 
+/*
+ * So a note about SWD regions.
+ * There are songs that'll play notes that have no region assigned.
+ * I don't know what the deal is, but my quick fix is going to be to 
+ * assign those notes, if played, to the nearest region.
+ */
+
 public class SWD implements SynthBank{
 	
 	/*----- Constants -----*/
@@ -486,8 +493,10 @@ public class SWD implements SynthBank{
 		//Delink and clear all programs
 		if(programs != null){
 			for(int i = 0; i < programs.length; i++){
-				programs[i].clearSoundMapLink();
-				programs[i].clearCache();
+				if(programs[i] != null){
+					programs[i].clearSoundMapLink();
+					programs[i].clearCache();	
+				}
 			}	
 		}
 		

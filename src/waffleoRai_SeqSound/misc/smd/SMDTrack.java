@@ -47,8 +47,14 @@ public class SMDTrack implements PlayerTrack{
 	
 	public void addEvent(SMDEvent e){eventList.add(e);}
 	public void setTrackID(int tID){this.trackID = tID;}
-	public void setChannelID(int cID){this.chanID = cID;}
+	
+	public void setChannelID(int cID){
+		this.chanID = cID; 
+		//System.err.println("Track " + trackID + "-- Channel: " + chanID);
+	}
+	
 	public void setPlayer(SMDPlayer p){player = p; mapEvents();}
+	public void linkChannel(SMDSynthChannel c){c.linkListenerTrack(this);}
 	
 	/*--- Player Init ---*/
 	
@@ -169,6 +175,15 @@ public class SMDTrack implements PlayerTrack{
 	}
 	
 	/*--- Commands ---*/
+	
+	protected void onNoteReplaced(long noteuid){
+		//called by synth channel if channel has received a note on
+		//command for a note that is already on - thus the note that
+		//WAS on, has been terminated.
+		
+		//Check to see if this track has a note with that UID
+		active_notes.remove(noteuid);
+	}
 
 	public void smdNoteOn(int oct_rel, int note_rel, int velocity, int len) throws InterruptedException{
 		if(player == null) return;

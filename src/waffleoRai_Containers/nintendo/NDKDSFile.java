@@ -21,15 +21,18 @@ public class NDKDSFile extends NDKFile{
 	protected boolean readHeader(boolean hasTbl)
 	{
 		if(data == null) return false;
-		data.setEndian(true);
+		data.setEndian(false);
 		long cpos = 0;
 		String fileid = data.getASCII_string(cpos, 4); cpos += 4;
 		//System.err.println("Magic: " + fileid);
 		
-		//Byte order mark
+		//Byte order mark 
+		/*
 		int bom = Short.toUnsignedInt(data.shortFromFile(cpos)); cpos += 2;
 		if(bom == 0xFEFF) data.setEndian(true);
-		else data.setEndian(false);
+		else data.setEndian(false);*/
+		//We are now skipping the BOM because NARCs have backwards BOMs for some reason.
+		cpos+=2;
 		//System.err.println("Big Endian: " + data.isBigEndian());
 		
 		int ver_minor = 0;

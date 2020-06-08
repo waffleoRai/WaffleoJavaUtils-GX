@@ -10,6 +10,16 @@ import waffleoRai_Utils.FileBuffer;
 
 public class NDSGraphics {
 	
+	public static final String METAKEY_PALETTEID = "PLTUID"; //UID of Palette linked - stored in metadata of a NSCR
+	public static final String METAKEY_NCLRID = "NCLRID"; //UID of a NCLR file - stored in metadata of NCLR
+	
+	public static final String METAKEY_PLTLINK = "PLTLINK"; //Path to linked Palette - stored in metadata of a NSCR
+	//public static final String METAKEY_PLTIDX = "NCLRIDX"; 
+	
+	public static final String METAKEY_TLELINK = "TLELINK"; //Path to linked tile set - stored in metadata of NSCR
+	public static final String METAKEY_TLEUID = "TLEUID"; //UID of linked tile set - stored in metadata of NSCR
+	public static final String METAKEY_NCGRID = "NCGRID"; //UID of a NCGR file - stored in metadata of NCGR
+	
 	public static Palette readPalette(FileBuffer in, long stpos, boolean color256)
 	{
 		long cpos = stpos;

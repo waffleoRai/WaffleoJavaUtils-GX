@@ -164,7 +164,7 @@ public class SWDRegion {
 	
 	public Sustain getSustain(){
 		if(s != null) return s;
-		s = SWDADSR.getSustain(sus);
+		s = SWDADSR.getSustain(sus, dec2, envMult);
 		return s;
 	}
 	
@@ -219,9 +219,12 @@ public class SWDRegion {
 		reg.addMetadataEntry("Attack", "0x" + String.format("%02x", att) + " (" + getAttack().getTime() + " ms)");
 		reg.addMetadataEntry("Decay", "0x" + String.format("%02x", dec) + " (" + getDecay().getTime() + " ms)");
 		reg.addMetadataEntry("Hold", "0x" + String.format("%02x", hold) + " (" + getHold() + " ms)");
-		reg.addMetadataEntry("Sustain", "0x" + String.format("%02x", this.sus));
+		reg.addMetadataEntry("Sustain Level", "0x" + String.format("%02x", this.sus));
 		reg.addMetadataEntry("Release", "0x" + String.format("%02x", rel) + " (" + getRelease().getTime() + " ms)");
-		reg.addMetadataEntry("Archdecay", "0x" + String.format("%02x", this.dec2));
+		//reg.addMetadataEntry("Archdecay", "0x" + String.format("%02x", this.dec2));
+		if(dec2 != 0x7F){
+			reg.addMetadataEntry("Sustain Time", "0x" + String.format("%02x", this.dec2) + " (" + getSustain().getTime() + " ms)");
+		}
 	}
 	
 	/*----- Debug -----*/

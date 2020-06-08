@@ -10,6 +10,8 @@ import waffleoRai_soundbank.adsr.Sustain;
 
 public class SWDADSR {
 	
+	public static final int LINEAR_ENV_DIV_FACTOR = 2;
+	
 	public static final int[] TABLE_16 = {
 			0x0000, 0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006, 0x0007, 
 			0x0008, 0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x000E, 0x000F, 
@@ -75,8 +77,9 @@ public class SWDADSR {
 			else{
 				val = TABLE_32[raw];
 			}
-			val *= 1000;
-			val /= 10000;
+			//val *= 1000;
+			//val /= 10000;
+			//val *= 2;
 			return val;
 		}
 	}
@@ -86,7 +89,7 @@ public class SWDADSR {
 		double lvl = (double)att_lvl/127.0;
 		if(ms == 0) ms = 1;
 		
-		Attack att = new Attack(ms, ADSRMode.LINEAR_DB); //Dunno the mode
+		Attack att = new Attack(ms/LINEAR_ENV_DIV_FACTOR, ADSRMode.LINEAR_ENVELOPE); //Dunno the mode
 		att.setStartLevel(lvl);
 		
 		return att;
@@ -96,14 +99,19 @@ public class SWDADSR {
 		int ms = getDuration_ms(dec_val, envmult);
 		if(ms == 0) ms = 1;
 		
-		Decay d = new Decay(ms, ADSRMode.LINEAR_DB); //Dunno the mode
+		Decay d = new Decay(ms/LINEAR_ENV_DIV_FACTOR, ADSRMode.LINEAR_ENVELOPE); //Dunno the mode
 
 		return d;
 	}
 	
-	public static Sustain getSustain(byte suslev){
+	public static Sustain getSustain(byte suslev, byte dec2, byte envmult){
 		double lvl = (double)suslev/127.0;
-		Sustain s = new Sustain((int)Math.round(lvl * (double)0x7FFFFFFF));
+		int slvl = (int)Math.round(lvl * (double)0x7FFFFFFF);
+		if(dec2 == 0x7F){
+			return new Sustain(slvl);
+		}
+		int ms = getDuration_ms(dec2, envmult);
+		Sustain s = new Sustain(slvl, false, ms/LINEAR_ENV_DIV_FACTOR, ADSRMode.LINEAR_ENVELOPE);
 		return s;
 	}
 	
@@ -111,8 +119,8 @@ public class SWDADSR {
 		int ms = getDuration_ms(rel_val, envmult);
 		if(ms == 0) ms = 1;
 		
-		Release r = new Release(ms, ADSRMode.LINEAR_DB); //Dunno the mode
-
+		Release r = new Release(ms/LINEAR_ENV_DIV_FACTOR, ADSRMode.LINEAR_ENVELOPE); //Dunno the mode
+		
 		return r;
 	}
 

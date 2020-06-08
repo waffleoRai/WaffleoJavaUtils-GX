@@ -149,23 +149,35 @@ public class SMDMiscEvent implements SMDEvent{
 		public void execute(SMDTrack t) {
 			int val = parameters[0] & 0xFF;
 			val |= (parameters[1] & 0xFF) << 8;
+			val = (int)((short)val);
 			t.setPitchWheel(val);
 		}
 		
 	}
 	
 	public String toString(){
+		int amt = 0;
+		if(parameters != null && parameters.length >= 1) amt = parameters[0];
 		switch(type){
 		case LOOP_POINT: return "LOOP_POINT";
-		case SET_BEND: return "PITCH_BEND: " + parameters[0];
-		case SET_MODU: return "SET_MOD: " + parameters[0];
-		case SET_OCTAVE: return "SET_OCTAVE: " + parameters[0];
-		case SET_PAN: return "SET_PAN: " + String.format("0x%02x", parameters[0]);
-		case SET_SAMPLE: return "CHANGE_PROGRAM: " + parameters[0];
-		case SET_TEMPO: return "CHANGE_TEMPO: " + parameters[0] + " bpm";
-		case SET_VOLUME: return "SET_VOLUME: " + parameters[0];
-		case SET_XPRESS: return "SET_EXPRESSION: " + parameters[0];
+		case SET_BEND: 
+			//amt = amt << 8;
+			//amt |= (parameters[1] & 0xFF);
+			amt |= ((parameters[1] & 0xFF) << 8);
+			amt = (int)((short)amt);
+			return "PITCH_BEND: " + amt + " cents";
+		case SET_MODU: return "SET_MOD: " + amt;
+		case SET_OCTAVE: return "SET_OCTAVE: " + amt;
+		case SET_PAN: return "SET_PAN: " + String.format("0x%02x", amt);
+		case SET_SAMPLE: return "CHANGE_PROGRAM: " + amt;
+		case SET_TEMPO: return "CHANGE_TEMPO: " + amt + " bpm";
+		case SET_VOLUME: return "SET_VOLUME: " + amt;
+		case SET_XPRESS: return "SET_EXPRESSION: " + amt;
 		case TRACK_END: return "TRACK_END";
+		case WAIT_1BYTE: return "WAIT_1BYTE: " + amt + " ticks";
+		case WAIT_2BYTE: 
+			amt |= ((parameters[1] & 0xFF) << 8);
+			return "WAIT_2BYTE: " + amt + " ticks";
 		default: return type.name();
 		}
 	}

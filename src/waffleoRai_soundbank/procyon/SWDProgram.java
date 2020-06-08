@@ -137,6 +137,8 @@ public class SWDProgram implements SynthProgram{
 		//System.err.println("SWDProgram.initializeCache || Cache allocated");
 		
 		if(regions == null) return;
+		byte bot = 127;
+		byte top = 0;
 		for(int i = 0; i < regions.length; i++){
 			//System.err.println("SWDProgram.initializeCache || Mapping region " + i);
 			if(regions[i] != null){
@@ -144,6 +146,8 @@ public class SWDProgram implements SynthProgram{
 				byte maxk = regions[i].getMaxKey();
 				byte minv = regions[i].getMinVelocity();
 				byte maxv = regions[i].getMaxVelocity();
+				if(mink < bot) bot = mink;
+				if(maxk > top) top = maxk;
 				//System.err.println("SWDProgram.initializeCache || Region " + i + " key range: " + mink + " - " + maxk);
 				//System.err.println("SWDProgram.initializeCache || Region " + i + " vel range: " + minv + " - " + maxv);
 				for(int k = mink; k <= maxk; k++){
@@ -162,20 +166,81 @@ public class SWDProgram implements SynthProgram{
 				}
 			}
 		}
+		
+		if(bot > 0){
+			//Map lowest key to all keys lower
+			Map<Byte, SWDRegion> kmap = regcache.get(bot);
+			for(int k = 0; k < bot; k++){
+				regcache.put((byte)k, kmap);
+			}
+		}
+		if(top < 127){
+			//Map lowest key to all keys lower
+			Map<Byte, SWDRegion> kmap = regcache.get(top);
+			for(int k = top + 1; k < 128; k++){
+				regcache.put((byte)k, kmap);
+			}
+		}
+		
 	}
 	
 	private SWDRegion getRegion(byte key, byte vel){
 		//System.err.println("SWDProgram.getRegion || Called!");
+		//if(index == 61) System.err.println("SWDProgram.getRegion || Called!");
 		if(regcache == null) initializeCache();
 		//System.err.println("SWDProgram.getRegion || Cache initialized!");
 		
 		Map<Byte, SWDRegion> kmap = regcache.get(key);
 		if(kmap != null){
 			SWDRegion reg = kmap.get(vel);
-			if(reg != null) return reg;
+			if(reg != null){
+				return reg;
+			}
 		}
 		
 		//Cache miss
+		//Find nearest region
+		//1. By key
+		if(kmap == null){
+			int up = key+1;
+			int down = key-1;
+			while((up < 128) || (down > 0)){
+				kmap = regcache.get(up++);
+				if(kmap != null){
+					regcache.put(key, kmap);
+					SWDRegion reg = kmap.get(vel);
+					if(reg != null) return reg;
+				}
+				kmap = regcache.get(down--);
+				if(kmap != null){
+					regcache.put(key, kmap);
+					SWDRegion reg = kmap.get(vel);
+					if(reg != null) return reg;
+				}
+			}
+			
+			
+		}
+		
+		if(kmap != null){
+			//2. By velocity
+			int up = vel+1;
+			int down = vel-1;
+			while((up < 128) || (down > 0)){
+				SWDRegion r = kmap.get(up++);
+				if(r != null){
+					kmap.put(vel, r);
+					return r;
+				}
+				r = kmap.get(down--);
+				if(r != null){
+					kmap.put(vel, r);
+					return r;
+				}
+			}
+		}
+		
+		//System.err.println("SWDProgram.getRegion || Returning null!");
 		return null;
 	}
 
@@ -188,18 +253,26 @@ public class SWDProgram implements SynthProgram{
 			throws InterruptedException {
 
 		//System.err.println("SWDProgram.getSampleStream || Called!");
+		//if(index == 61) System.err.println("SWDProgram.getSampleStream || Called!");
 		SWDRegion reg = getRegion(pitch, velocity);
 		if(reg == null) return null;
 		//System.err.println("SWDProgram.getSampleStream || Region found!");
+		//if(index == 61) System.err.println("SWDProgram.getSampleStream || Region found!");
 		
 		if(sounds == null) return null;
 		AudioSampleStream rawstr = sounds.openSampleStream(reg.getWAVIIndex());
 		//System.err.println("SWDProgram.getSampleStream || Audio stream opened!");
+		//if(index == 61) System.err.println("SWDProgram.getSampleStream || Audio stream opened: rawstr == null? " + (rawstr == null));
 		
 		SWDSynthStream str = new SWDSynthStream(rawstr, targetSampleRate);
 		str.setPlayData(pitch, velocity);
 		str.setArticulationData(reg, this);
 		//System.err.println("SWDProgram.getSampleStream || Synth stream generated!");
+		//if(index == 61) System.err.println("SWDProgram.getSampleStream || Synth stream generated!: str == null? " + (str == null));
+		
+		/*if(index == 64){
+			str.tagMe(true, 64);
+		}*/
 		
 		return str;
 	}
