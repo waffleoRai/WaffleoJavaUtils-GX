@@ -7,7 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedList;
 import java.util.List;
 
 import javax.imageio.ImageIO;
@@ -15,8 +14,15 @@ import javax.imageio.ImageIO;
 import waffleoRai_Containers.nintendo.NDKDSFile;
 import waffleoRai_Files.Converter;
 import waffleoRai_Files.FileClass;
+import waffleoRai_Files.FileTypeNode;
+import waffleoRai_Files.MetaResLinks;
+import waffleoRai_Files.NodeMatchCallback;
 import waffleoRai_Image.Palette;
-import waffleoRai_Image.PalettedImageDef;
+import waffleoRai_Image.PaletteFileDef;
+import waffleoRai_Image.Tile;
+import waffleoRai_Image.Tileset;
+import waffleoRai_Image.TilesetDef;
+import waffleoRai_Image.nintendo.NDSGraphics;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -35,14 +41,7 @@ public class NCGR extends NDKDSFile{
 	
 	/*----- Instance Variables -----*/
 	
-	private boolean bit8;
-	private int tiledim;
-	private int supertile_dim;
-	//private int[][] data; //x,y
-	
-	private DSTile[] tiles;
-	
-	private Palette linked_plt;
+	private Tileset tiles;
 	
 	/*----- Construction -----*/
 	
@@ -58,285 +57,155 @@ public class NCGR extends NDKDSFile{
 		//Read RAHC
 		FileBuffer rahc = me.getSectionData(MAGIC_RAHC);
 		rahc.setCurrentPosition(0x8);
-		me.supertile_dim = rahc.nextShort();
-		int tsize = rahc.nextShort();
+		int w = rahc.nextShort();
+		int h = rahc.nextShort();
 		int bd = rahc.nextInt();
-		me.bit8 = false;
-		if(bd == 4) me.bit8 = true;
-		//me.bit8 = true;
+		
+		boolean bit8 = false;
+		if(bd == 4) bit8 = true;
+
 		int pcount = rahc.intFromFile(0x18);
-		if(!me.bit8)pcount = pcount << 1;
+		if(!bit8)pcount = pcount << 1;
 		rahc.setCurrentPosition(0x20);
 		//System.err.println("Pixel Count: 0x" + Integer.toHexString(pcount));
 
 		int r = 0; int l = 0;
 		int dim = 8;
-		int tcount = 0;
-		if(tsize != -1){
-			if(!me.bit8) tsize = tsize << 1;
-			dim = (int)Math.round(Math.sqrt(tsize));
-			tcount = pcount/tsize;
-			//tcount = pcount/(dim*dim);
-			
-			//dim = tsize;
-			//tcount = pcount/(tsize * tsize);
-		}
-		else tcount = pcount >>> 6;
-		me.tiledim = dim;
+		int tcount = pcount >>> 6;
 		//System.err.println("Tile Size: " + dim);
 		//System.err.println("Tile Count: " + tcount);
 		
-		me.tiles = new DSTile[tcount];
+		int bits = 8;
+		if(!bit8) bits = 4;
+		me.tiles = new Tileset(bits, dim, tcount);
+		me.tiles.setDimensionInTiles(w, h);
+
 		int t = 0;
-		int[][] dat = null;
-		
-		if(me.bit8){
+		Tile tile = null;
+		if(bit8){
 			for(int i = 0; i < pcount; i++){
-				if(dat == null){
-					me.tiles[t] = new DSTile(8,dim);
-					dat = me.tiles[t++].getData();
+				
+				if(tile == null){
+					tile = me.tiles.getTile(t++);
 				}
 				
-				int b = Byte.toUnsignedInt(rahc.nextByte());
-				dat[l++][r] = b;
+				int val = Byte.toUnsignedInt(rahc.nextByte());
+				tile.setValueAt(l++, r, val);
+				
 				if(l >= dim){
-					r++; l = 0;
+					l = 0; r++;
 					if(r >= dim){
 						r = 0;
-						dat = null;
+						tile = null;
 					}
 				}
-				
 			}
 		}
 		else{
 			for(int i = 0; i < pcount; i+=2){
-				if(dat == null){
-					me.tiles[t] = new DSTile(4,dim);
-					dat = me.tiles[t++].getData();
+				
+				if(tile == null){
+					tile = me.tiles.getTile(t++);
 				}
 				
-				int b = Byte.toUnsignedInt(rahc.nextByte());
-				dat[l++][r] = (b & 0xF);
-				dat[l++][r] = ((b >>> 4) & 0xF);
+				int val = Byte.toUnsignedInt(rahc.nextByte());
+				int p0 = val & 0xF;
+				int p1 = (val >>> 4) & 0xF;
+				tile.setValueAt(l++, r, p0);
+				tile.setValueAt(l++, r, p1);
 				
 				if(l >= dim){
-					r++; l = 0;
+					l = 0; r++;
 					if(r >= dim){
 						r = 0;
-						dat = null;
+						tile = null;
 					}
 				}
-			}	
-			
+			}
 		}
-
+		
 		return me;
 		
 	}
-	
+		
 	/*----- Getters -----*/
 	
-	public boolean is8Bit(){
-		return bit8;
-	}
-	
-	public int getTileDimension(){
-		return tiledim;
+	public Tileset getTileset(){
+		return tiles;
 	}
 	
 	public int getTileCount(){
-		return tiles.length;
+		return tiles.getTileCount();
 	}
 	
-	public int getSupertileDimension(){
-		return this.supertile_dim;
-	}
-	
-	public DSTile getTile(int idx){
-		return tiles[idx];
-	}
-	
-	public List<BufferedImage> renderTileData(){
-
-		List<BufferedImage> list = new LinkedList<BufferedImage>();
-		for(int i = 0; i < tiles.length; i++){
-			list.add(renderTileData(i));
-		}
-		
-		return list;
-	}
-	
- 	public BufferedImage renderImage(int tilewidth){
-		if(linked_plt == null) return renderImageData(tilewidth); 
-		
-		int w = tilewidth * tiledim;
-		int h = (tiles.length/tilewidth) * tiledim;
-
-		BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);int l = 0;
-		int x = 0; int y = 0;
-		for(int t = 0; t < tiles.length; t++){
-			tiles[t].copyTo(img, x, y, false, false, linked_plt);
-			
-			x += tiledim;
-			
-			if(++l >= tilewidth){
-				l = 0; x = 0;
-				y += tiledim;
-			}
-			
-		}
-		
-		return img;
-	}
-	
-	public BufferedImage renderImageData(int tilewidth){
-
-		int w = tilewidth * tiledim;
-		int h = (tiles.length/tilewidth) * tiledim;
-
-		BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);int l = 0;
-		int x = 0; int y = 0;
-		for(int t = 0; t < tiles.length; t++){
-			tiles[t].copyTo(img, x, y, false, false);
-			
-			x += tiledim;
-			
-			if(++l >= tilewidth){
-				l = 0; x = 0;
-				y += tiledim;
-			}
-			
-		}
-		
-		return img;
-	}
-	
-	public BufferedImage renderTile(int idx){
-		if(linked_plt == null) return renderTileData(idx); 
-		
-		BufferedImage img = new BufferedImage(tiledim, tiledim, BufferedImage.TYPE_INT_ARGB);
-		tiles[idx].copyTo(img, 0, 0, false, false, linked_plt);
-		
-		return img;
-	}
-	
-	public BufferedImage renderTileData(int idx){
-
-		BufferedImage img = new BufferedImage(tiledim, tiledim, BufferedImage.TYPE_INT_ARGB);
-		tiles[idx].copyTo(img, 0, 0, false, false);
-		
-		return img;
-	}
-		
 	/*----- Setters -----*/
 	
-	public void linkPalette(Palette plt){
-		linked_plt = plt;
+	public void setPalette(Palette p){
+		tiles.setLinkedPalette(p);
 	}
 	
 	/*----- Metadata -----*/
 	
-	/*public static void linkPaletteNode(FileNode ncgr, FileNode nclr, int pidx){
-		if(ncgr == null || nclr == null) return;
-		
-		//See if nclr already has UID. Assign one if not.
-		String puid = nclr.getMetadataValue(NDSGraphics.METAKEY_NCLRID);
-		if(puid == null){
-			int i = nclr.getFullPath().hashCode();
-			puid = Integer.toHexString(i);
-			nclr.setMetadataValue(NDSGraphics.METAKEY_NCLRID, puid);
-		}
-		
-		//Link UID and index to NCGR
-		ncgr.setMetadataValue(NDSGraphics.METAKEY_PALETTEID, puid);
-		ncgr.setMetadataValue(NDSGraphics.METAKEY_PLTIDX, Integer.toString(pidx));
-		
-		//Convert to relative link
-		String rellink = ncgr.findNodeThat(new NodeMatchCallback(){
-
-			public boolean meetsCondition(FileNode n) {
-				return n == nclr;
-			}
-			
-		});
-		
-		if(rellink == null) rellink = nclr.getFullPath();
-		ncgr.setMetadataValue(NDSGraphics.METAKEY_PLTLINK, rellink);
+	public static boolean linkPalette(FileNode ts_node, FileNode plt_node, int idx){
+		if(!MetaResLinks.linkResource(ts_node, plt_node, 
+				NDSGraphics.METAKEY_PLTLINK, NDSGraphics.METAKEY_PALETTEID)) return false;
+		ts_node.setMetadataValue(NDSGraphics.METAKEY_PLTIDX, Integer.toString(idx));
+		return true;
 	}
 	
-	public static Palette loadLinkedPalette(FileNode ncgr){
-		if(ncgr.getParent() == null) return null;
-		
-		//Make sure index is valid
-		String rawidx = ncgr.getMetadataValue(NDSGraphics.METAKEY_PLTIDX);
-		if(rawidx == null) return null;
-		
-		int pidx = 0;
-		try{pidx = Integer.parseInt(rawidx);}
-		catch(NumberFormatException x){
-			ncgr.setMetadataValue(NDSGraphics.METAKEY_PLTIDX, null);
-			return null;
-		}
-		
-		//Look for link
-		String pltlink = ncgr.getMetadataValue(NDSGraphics.METAKEY_PLTLINK);
-		if(pltlink != null){
-			//Look for NCLR at that path
-			FileNode pnode = ncgr.getParent().getNodeAt(pltlink);
-			if(pnode != null){
-				try{
-					NCLR nclr = NCLR.readNCLR(pnode.loadDecompressedData());
-					return nclr.getPalette(pidx);
-				}
-				catch(Exception x){
-					x.printStackTrace();
-				}
-			}
-		}
-		
-		//No link or link broken
-		//Match UID
-		String puid = ncgr.getMetadataValue(NDSGraphics.METAKEY_PALETTEID);
-		if(puid != null){
-			pltlink = ncgr.findNodeThat(new NodeMatchCallback(){
+	public static Palette loadLinkedPalette(FileNode ts_node){
+		FileNode plt_node = MetaResLinks.findLinkedResource(ts_node, NDSGraphics.METAKEY_PLTLINK, NDSGraphics.METAKEY_PALETTEID);
+		if(plt_node == null){
+			//Look for match
+			NodeMatchCallback filter = new NodeMatchCallback(){
 
 				public boolean meetsCondition(FileNode n) {
-					String mypuid = n.getMetadataValue(NDSGraphics.METAKEY_NCLRID);
-					if(mypuid == null) return false;
-					return mypuid.equals(puid);
+					if(n == null) return false;
+					FileTypeNode tail = n.getTypeChainTail();
+					if(tail == null) return false;
+					return (tail.getTypeDefinition() instanceof PaletteFileDef);
 				}
 				
-			});	
+			};
+			List<NodeMatchCallback> filters = new ArrayList<NodeMatchCallback>(1);
+			filters.add(filter);
 			
-			//If find match...
-			if(pltlink != null){
-				ncgr.setMetadataValue(NDSGraphics.METAKEY_PLTLINK, pltlink);
-				//Load new link
-				FileNode pnode = ncgr.getParent().getNodeAt(pltlink);
-				if(pnode != null){
-					try{
-						NCLR nclr = NCLR.readNCLR(pnode.loadDecompressedData());
-						return nclr.getPalette(pidx);
-					}
-					catch(Exception x){
-						x.printStackTrace();
-					}
-				}
+			List<FileNode> candidates = MetaResLinks.findMatchCandidates(ts_node, filters);
+			if(candidates == null || candidates.isEmpty()) return null;
+			plt_node = candidates.get(0);
+		}
+		
+		//Parse index
+		String istr = ts_node.getMetadataValue(NDSGraphics.METAKEY_PLTIDX);
+		int idx = 0;
+		try{idx = Integer.parseInt(istr);}
+		catch(NumberFormatException x){
+			ts_node.setMetadataValue(NDSGraphics.METAKEY_PLTIDX, "0");
+		}
+		
+		//Load palette data
+		if(plt_node == null) return null;
+		FileTypeNode tail = plt_node.getTypeChainTail();
+		if(tail == null) return null;
+		if(tail.getTypeDefinition() instanceof PaletteFileDef){
+			PaletteFileDef pdef = (PaletteFileDef)tail.getTypeDefinition();
+			Palette[] pals = pdef.getPalette(plt_node);
+			if(pals.length < idx) return pals[idx];
+			else{
+				ts_node.setMetadataValue(NDSGraphics.METAKEY_PLTIDX, "0");
+				return pals[0];
 			}
 		}
 		
-		//UID wasn't matched either. No auto detect at the moment.
-		
 		return null;
-	}*/
+	}
 	
 	/*----- Definition -----*/
 
 	private static TypeDef static_def;
 	private static StdConverter static_conv;
 	
-	public static class TypeDef extends PalettedImageDef
+	public static class TypeDef extends TilesetDef
 	{
 		
 		public static final String[] EXT_LIST = {"ncgr"};
@@ -365,7 +234,7 @@ public class NCGR extends NDKDSFile{
 			
 			try{
 				NCGR ncgr = NCGR.readNCGR(src.loadDecompressedData());
-				return ncgr.renderImageData(8);
+				return ncgr.tiles.renderImageData();
 			}
 			catch(Exception e){
 				e.printStackTrace();
@@ -377,8 +246,8 @@ public class NCGR extends NDKDSFile{
 		public BufferedImage renderWithPalette(FileNode src, Palette plt){
 			try{
 				NCGR ncgr = NCGR.readNCGR(src.loadDecompressedData());
-				ncgr.linkPalette(plt);
-				return ncgr.renderImage(8);
+				ncgr.setPalette(plt);
+				return ncgr.tiles.renderImage();
 			}
 			catch(Exception e){
 				e.printStackTrace();
@@ -390,6 +259,41 @@ public class NCGR extends NDKDSFile{
 		public FileClass getFileClass() {
 			//return FileClass.IMG_TILE;
 			return FileClass.IMG_TILE;
+		}
+
+		
+		public Tileset getTileset(FileNode src) {
+
+			try {
+				NCGR ncgr = NCGR.readNCGR(src.loadDecompressedData());
+				return ncgr.getTileset();
+			} 
+			catch (IOException e) {
+				e.printStackTrace();
+				return null;
+			}
+
+		}
+
+		
+		public int countTiles(FileNode src) {
+
+			FileBuffer data;
+			try {
+				data = src.loadDecompressedData();
+				
+				//Look for RAHC
+				long cpos = data.findString(0, 0x1000, MAGIC_RAHC);
+				if(cpos < 0) return 0;
+				int w = Short.toUnsignedInt(data.shortFromFile(cpos+8));
+				int h = Short.toUnsignedInt(data.shortFromFile(cpos+10));
+				
+				return w*h;
+			} 
+			catch (IOException e) {
+				e.printStackTrace();
+				return 0;
+			}
 		}
 		
 	}
@@ -430,7 +334,7 @@ public class NCGR extends NDKDSFile{
 			int tcount = ncgr.getTileCount();
 			for(int i = 0; i < tcount; i++){
 				String opath = outpath + File.separator + "tile" + String.format("%05d", i) + ".png";
-				BufferedImage img = ncgr.renderTile(i);
+				BufferedImage img = ncgr.tiles.renderTile(i);
 				ImageIO.write(img, "png", new File(opath));
 			}
 
@@ -445,7 +349,7 @@ public class NCGR extends NDKDSFile{
 			int tcount = ncgr.getTileCount();
 			for(int i = 0; i < tcount; i++){
 				String opath = outpath + File.separator + "tile" + String.format("%05d", i) + ".png";
-				BufferedImage img = ncgr.renderTile(i);
+				BufferedImage img = ncgr.tiles.renderTile(i);
 				ImageIO.write(img, "png", new File(opath));
 			}
 			

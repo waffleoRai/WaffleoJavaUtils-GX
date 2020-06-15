@@ -73,6 +73,12 @@ public class NCLR extends NDKDSFile{
 		ttlp.skipBytes(4);
 		int datsz = ttlp.nextInt();
 		if((0x200 - datsz) > 0) datsz = 0x200-datsz;
+		if(pmcp == null){
+			//Calculate palette count from data size
+			int psize = 0x20; //4 bit
+			if(bit8) psize = 0x200; //8 bit
+			pcount = datsz/psize;
+		}
 		long cpos = ttlp.getCurrentPosition() + 4;
 		
 		me.pal_arr = new Palette[pcount];
@@ -145,6 +151,13 @@ public class NCLR extends NDKDSFile{
 		return true;
 	}
 	
+	public Palette[] getPalettes(){
+		if(pal_arr == null) return null;
+		Palette[] copy = new Palette[pal_arr.length];
+		for(int i = 0; i < pal_arr.length; i++) copy[i] = pal_arr[i];
+		return copy;
+	}
+	
 	/*----- Setters -----*/
 	
 	public void setPalette(int idx, Palette plt){
@@ -199,6 +212,38 @@ public class NCLR extends NDKDSFile{
 			catch(Exception e){
 				e.printStackTrace();
 				return null;
+			}
+		}
+
+		public Palette[] getPalette(FileNode src) {
+			try{
+				NCLR nclr = NCLR.readNCLR(src.loadDecompressedData());
+				return nclr.getPalettes();
+			}
+			catch(Exception e){
+				e.printStackTrace();
+				return null;
+			}
+		}
+
+		public int countPalettes(FileNode src) {
+			//Just read the bit depth and data size fields.
+			try{
+				FileBuffer data = src.loadDecompressedData();
+				
+				//Look for TTLP
+				long cpos = data.findString(0, 0x1000, MAGIC_TTLP);
+				if(cpos < 0) return 0;
+				int psize = 0x20;
+				int bfield = data.intFromFile(cpos+8);
+				if(bfield == 4) psize = 0x200;
+				int datsize = data.intFromFile(cpos + 0x10);
+				if((0x200 - datsize) > 0) datsize = 0x200-datsize;
+				return datsize/psize;
+			}
+			catch(IOException e){
+				e.printStackTrace();
+				return 0;
 			}
 		}
 		

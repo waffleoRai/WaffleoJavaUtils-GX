@@ -49,6 +49,10 @@ public class NDKDSFile extends NDKFile{
 		}
 		
 		long fileSize = Integer.toUnsignedLong(data.intFromFile(cpos)); cpos += 4;
+		//Match file size to see if we need to add 8 to section sizes...
+		boolean add8 = false;
+		if(data.getFileSize() != fileSize)add8 = true;
+		
 		//Skip header length
 		cpos += 2;
 		int chunkCount = Short.toUnsignedInt(data.shortFromFile(cpos)); cpos += 2;
@@ -69,6 +73,7 @@ public class NDKDSFile extends NDKFile{
 				//System.err.println("Chunk " + i + " magic number: " + secMag);
 				long rawOffset = cpos;
 				long rawSize = Integer.toUnsignedLong(data.intFromFile(cpos+4));
+				if(add8) rawSize+=8;
 				NDKHeaderEntry he = new NDKHeaderEntry();
 				
 				he.setIdentifier(secMag);

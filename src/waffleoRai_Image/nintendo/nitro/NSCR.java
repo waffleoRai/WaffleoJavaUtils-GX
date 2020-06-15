@@ -5,8 +5,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedList;
 import java.util.List;
 
 import javax.imageio.ImageIO;
@@ -15,11 +13,16 @@ import waffleoRai_Containers.nintendo.NDKDSFile;
 import waffleoRai_Files.Converter;
 import waffleoRai_Files.FileClass;
 import waffleoRai_Files.FileTypeNode;
+import waffleoRai_Files.MetaResLinks;
+import waffleoRai_Files.MetaResLinks.WeightFactor;
 import waffleoRai_Files.NodeMatchCallback;
 import waffleoRai_Image.Palette;
+import waffleoRai_Image.PaletteFileDef;
 import waffleoRai_Image.PalettedImageDef;
+import waffleoRai_Image.Tile;
+import waffleoRai_Image.Tileset;
+import waffleoRai_Image.TilesetDef;
 import waffleoRai_Image.nintendo.NDSGraphics;
-import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -59,33 +62,6 @@ public class NSCR extends NDKDSFile{
 		
 	}
 	
-	private class SearchRes implements Comparable<SearchRes>{
-		public FileNode node;
-		public int diff;
-		public int str_weight;
-		
-		public SearchRes(FileNode fn, int c, int w){
-			node = fn; diff = c; str_weight = w;
-		}
-		
-		public int hashCode(){
-			return node.hashCode();
-		}
-		
-		public boolean equals(Object o){
-			return this == o;
-		}
-		
-		public int compareTo(SearchRes o) {
-			if(o == null) return -1;
-			
-			//Check element difference...
-			if(this.diff != o.diff) return this.diff - o.diff;
-			
-			return this.str_weight - o.str_weight;
-		}
-	}
-	
 	/*----- Parse -----*/
 	
 	public static NSCR readNSCR(FileBuffer data){
@@ -119,94 +95,41 @@ public class NSCR extends NDKDSFile{
 	public int getWidth(){return width;}
 	public int getHeight(){return height;}
 	
-	public BufferedImage renderImage(NCLR plt_dat, NCGR tle_dat){
-		
-		if(plt_dat == null) return renderImage(tle_dat);
+	public BufferedImage renderImage(Palette[] plt_dat, Tileset tle_dat){
 		
 		BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-		DSTile tile = null;
-		Palette plt = null;
+		Tile tile = null;
+		Palette defoplt = null;
+		if(tle_dat.is4Bit()) defoplt = Palette.get4BitGreyscalePalette();
+		else defoplt = Palette.get8BitGreyscalePalette();
 		
-		int bigdim = tle_dat.getSupertileDimension(); //Tiles per side of big tile
-		if(bigdim <= 0) bigdim = 1;
-		int dim = tle_dat.getTileDimension();
+		int tdim = tle_dat.getTileDimension();
+		//int tw = width/tdim;
+		//int th = height/tdim;
+		
 		int t = 0;
-		int tw = width/dim; //Width in tiles
-		int th = height/dim; //Height in tiles
-		int btw = tw/bigdim; //Width in big tiles
-		int bth = th/bigdim; //Height in big tiles
 		int x = 0; int y = 0;
-		
-		for(int tr = 0; tr < bth; tr++){ //In big tiles
-			//System.err.println("Supertile Row: " + tr + " x,y = " + x + "," + y);
-			int y0 = y;
-			for(int tl = 0; tl < btw; tl++){
-				//Do bigtile
-				//System.err.println("Supertile Column: " + tl + " x,y = " + x + "," + y);
-				int x0 = x;
-				for(int r = 0; r < bigdim; r++){
-					for(int l = 0; l < bigdim; l++){
-						//Draw tile
-						TileInfo info = tiles[t++];
-						plt = plt_dat.getPalette(info.plt_id);
-						tile = tle_dat.getTile(info.tile_id);
-						
-						if(plt != null) tile.copyTo(img, x, y, info.flipx, info.flipy, plt);
-						else tile.copyTo(img, x, y, info.flipx, info.flipy);
-						
-						x += dim;
-					}
-					y += dim; x = x0;
-				}
-				x += dim * bigdim;
-				y = y0;
+		while(y < height){
+			
+			TileInfo tinf = tiles[t++];
+			tile = tle_dat.getTile(tinf.tile_id);
+			if(plt_dat == null || tinf.plt_id < 0 || tinf.plt_id > plt_dat.length || plt_dat[tinf.plt_id] == null){
+				tile.copyTo(img, x, y, tinf.flipx, tinf.flipy, defoplt);
 			}
-			y += dim * bigdim; x = 0;
+			else tile.copyTo(img, x, y, tinf.flipx, tinf.flipy, plt_dat[tinf.plt_id]);
+			
+			x+=tdim;
+			if(x >= width){
+				x = 0; y += tdim;
+			}
+			
 		}
 		
 		return img;
 	}
 	
-	public BufferedImage renderImage(NCGR tle_dat){
-		
-		BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-		DSTile tile = null;
-		
-		int bigdim = tle_dat.getSupertileDimension(); //Tiles per side of big tile
-		if(bigdim <= 0) bigdim = 1;
-		int dim = tle_dat.getTileDimension();
-		int t = 0;
-		int tw = width/dim; //Width in tiles
-		int th = height/dim; //Height in tiles
-		int btw = tw/bigdim; //Width in big tiles
-		int bth = th/bigdim; //Height in big tiles
-		int x = 0; int y = 0;
-		
-		for(int tr = 0; tr < bth; tr++){ //In big tiles
-			//System.err.println("Supertile Row: " + tr + " x,y = " + x + "," + y);
-			int y0 = y;
-			for(int tl = 0; tl < btw; tl++){
-				//Do bigtile
-				//System.err.println("Supertile Column: " + tl + " x,y = " + x + "," + y);
-				int x0 = x;
-				for(int r = 0; r < bigdim; r++){
-					for(int l = 0; l < bigdim; l++){
-						//Draw tile
-						TileInfo info = tiles[t++];
-						tile = tle_dat.getTile(info.tile_id);
-						tile.copyTo(img, x, y, info.flipx, info.flipy);
-						
-						x += dim;
-					}
-					y += dim; x = x0;
-				}
-				x += dim * bigdim;
-				y = y0;
-			}
-			y += dim * bigdim; x = 0;
-		}
-		
-		return img;
+	public BufferedImage renderImage(Tileset tle_dat){
+		return renderImage(null, tle_dat);
 	}
 	
 	/*----- Setters -----*/
@@ -233,255 +156,164 @@ public class NSCR extends NDKDSFile{
 		return max;
 	}
 	
-	public List<FileNode> searchForTilesets(FileNode nscr_node) throws IOException{
-		//Searches the directory for candidate tile sets
-		//Files nearer to the NSCR in name are prioritized
-		//Files closest to exact number of tiles nscr calls for are prioritized
+	public static List<FileNode> findPaletteCandidates(FileNode scr_node) throws IOException{
 		
-		List<SearchRes> passlist = new LinkedList<SearchRes>();
-		DirectoryNode mydir = nscr_node.getParent();
-		if(mydir == null) return new LinkedList<FileNode>();
-		
-		int tle_used = getMaxTileIndex();
-		List<FileNode> sibs = mydir.getChildren();
-		Collections.sort(sibs); //Make sure sorted by name
-		int i = 0;
-		int myidx = -1;
-		for(FileNode sib : sibs){
-			//If directory, toss
-			if(sib.isDirectory()) continue;
-			int idx = i++;
-			if(sib == nscr_node){
-				myidx = idx; continue;
+		NSCR nscr = NSCR.readNSCR(scr_node.loadDecompressedData());
+		int pcount = nscr.getMaxPaletteIndex()+1;
+		NodeMatchCallback filter = new NodeMatchCallback(){
+
+			public boolean meetsCondition(FileNode n) {
+				if(n == null) return false;
+				FileTypeNode tail = n.getTypeChainTail();
+				if(tail == null) return false;
+				
+				if(tail.getTypeDefinition() instanceof PaletteFileDef){
+					//See if has enough palettes
+					int ct = ((PaletteFileDef)tail.getTypeDefinition()).countPalettes(n);
+					if(ct < pcount) return false;
+					return true;
+				}
+				
+				return false;
 			}
-			//If not an NCGR, toss (will eventually introduce NBGR?)
-			FileTypeNode type = sib.getTypeChainTail();
-			if(type.getTypeID() != NCGR.TYPE_ID) continue;
 			
-			//Read in as NCGR
-			NCGR tileset = NCGR.readNCGR(sib.loadDecompressedData());
+		};
+		List<NodeMatchCallback> filters = new ArrayList<NodeMatchCallback>(1);
+		filters.add(filter);
+		
+		WeightFactor factor = new WeightFactor(){
+
+			public int compareNodes(FileNode t1, FileNode t2) {
+				
+				int ct1 = 0; int ct2 = 0;
+				FileTypeNode tail = t1.getTypeChainTail();
+				if(tail != null && tail.getTypeDefinition() instanceof PaletteFileDef){
+					ct1 = ((PaletteFileDef)tail.getTypeDefinition()).countPalettes(t1);
+				}
+				tail = t2.getTypeChainTail();
+				if(tail != null && tail.getTypeDefinition() instanceof PaletteFileDef){
+					ct2 = ((PaletteFileDef)tail.getTypeDefinition()).countPalettes(t2);
+				}
+				
+				int diff1 = ct1 - pcount;
+				int diff2 = ct2 - pcount;
+				
+				return diff1 - diff2;
+			}
 			
-			//Toss if doesn't have enough tiles
-			if(tileset.getTileCount() < tle_used) continue;
-			passlist.add(new SearchRes(sib, Math.abs(tle_used - tileset.getTileCount()), idx));
-		}
+		};
+		List<WeightFactor> factors = new ArrayList<WeightFactor>(1);
+		factors.add(factor);
 		
-		//Weigh name distance
-		for(SearchRes r : passlist) r.str_weight = Math.abs(myidx - r.str_weight);
-		
-		Collections.sort(passlist);
-		List<FileNode> list = new LinkedList<FileNode>();
-		for(SearchRes r : passlist) list.add(r.node);
-		
-		return list;
+		List<FileNode> candidates = MetaResLinks.findMatchCandidates(scr_node, filters, factors);
+		return candidates;
 	}
 	
-	public List<FileNode> searchForPalettes(FileNode nscr_node, boolean exclude4Bit) throws IOException{
-		//Searches the directory for candidate tile sets
-		//Files nearer to the NSCR in name are prioritized
-		//Files closest to exact number of palettes nscr calls for are prioritized
+	public static List<FileNode> findTilesetCandidates(FileNode scr_node) throws IOException{
 		
-		List<SearchRes> passlist = new LinkedList<SearchRes>();
-		DirectoryNode mydir = nscr_node.getParent();
-		if(mydir == null) return new LinkedList<FileNode>();
-		
-		int plt_used = getMaxPaletteIndex();
-		List<FileNode> sibs = mydir.getChildren();
-		Collections.sort(sibs); //Make sure sorted by name
-		int i = 0;
-		int myidx = -1;
-		for(FileNode sib : sibs){
-			//If directory, toss
-			if(sib.isDirectory()) continue;
-			//Mark indices
-			int idx = i++;
-			if(sib == nscr_node){
-				myidx = idx; continue;
+		NSCR nscr = NSCR.readNSCR(scr_node.loadDecompressedData());
+		int tcount = nscr.getMaxTileIndex()+1;
+		NodeMatchCallback filter = new NodeMatchCallback(){
+
+			public boolean meetsCondition(FileNode n) {
+				if(n == null) return false;
+				FileTypeNode tail = n.getTypeChainTail();
+				if(tail == null) return false;
+				
+				if(tail.getTypeDefinition() instanceof TilesetDef){
+					//See if has enough tiles
+					int ct = ((TilesetDef)tail.getTypeDefinition()).countTiles(n);
+					if(ct < tcount) return false;
+					return true;
+				}
+				
+				return false;
 			}
-			//If not an NCLR, toss
-			FileTypeNode type = sib.getTypeChainTail();
-			if(type.getTypeID() != NCLR.TYPE_ID) continue;
 			
-			//Read in as NCGR
-			NCLR pltset = NCLR.readNCLR(sib.loadDecompressedData());
-			
-			//Toss if doesn't have enough tiles
-			if(pltset.getPaletteCount() < plt_used) continue;
-			
-			if(exclude4Bit && !pltset.is8Bit()) continue;
-			
-			passlist.add(new SearchRes(sib, Math.abs(pltset.getPaletteCount() - plt_used), idx));
-		}
+		};
+		List<NodeMatchCallback> filters = new ArrayList<NodeMatchCallback>(1);
+		filters.add(filter);
 		
-		//Weigh name distance
-		for(SearchRes r : passlist) r.str_weight = Math.abs(myidx - r.str_weight);
+		WeightFactor factor = new WeightFactor(){
+
+			public int compareNodes(FileNode t1, FileNode t2) {
+				
+				int ct1 = 0; int ct2 = 0;
+				FileTypeNode tail = t1.getTypeChainTail();
+				if(tail != null && tail.getTypeDefinition() instanceof TilesetDef){
+					ct1 = ((TilesetDef)tail.getTypeDefinition()).countTiles(t1);
+				}
+				tail = t2.getTypeChainTail();
+				if(tail != null && tail.getTypeDefinition() instanceof TilesetDef){
+					ct2 = ((TilesetDef)tail.getTypeDefinition()).countTiles(t2);
+				}
+				
+				int diff1 = ct1 - tcount;
+				int diff2 = ct2 - tcount;
+				
+				return diff1 - diff2;
+			}
+			
+		};
+		List<WeightFactor> factors = new ArrayList<WeightFactor>(1);
+		factors.add(factor);
 		
-		Collections.sort(passlist);
-		List<FileNode> list = new LinkedList<FileNode>();
-		for(SearchRes r : passlist) list.add(r.node);
-		
-		return list;
+		List<FileNode> candidates = MetaResLinks.findMatchCandidates(scr_node, filters, factors);
+		return candidates;
 	}
 	
 	/*----- Metadata -----*/
 	
-	public static void linkPaletteNode(FileNode nscr, FileNode nclr){
-		if(nscr == null || nclr == null) return;
-		
-		//See if nclr already has UID. Assign one if not.
-		String puid = nclr.getMetadataValue(NDSGraphics.METAKEY_NCLRID);
-		if(puid == null){
-			int i = nclr.getFullPath().hashCode();
-			puid = Integer.toHexString(i);
-			nclr.setMetadataValue(NDSGraphics.METAKEY_NCLRID, puid);
-		}
-		
-		//Link UID and index to NCGR
-		nscr.setMetadataValue(NDSGraphics.METAKEY_PALETTEID, puid);
-		
-		//Convert to relative link
-		String rellink = nscr.findNodeThat(new NodeMatchCallback(){
-
-			public boolean meetsCondition(FileNode n) {
-				return n == nclr;
-			}
-			
-		});
-		
-		if(rellink == null) rellink = nclr.getFullPath();
-		nscr.setMetadataValue(NDSGraphics.METAKEY_PLTLINK, rellink);
+	public static boolean linkTileset(FileNode scr_node, FileNode ts_node){
+		return MetaResLinks.linkResource(scr_node, ts_node, 
+				NDSGraphics.METAKEY_TLELINK, NDSGraphics.METAKEY_TLEUID);
 	}
 	
-	public static NCLR loadLinkedPalette(FileNode nscr) throws IOException{
-		if(nscr.getParent() == null) return null;
-		
-		//Look for link
-		String pltlink = nscr.getMetadataValue(NDSGraphics.METAKEY_PLTLINK);
-		if(pltlink != null){
-			//Look for NCLR at that path
-			FileNode pnode = nscr.getParent().getNodeAt(pltlink);
-			if(pnode != null){
-				NCLR nclr = NCLR.readNCLR(pnode.loadDecompressedData());
-				return nclr;
-			}
+	public static Tileset loadLinkedTileset(FileNode scr_node) throws IOException{
+		FileNode ts_node = MetaResLinks.findLinkedResource(scr_node, NDSGraphics.METAKEY_TLELINK, NDSGraphics.METAKEY_TLEUID);
+		if(ts_node == null){
+			//Look for match
+			List<FileNode> candidates = findTilesetCandidates(scr_node);
+			if(candidates == null || candidates.isEmpty()) return null;
+			ts_node = candidates.get(0);
 		}
 		
-		//No link or link broken
-		//Match UID
-		String puid = nscr.getMetadataValue(NDSGraphics.METAKEY_PALETTEID);
-		if(puid != null){
-			pltlink = nscr.findNodeThat(new NodeMatchCallback(){
-
-				public boolean meetsCondition(FileNode n) {
-					String mypuid = n.getMetadataValue(NDSGraphics.METAKEY_NCLRID);
-					if(mypuid == null) return false;
-					return mypuid.equals(puid);
-				}
-				
-			});	
-			
-			//If find match...
-			if(pltlink != null){
-				nscr.setMetadataValue(NDSGraphics.METAKEY_PLTLINK, pltlink);
-				//Load new link
-				FileNode pnode = nscr.getParent().getNodeAt(pltlink);
-				if(pnode != null){
-					NCLR nclr = NCLR.readNCLR(pnode.loadDecompressedData());
-					return nclr;
-				}
-			}
+		if(ts_node == null) return null;
+		FileTypeNode tail = ts_node.getTypeChainTail();
+		if(tail == null) return null;
+		if(tail.getTypeDefinition() instanceof TilesetDef){
+			return ((TilesetDef)tail.getTypeDefinition()).getTileset(ts_node);
 		}
 		
-		//UID wasn't matched either.
-		//Attempt an auto-detect
-		NSCR dat = NSCR.readNSCR(nscr.loadDecompressedData());
-		List<FileNode> pcand = dat.searchForPalettes(nscr, false);
-		if(pcand== null || pcand.isEmpty()) return null;
-		
-		FileNode pal = pcand.get(0);
-		linkPaletteNode(nscr, pal);
-		NCLR nclr = NCLR.readNCLR(pal.loadDecompressedData());
-		return nclr;
+		return null;
 	}
 	
-	public static void linkTilesetNode(FileNode nscr, FileNode ncgr){
-		if(nscr == null || ncgr == null) return;
-		
-		//See if nclr already has UID. Assign one if not.
-		String puid = ncgr.getMetadataValue(NDSGraphics.METAKEY_NCGRID);
-		if(puid == null){
-			int i = ncgr.getFullPath().hashCode();
-			puid = Integer.toHexString(i);
-			ncgr.setMetadataValue(NDSGraphics.METAKEY_NCGRID, puid);
-		}
-		
-		//Link UID and index to NCGR
-		nscr.setMetadataValue(NDSGraphics.METAKEY_TLEUID, puid);
-		
-		//Convert to relative link
-		String rellink = nscr.findNodeThat(new NodeMatchCallback(){
-
-			public boolean meetsCondition(FileNode n) {
-				return n == ncgr;
-			}
-			
-		});
-		
-		if(rellink == null) rellink = ncgr.getFullPath();
-		nscr.setMetadataValue(NDSGraphics.METAKEY_TLELINK, rellink);
+	public static boolean linkPalette(FileNode scr_node, FileNode plt_node){
+		if(!MetaResLinks.linkResource(scr_node, plt_node, 
+				NDSGraphics.METAKEY_PLTLINK, NDSGraphics.METAKEY_PALETTEID)) return false;
+		return true;
 	}
 	
-	public static NCGR loadLinkedTileset(FileNode nscr) throws IOException{
-		if(nscr.getParent() == null) return null;
-		
-		//Look for link
-		String pltlink = nscr.getMetadataValue(NDSGraphics.METAKEY_TLELINK);
-		if(pltlink != null){
-			//Look for NCGR at that path
-			FileNode pnode = nscr.getParent().getNodeAt(pltlink);
-			if(pnode != null){
-				NCGR ncgr = NCGR.readNCGR(pnode.loadDecompressedData());
-				return ncgr;
-			}
-		}
-		
-		//No link or link broken
-		//Match UID
-		String puid = nscr.getMetadataValue(NDSGraphics.METAKEY_TLEUID);
-		if(puid != null){
-			pltlink = nscr.findNodeThat(new NodeMatchCallback(){
-
-				public boolean meetsCondition(FileNode n) {
-					String mypuid = n.getMetadataValue(NDSGraphics.METAKEY_NCGRID);
-					if(mypuid == null) return false;
-					return mypuid.equals(puid);
-				}
-				
-			});	
+	public static Palette[] loadLinkedPalette(FileNode scr_node) throws IOException{
+		FileNode plt_node = MetaResLinks.findLinkedResource(scr_node, NDSGraphics.METAKEY_PLTLINK, NDSGraphics.METAKEY_PALETTEID);
+		if(plt_node == null){
+			//Look for match
 			
-			//If find match...
-			if(pltlink != null){
-				nscr.setMetadataValue(NDSGraphics.METAKEY_TLELINK, pltlink);
-				//Load new link
-				FileNode pnode = nscr.getParent().getNodeAt(pltlink);
-				if(pnode != null){
-					NCGR ncgr = NCGR.readNCGR(pnode.loadDecompressedData());
-					return ncgr;
-				}
-			}
+			List<FileNode> candidates = findPaletteCandidates(scr_node);
+			if(candidates == null || candidates.isEmpty()) return null;
+			plt_node = candidates.get(0);
 		}
 		
-		//UID wasn't matched either.
-		//Attempt an auto-detect
-		NSCR dat = NSCR.readNSCR(nscr.loadDecompressedData());
-		List<FileNode> tscand = dat.searchForTilesets(nscr);
-		if(tscand== null || tscand.isEmpty()) return null;
+		//Load palette data
+		if(plt_node == null) return null;
+		FileTypeNode tail = plt_node.getTypeChainTail();
+		if(tail == null) return null;
+		if(tail.getTypeDefinition() instanceof PaletteFileDef){
+			PaletteFileDef pdef = (PaletteFileDef)tail.getTypeDefinition();
+			return pdef.getPalette(plt_node);
+		}
 		
-		//Otherwise, we assume the first is the best match.
-		FileNode ts = tscand.get(0);
-		linkTilesetNode(nscr, ts);
-		NCGR ncgr = NCGR.readNCGR(ts.loadDecompressedData());
-		return ncgr;
+		return null;
 	}
 	
 	/*----- Definition -----*/
@@ -518,11 +350,13 @@ public class NSCR extends NDKDSFile{
 
 			try{
 				NSCR nscr = NSCR.readNSCR(src.loadDecompressedData());
-				NCLR nclr = NSCR.loadLinkedPalette(src);
-				NCGR ncgr = NSCR.loadLinkedTileset(src);
+				//NCLR nclr = NSCR.loadLinkedPalette(src);
+				//NCGR ncgr = NSCR.loadLinkedTileset(src);
+				Tileset ts = NSCR.loadLinkedTileset(src);
+				Palette[] pals = NSCR.loadLinkedPalette(src);
 				
-				if(ncgr == null) return null;
-				return nscr.renderImage(nclr, ncgr);
+				if(ts == null) return null;
+				return nscr.renderImage(pals, ts);
 			}
 			catch(Exception x){
 				x.printStackTrace();
@@ -535,11 +369,13 @@ public class NSCR extends NDKDSFile{
 
 			try{
 				NSCR nscr = NSCR.readNSCR(src.loadDecompressedData());
-				NCLR nclr = NCLR.wrapPalette(plt);
-				NCGR ncgr = NSCR.loadLinkedTileset(src);
+				Tileset ts = NSCR.loadLinkedTileset(src);
 				
-				if(ncgr == null) return null;
-				return nscr.renderImage(nclr, ncgr);
+				if(ts == null) return null;
+				
+				Palette[] pals = new Palette[nscr.getMaxPaletteIndex()+1];
+				for(int i = 0; i < pals.length; i++) pals[i] = plt;
+				return nscr.renderImage(pals, ts);
 			}
 			catch(Exception x){
 				x.printStackTrace();
@@ -592,12 +428,12 @@ public class NSCR extends NDKDSFile{
 				throws IOException, UnsupportedFileTypeException{
 			
 			NSCR nscr = NSCR.readNSCR(node.loadDecompressedData());
-			NCLR nclr = NSCR.loadLinkedPalette(node);
-			NCGR ncgr = NSCR.loadLinkedTileset(node);
+			Tileset ts = NSCR.loadLinkedTileset(node);
+			Palette[] pals = NSCR.loadLinkedPalette(node);
 				
-			if(ncgr == null) throw new IOException("Linked NCGR resource could not be found!");
+			if(ts == null) throw new IOException("Linked tileset resource could not be found!");
 			
-			BufferedImage img = nscr.renderImage(nclr, ncgr);
+			BufferedImage img = nscr.renderImage(pals, ts);
 			ImageIO.write(img, "png", new File(outpath));
 			
 		}
@@ -616,7 +452,4 @@ public class NSCR extends NDKDSFile{
 		return static_conv;
 	}
 	
-	
-	
-
 }

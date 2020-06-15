@@ -26,13 +26,18 @@ public class Test {
 				ImageIO.write(p.renderVisual(), "png", new File(opath));
 			}*/
 			
-			String tpath = tdir + "\\ground0.ncgr";
+			String tpath = tdir + "\\dp_areawindow.NCGR";
 			NCGR ncgr = NCGR.readNCGR(FileBuffer.createBuffer(tpath));
-			String opath = tdir + "\\ground0_tiles.png";
-			ImageIO.write(ncgr.renderImageData(32), "png", new File(opath));
+			String opath = tdir + "\\dp_areawindow.png";
+			ImageIO.write(ncgr.getTileset().renderImageData(1), "png", new File(opath));
 			
-			String clrpath = tdir + "\\ground0.nclr";
-			NCLR nclr = NCLR.readNCLR(FileBuffer.createBuffer(clrpath));
+			//tpath = tdir + "\\wm.ncgr";
+			//ncgr = NCGR.readNCGR(FileBuffer.createBuffer(tpath));
+			//opath = tdir + "\\wm_tiles.png";
+			//ImageIO.write(ncgr.getTileset().renderImageData(2), "png", new File(opath));
+			
+			//String clrpath = tdir + "\\ground0.nclr";
+			//NCLR nclr = NCLR.readNCLR(FileBuffer.createBuffer(clrpath));
 			
 			/*String scrpath = tdir + "\\ground0.nscr";
 			NSCR nscr = NSCR.readNSCR(FileBuffer.createBuffer(scrpath));
