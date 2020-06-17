@@ -1,18 +1,11 @@
 package waffleoRai_Image.nintendo.nitro;
 
-import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-import waffleoRai_Files.FileClass;
 import waffleoRai_Image.Anim2DDef;
 import waffleoRai_Image.Animation;
-import waffleoRai_Image.Palette;
-import waffleoRai_Image.PalettedImageDef;
-import waffleoRai_Image.Tileset;
-import waffleoRai_Image.nintendo.nitro.NCER.TypeDef;
-import waffleoRai_Utils.FileNode;
 
 /*
  * KNBA Format

@@ -75,6 +75,7 @@ public class NCER extends NDKDSFile{
 			if(cells == null) return;
 			for(int i = 0; i < cells.length; i++){
 				if(cells[i] != null){
+					//System.err.println("Rendering cell " + i);
 					cells[i].renderTo(img, tiles, plt);
 				}
 			}
@@ -112,17 +113,28 @@ public class NCER extends NDKDSFile{
 
 			int x_st = 0; int y_st = 0;
 			
+			//Debug
+			//System.err.println("\tRow: " + row);
+			//System.err.println("\tCol: " + col);
+			//System.err.println("\tOffset: " + x_off + "," + y_off);
+			//System.err.println("\tVFlag: " + v_flag);
+			//System.err.println("\tHFlag: " + h_flag);
+			
 			//Rows and columns of 64. In order 2,3,0,1
 			x_st = ((col ^ 2) << 6) + x_off + x_add;
 			y_st = ((row ^ 2) << 6) + y_off + y_add;
-			if(h_flag && (col == 3)) x_st -= 256;
-			if(v_flag && (row == 3)) x_st -= 256;
+			if(h_flag && ((col^2) == 3)) x_st -= 256;
+			if(v_flag && ((row^2) == 3)) x_st -= 256;
 			
 			int[] dim = DIM_TBL[w][h];
 			int cw = dim[0] >>> 3;
 			int ch = dim[1] >>> 3;
 			
-			int t = tile_off; int x = x_st; int y = y_st;
+			//More debug
+			//System.err.println("\tStart: " + x_st + "," + y_st);
+			//System.err.println("\tDim: " + cw + "," + ch);
+			
+			int t = tile_off << 1; int x = x_st; int y = y_st;
 			for(int r = 0; r < ch; r++){
 				for(int l = 0; l < cw; l++){
 					Tile tile = tiles.getTile(t++);
@@ -163,6 +175,7 @@ public class NCER extends NDKDSFile{
 		for(int i = 0; i < icount; i++){
 			long cpos = cdat_start + celltbl[i][1];
 			int ccount = celltbl[i][0];
+			ncer.imgs[i] = new ImgStruct();
 			ncer.imgs[i].cells = new CellStruct[ccount];
 			for(int j = 0; j < ccount; j++){
 				CellStruct cell = new CellStruct();
@@ -241,11 +254,31 @@ public class NCER extends NDKDSFile{
 		if(imgs == null) return null;
 		
 		BufferedImage[] images = new BufferedImage[imgs.length];
-		int dim = boundary_size << 6;
+		int dim = boundary_size << 8; //??
+		//int dim = 256;
+		//System.err.println("Image dimensions: " + dim);
 		for(int i = 0; i < imgs.length; i++){
+			//System.err.println("Rendering image " + i);
 			BufferedImage img = new BufferedImage(dim, dim, BufferedImage.TYPE_INT_ARGB);
 			images[i] = img;
 			if(imgs[i] != null) imgs[i].renderTo(img, tiles, plt);
+		}
+		
+		return images;
+	}
+	
+	public BufferedImage[] renderImages(Tileset tiles, Palette[] plt){
+		if(imgs == null) return null;
+		
+		BufferedImage[] images = new BufferedImage[imgs.length];
+		int dim = boundary_size << 8; //??
+		//int dim = 256;
+		//System.err.println("Image dimensions: " + dim);
+		for(int i = 0; i < imgs.length; i++){
+			//System.err.println("Rendering image " + i);
+			BufferedImage img = new BufferedImage(dim, dim, BufferedImage.TYPE_INT_ARGB);
+			images[i] = img;
+			if(imgs[i] != null) imgs[i].renderTo(img, tiles, plt[i]);
 		}
 		
 		return images;
@@ -271,6 +304,31 @@ public class NCER extends NDKDSFile{
 		int x_add = 0;
 		for(int i = 0; i < imgs.length; i++){
 			imgs[i].renderTo(img, tiles, plt, x_add, 0);
+			x_add += dim;
+			//Transparent spacer
+			for(int r = 0; r < dim; r++){
+				for(int l = 0; l < spacer; l++){
+					img.setRGB(x_add+l, r, 0x00000000);
+				}
+			}
+			x_add += spacer;
+		}
+		
+		return img;
+	}
+	
+	public BufferedImage renderImageStrip(Tileset tiles, Palette[] plt){
+		if(imgs == null) return null;
+		
+		int dim = boundary_size << 6;
+		final int spacer = 8;
+		int width = (dim+spacer) * imgs.length;
+		width -= spacer;
+		BufferedImage img = new BufferedImage(width, dim, BufferedImage.TYPE_INT_ARGB);
+		
+		int x_add = 0;
+		for(int i = 0; i < imgs.length; i++){
+			imgs[i].renderTo(img, tiles, plt[i], x_add, 0);
 			x_add += dim;
 			//Transparent spacer
 			for(int r = 0; r < dim; r++){
@@ -325,14 +383,14 @@ public class NCER extends NDKDSFile{
 		return null;
 	}
 	
-	public static boolean linkPalette(FileNode cell_node, FileNode plt_node, int idx){
+	public static boolean linkPalette(FileNode cell_node, FileNode plt_node){
 		if(!MetaResLinks.linkResource(cell_node, plt_node, 
 				NDSGraphics.METAKEY_PLTLINK, NDSGraphics.METAKEY_PALETTEID)) return false;
-		cell_node.setMetadataValue(NDSGraphics.METAKEY_PLTIDX, Integer.toString(idx));
+		//cell_node.setMetadataValue(NDSGraphics.METAKEY_PLTIDX, Integer.toString(idx));
 		return true;
 	}
 	
-	public static Palette loadLinkedPalette(FileNode cell_node){
+	public static Palette[] loadLinkedPalette(FileNode cell_node){
 		FileNode plt_node = MetaResLinks.findLinkedResource(cell_node, NDSGraphics.METAKEY_PLTLINK, NDSGraphics.METAKEY_PALETTEID);
 		if(plt_node == null){
 			//Look for match
@@ -355,12 +413,12 @@ public class NCER extends NDKDSFile{
 		}
 		
 		//Parse index
-		String istr = cell_node.getMetadataValue(NDSGraphics.METAKEY_PLTIDX);
+		/*String istr = cell_node.getMetadataValue(NDSGraphics.METAKEY_PLTIDX);
 		int idx = 0;
 		try{idx = Integer.parseInt(istr);}
 		catch(NumberFormatException x){
 			cell_node.setMetadataValue(NDSGraphics.METAKEY_PLTIDX, "0");
-		}
+		}*/
 		
 		//Load palette data
 		if(plt_node == null) return null;
@@ -369,11 +427,12 @@ public class NCER extends NDKDSFile{
 		if(tail.getTypeDefinition() instanceof PaletteFileDef){
 			PaletteFileDef pdef = (PaletteFileDef)tail.getTypeDefinition();
 			Palette[] pals = pdef.getPalette(plt_node);
-			if(pals.length < idx) return pals[idx];
+			/*if(pals.length < idx) return pals[idx];
 			else{
 				cell_node.setMetadataValue(NDSGraphics.METAKEY_PLTIDX, "0");
 				return pals[0];
-			}
+			}*/
+			return pals;
 		}
 		
 		return null;
@@ -405,6 +464,19 @@ public class NCER extends NDKDSFile{
 	}
 	
 	public void imagesToPNG(String out_prefix, Tileset tiles, Palette plt) throws IOException{
+		String outdir = out_prefix;
+		int lastslash = outdir.lastIndexOf(File.separator);
+		if(lastslash >= 0) outdir = outdir.substring(0, lastslash);
+		if(!FileBuffer.directoryExists(outdir)) Files.createDirectories(Paths.get(outdir));
+		
+		BufferedImage[] imgs = renderImages(tiles, plt);
+		for(int i = 0; i < imgs.length; i++){
+			String outpath = out_prefix + String.format("img%03d", i) + ".png";
+			ImageIO.write(imgs[i], "png", new File(outpath));
+		}
+	}
+	
+	public void imagesToPNG(String out_prefix, Tileset tiles, Palette[] plt) throws IOException{
 		String outdir = out_prefix;
 		int lastslash = outdir.lastIndexOf(File.separator);
 		if(lastslash >= 0) outdir = outdir.substring(0, lastslash);
@@ -452,12 +524,15 @@ public class NCER extends NDKDSFile{
 			try{
 				NCER ncer = NCER.readNCER(src.loadDecompressedData());
 				Tileset tiles = NCER.loadLinkedTileset(src);
-				Palette plt = NCER.loadLinkedPalette(src);
+				Palette[] plt = NCER.loadLinkedPalette(src);
 				
 				if(tiles == null) return null;
 				if(plt == null){
-					if(tiles.is4Bit()) plt = Palette.get4BitGreyscalePalette();
-					else plt = Palette.get8BitGreyscalePalette();
+					Palette plt0 = null;
+					if(tiles.is4Bit()) plt0 = Palette.get4BitGreyscalePalette();
+					else plt0 = Palette.get8BitGreyscalePalette();
+					plt = new Palette[ncer.imgs.length];
+					for(int i = 0; i < plt.length; i++) plt[i] = plt0;
 				}
 				return ncer.renderImageStrip(tiles, plt);
 			}
@@ -533,14 +608,17 @@ public class NCER extends NDKDSFile{
 			
 			NCER ncer = NCER.readNCER(node.loadDecompressedData());
 			Tileset tiles = NCER.loadLinkedTileset(node);
-			Palette plt = NCER.loadLinkedPalette(node);
+			Palette[] plt = NCER.loadLinkedPalette(node);
 			
 				
 			if(tiles == null) throw new IOException("Linked tileset resource could not be found!");
 			
 			if(plt == null){
-				if(tiles.is4Bit()) plt = Palette.get4BitGreyscalePalette();
-				else plt = Palette.get8BitGreyscalePalette();
+				Palette plt0 = null;
+				if(tiles.is4Bit()) plt0 = Palette.get4BitGreyscalePalette();
+				else plt0 = Palette.get8BitGreyscalePalette();
+				plt = new Palette[ncer.imgs.length];
+				for(int i = 0; i < plt.length; i++) plt[i] = plt0;
 			}
 			
 			ncer.imagesToPNG(outpath, tiles, plt);

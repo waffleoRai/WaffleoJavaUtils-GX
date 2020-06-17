@@ -80,17 +80,19 @@ public class NCLR extends NDKDSFile{
 			pcount = datsz/psize;
 		}
 		long cpos = ttlp.getCurrentPosition() + 4;
+		//System.err.println("Datsz: 0x" + Integer.toHexString(datsz));
+		//System.err.println("cpos: 0x" + Long.toHexString(cpos));
 		
 		me.pal_arr = new Palette[pcount];
 		//me.pal_map = new HashMap<Integer, Palette>();
 		me.rawColors = new ArrayList<short[]>(pcount + 1);
 		for(int i = 0; i < pcount; i++){
-			me.pal_arr[i] = NDSGraphics.readPalette(data, cpos, bit8);
+			me.pal_arr[i] = NDSGraphics.readPalette(ttlp, cpos, bit8);
 			//Now copy the raw values...
 				if(bit8){
 					short[] raws = new short[256];
 					for(int j = 0; j < 256; j++){
-						raws[j] = data.shortFromFile(cpos);
+						raws[j] = ttlp.shortFromFile(cpos);
 						cpos+=2;
 					}
 					me.rawColors.add(raws);
@@ -98,7 +100,7 @@ public class NCLR extends NDKDSFile{
 				else{
 					short[] raws = new short[16];
 					for(int j = 0; j < 16; j++){
-						raws[j] = data.shortFromFile(cpos);
+						raws[j] = ttlp.shortFromFile(cpos);
 						cpos+=2;
 					}
 					me.rawColors.add(raws);

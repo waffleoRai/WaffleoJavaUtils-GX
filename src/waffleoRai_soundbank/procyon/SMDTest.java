@@ -7,11 +7,11 @@ public class SMDTest {
 	public static void main(String[] args) {
 		
 		String smdpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\pokedun_bgm\\bgm0028.smd";
-		String swdpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\pokedun_bgm\\bgm0028.swd";
+		String swdpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\pokedun_bgm\\bgm0025.swd";
 		String swdarcpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\pokedun_bgm\\bgm.swd";
 		
 		String wavdir = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\pokedun_bgm\\bgm_wav";
-		String sf2path = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\bgm0028.sf2";
+		String sf2path = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\ds_test\\bgm0025.sf2";
 
 		try{
 			
@@ -29,7 +29,7 @@ public class SMDTest {
 			swd.debugPrint();
 			
 			swd.loadSoundDataFrom(swd_war);
-			//swd.writeSF2(sf2path);
+			swd.writeSF2(sf2path);
 		}
 		catch(Exception e){
 			e.printStackTrace();

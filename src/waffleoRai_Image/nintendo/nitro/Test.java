@@ -4,7 +4,6 @@ import java.io.File;
 
 import javax.imageio.ImageIO;
 
-import waffleoRai_Image.Palette;
 import waffleoRai_Utils.FileBuffer;
 
 public class Test {
@@ -26,23 +25,22 @@ public class Test {
 				ImageIO.write(p.renderVisual(), "png", new File(opath));
 			}*/
 			
-			String tpath = tdir + "\\dp_areawindow.NCGR";
+			String tpath = tdir + "\\smptm_koori.NCGR";
 			NCGR ncgr = NCGR.readNCGR(FileBuffer.createBuffer(tpath));
-			String opath = tdir + "\\dp_areawindow.png";
-			ImageIO.write(ncgr.getTileset().renderImageData(1), "png", new File(opath));
+			String opath = tdir + "\\smptm_koori_tiles.png";
+			ImageIO.write(ncgr.getTileset().renderImageData(4), "png", new File(opath));
 			
-			//tpath = tdir + "\\wm.ncgr";
-			//ncgr = NCGR.readNCGR(FileBuffer.createBuffer(tpath));
-			//opath = tdir + "\\wm_tiles.png";
-			//ImageIO.write(ncgr.getTileset().renderImageData(2), "png", new File(opath));
+			tpath = tdir + "\\smptm_koori.NCLR";
+			NCLR nclr = NCLR.readNCLR(FileBuffer.createBuffer(tpath));
+			//System.err.println("# of palettes: " + nclr.getPaletteCount());
+			nclr.getPalette(0).printMe();
 			
-			//String clrpath = tdir + "\\ground0.nclr";
-			//NCLR nclr = NCLR.readNCLR(FileBuffer.createBuffer(clrpath));
+			tpath = tdir + "\\smptm_koori.NCER";
+			NCER ncer = NCER.readNCER(FileBuffer.createBuffer(tpath));
+			opath = tdir + "\\smptm_koori_cells";
+			ncer.imagesToPNG(opath, ncgr.getTileset(), nclr.getPalettes());
+			//ncer.imagesToPNG(opath, ncgr.getTileset());
 			
-			/*String scrpath = tdir + "\\ground0.nscr";
-			NSCR nscr = NSCR.readNSCR(FileBuffer.createBuffer(scrpath));
-			opath = tdir + "\\ground0_screen.png";
-			ImageIO.write(nscr.renderImage(nclr, ncgr), "png", new File(opath));*/
 		}
 		catch(Exception e){
 			e.printStackTrace();
