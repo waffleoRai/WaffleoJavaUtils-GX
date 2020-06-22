@@ -1910,9 +1910,11 @@ public class PSXMemoryCard {
 	public Collection<String> getPossibleFilenamesForGame(String gamecode){
 		if(gamecode == null || gamecode.length() < 9) return new HashSet<String>();
 		gamecode = gamecode.toUpperCase();
-		gamecode = gamecode.substring(0,4) + "-" + gamecode.substring(4,9);
+		gamecode = gamecode.substring(0,4) + "-" + gamecode.substring(4,7);
 		Set<String> names = new HashSet<String>();
+		//System.err.println("Gamecode: " + gamecode);
 		for(String s : directory.keySet()){
+			//System.err.println("File name: " + s);
 			if(s.contains(gamecode)) names.add(s);
 		}
 		return names;

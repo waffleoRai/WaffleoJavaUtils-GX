@@ -104,7 +104,7 @@ public class PSXImages {
 				green = scale5BitColor((color >> 5) & 0x1F);
 				red = scale5BitColor(color & 0x1F);
 			}
-			Pixel p = new Pixel_RGBA(red, green, blue, alpha);
+			Pixel p = new Pixel_RGBA(red, blue, green, alpha);
 			myPalette.setPixel(p, i);
 		}
 		return myPalette;

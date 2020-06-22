@@ -23,7 +23,7 @@ public class DSCompHeader {
 	{
 		DSCompHeader header = new DSCompHeader();
 		int b0 = Byte.toUnsignedInt(buff.getByte(stpos));
-		
+		//System.err.println("b0 = " + String.format("%02x", b0));
 		//Higher nybble is the type
 		//Lower nybble is huff value
 		

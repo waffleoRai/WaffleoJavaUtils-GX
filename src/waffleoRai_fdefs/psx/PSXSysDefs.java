@@ -66,7 +66,7 @@ public class PSXSysDefs {
 		}
 
 		public String getDescription() {return str;}
-		public FileClass getFileClass() {return FileClass.SYSTEM;}
+		public FileClass getFileClass() {return FileClass.EXECUTABLE;}
 		public int getTypeID() {return TYPE_ID;}
 		public void setDescriptionString(String s) {str = s;}
 		
