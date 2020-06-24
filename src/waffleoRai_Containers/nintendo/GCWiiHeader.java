@@ -24,8 +24,7 @@ public class GCWiiHeader {
 	
 	/* --- Construction --- */
 	
-	public GCWiiHeader()
-	{
+	public GCWiiHeader(){
 		iDiscNumber = -1;
 		iDiscVersion = -1;
 	}
@@ -50,6 +49,9 @@ public class GCWiiHeader {
 	public int getDiscNumber(){return iDiscNumber;}
 	public int getDiscVersion(){return iDiscVersion;}
 	public String getGameTitle(){return sGameTitle;}
+	public String getGameCode(){return sGameCode;}
+	public String getMakerCode(){return sMakerCode;}
+	public String get4DigitGameCode(){return cDiscID + sGameCode + cRegCode;}
 	
 	/* --- Parsing --- */
 	

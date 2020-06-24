@@ -4,18 +4,12 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Enumeration;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
-import javax.swing.tree.TreeNode;
-
+import waffleoRai_Utils.CacheFileBuffer;
+import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.StreamBuffer;
-import waffleoRai_Utils.Treenumeration;
+import waffleoRai_Utils.FileNode;
 
 public class GCWiiDisc {
 	
@@ -34,191 +28,10 @@ public class GCWiiDisc {
 	
 	public static final String GCM_EXT = "gcm";
 	
-	/* ----- Inner Classes ----- */
-	
-	public static class FileNode implements TreeNode, Comparable<FileNode>
-	{
-		/* --- Instance Variables --- */
-		
-		protected DirectoryNode parent;
-		
-		private String fileName;
-		private long offset;
-		private long length;
-		
-		/* --- Construction --- */
-		
-		public FileNode(DirectoryNode parent, String name)
-		{
-			this.parent = parent;
-			fileName = name;
-			offset = -1;
-			length = 0;
-			if(parent != null) parent.addChild(this);
-		}
-		
-		/* --- Getters --- */
-		
-		public String getFileName(){return fileName;}
-		public long getOffset(){return offset;}
-		public long getLength(){return length;}
-		public DirectoryNode getParent(){return parent;}
-		
-		/* --- Setters --- */
-		
-		public void setFileName(String name){fileName = name;}
-		public void setOffset(long off){offset = off;}
-		public void setLength(long len){length = len;}
-		public void setParent(DirectoryNode p){parent = p; if(p != null) p.addChild(this);}
-	
-		/* --- Comparable --- */
-		
-		public boolean isDirectory()
-		{
-			return false;
-		}
-		
-		public boolean equals(Object o)
-		{
-			if(o == this) return true;
-			if(o == null) return false;
-			if(!(o instanceof FileNode)) return false;
-			FileNode fn = (FileNode)o;
-			if(this.isDirectory() != fn.isDirectory()) return false;
-			return fileName.equals(fn.fileName);
-		}
-		
-		public int hashCode()
-		{
-			return fileName.hashCode() ^ (int)offset;
-		}
-		
-		public int compareTo(FileNode other)
-		{
-			if(other == this) return 0;
-			if(other == null) return 1;
-			
-			if(this.isDirectory() && !other.isDirectory()) return -1;
-			if(!this.isDirectory() && other.isDirectory()) return 1;
-			
-			return this.fileName.compareTo(other.fileName);
-		}
-		
-		/* --- TreeNode --- */
-		
-		@Override
-		public TreeNode getChildAt(int childIndex) {return null;}
-
-		@Override
-		public int getChildCount() {return 0;}
-
-		@Override
-		public int getIndex(TreeNode node) {return -1;}
-
-		@Override
-		public boolean getAllowsChildren() {return false;}
-
-		@Override
-		public boolean isLeaf() {return true;}
-
-		@Override
-		public Enumeration<TreeNode> children() 
-		{
-			TreeNode[] n = null;
-			return new Treenumeration(n);
-		}
-		
-	}
-	
-	public static class DirectoryNode extends FileNode
-	{
-		/* --- Instance Variables --- */
-		
-		private Set<FileNode> children;
-		private int endIndex;
-		
-		/* --- Construction --- */
-		
-		public DirectoryNode(DirectoryNode parent, String name)
-		{
-			super(parent, name);
-			children = new HashSet<FileNode>();
-			endIndex = -1;
-		}
-		
-		/* --- Getters --- */
-		
-		public int getEndIndex(){return endIndex;}
-		
-		public List<FileNode> getChildren()
-		{
-			List<FileNode> list = new ArrayList<FileNode>(children.size() + 1);
-			list.addAll(children);
-			Collections.sort(list);
-			return list;
-		}
-		
-		public boolean isDirectory()
-		{
-			return true;
-		}
-		
-		/* --- Setters --- */
-		
-		protected void addChild(FileNode node){children.add(node);}
-		public void clearChildren(){children.clear();}
-		public void setEndIndex(int i){endIndex = i;}
-		
-		/* --- TreeNode --- */
-		
-		@Override
-		public TreeNode getChildAt(int childIndex) 
-		{
-			List<FileNode> childlist = this.getChildren();
-			return childlist.get(childIndex);
-		}
-
-		@Override
-		public int getChildCount() {return children.size();}
-
-		@Override
-		public int getIndex(TreeNode node) 
-		{
-			if(children.contains(node))
-			{
-				List<FileNode> clist = this.getChildren();
-				int ccount = clist.size();
-				for(int i = 0; i < ccount; i++)
-				{
-					if(clist.get(i).equals(node)) return i;
-				}
-			}
-			return -1;
-		}
-
-		@Override
-		public boolean getAllowsChildren() {return true;}
-
-		@Override
-		public boolean isLeaf() 
-		{
-			return (children.isEmpty());
-		}
-
-		@Override
-		public Enumeration<TreeNode> children() 
-		{
-			List<TreeNode> list = new ArrayList<TreeNode>(children.size()+1);
-			list.addAll(getChildren());
-			return new Treenumeration(list);
-		}
-	
-	}
-	
 	/* ----- Instance Variables ----- */
 	
 	private String filePath;
-	private StreamBuffer openFile;
+	private FileBuffer openFile;
 	
 	private GCWiiHeader header;
 	private DirectoryNode root;
@@ -242,11 +55,15 @@ public class GCWiiDisc {
 	private void readDiskInfo() throws IOException
 	{
 		//Header
-		openFile = new StreamBuffer(filePath, true);
+		//openFile = new StreamBuffer(filePath, true);
+		openFile = CacheFileBuffer.getReadOnlyCacheBuffer(filePath, true);
 		header = GCWiiHeader.readHeader(openFile, 0);
-		fst_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_ADDR)) << 2;
+		//System.err.println("fst offset raw: 0x" + Integer.toHexString(openFile.intFromFile(OFFSET_FST_ADDR)));
+		//fst_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_ADDR)) << 2;
+		fst_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_ADDR));
 		root = readFileSystem();
-		dol_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_DOL_ADDR)) << 2;
+		//dol_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_DOL_ADDR)) << 2;
+		dol_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_DOL_ADDR));
 		//appl_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_DOL_ADDR));
 		dol_size = calculateDOLSize(dol_offset);
 		appl_size = getAppLoaderSize(OFFSET_APPL_ADDR);
@@ -285,13 +102,15 @@ public class GCWiiDisc {
 		//final long FSTOFF_OFF = 0x424;
 		//final long FSTSIZE_OFF = 0x428;
 		
-		if(openFile == null) openFile = new StreamBuffer(filePath);
+		//if(openFile == null) openFile = new StreamBuffer(filePath);
+		if(openFile == null) openFile = CacheFileBuffer.getReadOnlyCacheBuffer(filePath, true);
 		//long offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_ADDR)) << 2;
 		long offset = fst_offset;
-		long size = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_SIZE)) << 2;
+		//long size = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_SIZE)) << 2;
+		long size = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_SIZE));
 		
-		System.err.println("GCWiiDisc.extractFST || -DEBUG- FST Offset: 0x" + Long.toHexString(offset));
-		System.err.println("GCWiiDisc.extractFST || -DEBUG- FST Size: 0x" + Long.toHexString(size));
+		//System.err.println("GCWiiDisc.extractFST || -DEBUG- FST Offset: 0x" + Long.toHexString(offset));
+		//System.err.println("GCWiiDisc.extractFST || -DEBUG- FST Size: 0x" + Long.toHexString(size));
 		
 		FileBuffer fst = openFile.createReadOnlyCopy(offset, offset+size);
 		
@@ -332,7 +151,7 @@ public class GCWiiDisc {
 			int nameOff = fst.shortishFromFile(cpos); cpos += 3;
 			int offsetRaw = fst.intFromFile(cpos); cpos += 4;
 			int sizeRaw = fst.intFromFile(cpos); cpos += 4;
-			//System.err.println("\tName Offset: 0x" + Integer.toHexString(nameOff));
+		//	System.err.println("\tName Offset: 0x" + Integer.toHexString(nameOff));
 			//System.err.println("\tFile Offset: 0x" + Integer.toHexString(offsetRaw));
 			//System.err.println("\tSize Offset: 0x" + Integer.toHexString(sizeRaw));
 			
@@ -373,10 +192,43 @@ public class GCWiiDisc {
 		return root;
 	}
 	
+	public DirectoryNode getDiscTree() throws IOException{
+
+		DirectoryNode root = new DirectoryNode(null, "");
+		//-- System...
+		long cpos = 0;
+		DirectoryNode sysdir = new DirectoryNode(root, "sys");
+		//Header
+		FileNode fn = new FileNode(sysdir, "boot.bin");
+		fn.setOffset(0); fn.setLength(HEADER_SIZE);
+		cpos = HEADER_SIZE;
+		//Bi2
+		fn = new FileNode(sysdir, "bi2.bin");
+		fn.setOffset(cpos); fn.setLength(BI2_SIZE);
+		cpos += BI2_SIZE;
+		//FST
+		fn = new FileNode(sysdir, "fst.bin");
+		FileBuffer fstbuff = extractFST();
+		fn.setOffset(fst_offset); fn.setLength(fstbuff.getFileSize());
+		//main.dol
+		fn = new FileNode(sysdir, "main.dol");
+		fn.setOffset(dol_offset); fn.setLength(dol_size);
+		//Apploader
+		fn = new FileNode(sysdir, "apploader.img");
+		fn.setOffset(OFFSET_APPL_ADDR); fn.setLength(appl_size);
+		
+		//File System...
+		String mycode = header.getFullGameCode();
+		DirectoryNode fsdir = readFileSystem(fstbuff);
+		fsdir.setFileName(mycode);
+		fsdir.setParent(root);
+		
+		return root;
+	}
+	
 	/* ----- Getters ----- */
 	
-	public GCWiiHeader getHeader()
-	{
+	public GCWiiHeader getHeader(){
 		return header;
 	}
 	
@@ -392,8 +244,7 @@ public class GCWiiDisc {
 	
 	/* ----- Management ----- */
 	
-	public void closeDiscStream()
-	{
+	public void closeDiscStream(){
 		openFile = null;
 	}
 
@@ -446,7 +297,7 @@ public class GCWiiDisc {
 		if(fn == null) return false;
 		String mypath = parentPath + File.separator + fn.getFileName();
 		System.err.println("GCWiiDisc.dumpFileTo || Dumping " + mypath);
-		if(fn.length < 1){
+		if(fn.getLength() < 1){
 			Files.createFile(Paths.get(mypath));
 			System.err.println("GCWiiDisc.dumpFileTo || (Empty file!)");
 			return true; //It's just an empty file.
@@ -472,7 +323,7 @@ public class GCWiiDisc {
 		//System.err.println("GCWiiDisc.dumpDiscContentsTo || -DEBUG- Source file exists!");
 		
 		//Generate a directory name from the header (use the first six bytes as ASCII)
-		if(openFile == null) openFile = new StreamBuffer(filePath, true);
+		if(openFile == null) openFile = CacheFileBuffer.getReadOnlyCacheBuffer(filePath, false);
 		/*String rootName = openFile.getASCII_string(0, 6);
 		if(rootName == null || rootName.isEmpty())
 		{
