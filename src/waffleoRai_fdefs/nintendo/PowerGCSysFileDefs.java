@@ -13,7 +13,13 @@ public class PowerGCSysFileDefs {
 	private static GCFSTDef fst_def;
 	private static GCBi2Def bi2_def;
 	private static GCApploaderDef appl_def;
+	
 	private static WiiRSADef rsa_def;
+	private static WiiPartTableDef pt_def;
+	private static WiiRegInfoDef reg_def;
+	private static WiiTicketDef ticket_def;
+	private static WiiTMDDef tmd_def;
+	private static WiiH3Def h3_def;
 	
 	public static GCHeaderDef getHeaderDef(){
 		if(header_def == null) header_def = new GCHeaderDef();
@@ -38,6 +44,31 @@ public class PowerGCSysFileDefs {
 	public static WiiRSADef getRSADef(){
 		if(rsa_def == null) rsa_def = new WiiRSADef();
 		return rsa_def;
+	}
+	
+	public static WiiPartTableDef getPartTableDef(){
+		if(pt_def == null) pt_def = new WiiPartTableDef();
+		return pt_def;
+	}
+	
+	public static WiiRegInfoDef getRegInfoDef(){
+		if(reg_def == null) reg_def = new WiiRegInfoDef();
+		return reg_def;
+	}
+	
+	public static WiiTicketDef getWiiTicketDef(){
+		if(ticket_def == null) ticket_def = new WiiTicketDef();
+		return ticket_def;
+	}
+	
+	public static WiiTMDDef getWiiTMDDef(){
+		if(tmd_def == null) tmd_def = new WiiTMDDef();
+		return tmd_def;
+	}
+	
+	public static WiiH3Def getWiiH3Def(){
+		if(h3_def == null) h3_def = new WiiH3Def();
+		return h3_def;
 	}
 	
 	public static class GCHeaderDef implements FileTypeDefinition{
@@ -167,6 +198,136 @@ public class PowerGCSysFileDefs {
 		public void setDescriptionString(String s) {str = s;}
 		
 		public String getDefaultExtension(){return "img";}
+		
+	}
+	
+	public static class WiiPartTableDef implements FileTypeDefinition{
+		
+		private static String DEFO_ENG_DESC = "Nintendo Wii Disc Partition Table";
+		public static int TYPE_ID = 0x7c59782b;
+		
+		private String str;
+		
+		public WiiPartTableDef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			slist.add("bin");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.SYSTEM;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "bin";}
+		
+	}
+	
+	public static class WiiRegInfoDef implements FileTypeDefinition{
+		
+		private static String DEFO_ENG_DESC = "Nintendo Wii Region Info";
+		public static int TYPE_ID = 0x7c6803b8;
+		
+		private String str;
+		
+		public WiiRegInfoDef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			slist.add("bin");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.SYSTEM;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "bin";}
+		
+	}
+	
+	public static class WiiTicketDef implements FileTypeDefinition{
+		
+		private static String DEFO_ENG_DESC = "Nintendo Wii Partition Ticket";
+		public static int TYPE_ID = 0x7cd498ee;
+		
+		private String str;
+		
+		public WiiTicketDef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			slist.add("bin");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.SYSTEM;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "bin";}
+		
+	}
+	
+	public static class WiiTMDDef implements FileTypeDefinition{
+		
+		private static String DEFO_ENG_DESC = "Nintendo Wii Title Metadata";
+		public static int TYPE_ID = 0x7c286a84;
+		
+		private String str;
+		
+		public WiiTMDDef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			slist.add("bin");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.SYSTEM;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "bin";}
+		
+	}
+	
+	public static class WiiH3Def implements FileTypeDefinition{
+		
+		private static String DEFO_ENG_DESC = "Nintendo Wii h3 Hashtable";
+		public static int TYPE_ID = 0x7c093560;
+		
+		private String str;
+		
+		public WiiH3Def(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			slist.add("bin");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.SYSTEM;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "bin";}
 		
 	}
 		

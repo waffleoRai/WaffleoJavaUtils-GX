@@ -2,8 +2,7 @@ package waffleoRai_Containers.nintendo;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedList;
 
 import waffleoRai_Image.Animation;
 import waffleoRai_Image.AnimationFrame;
@@ -55,11 +54,11 @@ public class GCMemCardFile {
 		//May also need to reverse them??
 		if(icon == null) return null;
 		//Remove empty frames
-		List<AnimationFrame> frames = new ArrayList<AnimationFrame>(8);
+		LinkedList<AnimationFrame> frames = new LinkedList<AnimationFrame>();
 		for(int i = 0; i < 8; i++){
 			AnimationFrame f = icon.getFrame(i);
 			if(f == null) continue;
-			if(f.getImage() != null && f.getLengthInFrames() > 0) frames.add(f);
+			if(f.getImage() != null && f.getLengthInFrames() > 0) frames.push(f);
 		}
 		
 		if(frames.isEmpty()) return null;

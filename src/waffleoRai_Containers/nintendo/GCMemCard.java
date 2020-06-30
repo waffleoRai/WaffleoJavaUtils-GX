@@ -14,7 +14,7 @@ import java.util.Map;
 import waffleoRai_Image.EightBitPalette;
 import waffleoRai_Image.Palette;
 import waffleoRai_Image.Pixel_RGBA;
-import waffleoRai_Image.nintendo.NDSGraphics;
+import waffleoRai_Image.nintendo.DolGraphics;
 import waffleoRai_Utils.FileBuffer;
 
 public class GCMemCard {
@@ -228,9 +228,9 @@ public class GCMemCard {
 			//Load Icon/Banner/Title data
 			FileBuffer mcfile = mcf.loadFile();
 			long fpos = e.img_dat_offset;
-			if(e.hasBanner){
+			//if(e.hasBanner){
 				if(e.banner_colorenc == COLORENC_RGB5A3){
-					BufferedImage img = readRGB5A1(mcfile, fpos, 96, 32);
+					BufferedImage img = readRGB5A3(mcfile, fpos, 96, 32);
 					mcf.setBanner(img);
 					fpos += 0x1800;
 				}
@@ -241,7 +241,7 @@ public class GCMemCard {
 					mcf.setBanner(img);
 					fpos += 0xc00 + 0x200;
 				}
-			}
+			//}
 			
 			//Icon Frames
 			//Read common palette, if present
@@ -281,7 +281,7 @@ public class GCMemCard {
 					fpos += 0x600;
 					break;
 				case COLORENC_RGB5A3:
-					img = readRGB5A1(mcfile, fpos, 32, 32);
+					img = readRGB5A3(mcfile, fpos, 32, 32);
 					fpos += 0x800;
 					break;
 				}
@@ -312,25 +312,16 @@ public class GCMemCard {
 		long cpos = offset;
 		for(int i = 0; i < 256; i++){
 			int val = Short.toUnsignedInt(file.shortFromFile(cpos)); cpos+=2;
-			int a = 255;
-			if((val & 0x8000) != 0) a = 0;
+			int argb = DolGraphics.RGB5A3_to_ARGB(val);
+			int rgba = (argb << 8) | ((argb >>> 24) & 0xFF);
 			
-			int r = (val >>> 10) & 0x1F;
-			int g = (val >>> 5) & 0x1F;
-			int b = val & 0x1F;
-			
-			a = NDSGraphics.scale5Bit_to_8Bit(a);
-			r = NDSGraphics.scale5Bit_to_8Bit(r);
-			g = NDSGraphics.scale5Bit_to_8Bit(g);
-			b = NDSGraphics.scale5Bit_to_8Bit(b);
-			
-			p.setPixel(new Pixel_RGBA(r,b,g,a), i);
+			p.setPixel(new Pixel_RGBA(rgba), i);
 		}
 		
 		return p;
 	}
 	
-	public static BufferedImage readRGB5A1(FileBuffer file, long offset, int w, int h){
+	public static BufferedImage readRGB5A3(FileBuffer file, long offset, int w, int h){
 		//4x4 tiles
 		BufferedImage img = new BufferedImage(w,h,BufferedImage.TYPE_INT_ARGB);
 		
@@ -347,19 +338,7 @@ public class GCMemCard {
 				for(int r = 0; r<4; r++){
 					for(int l = 0; l < 4; l++){
 						int val = Short.toUnsignedInt(file.shortFromFile(cpos)); cpos+=2;
-						int a = 255;
-						if((val & 0x8000) != 0) a = 0;
-						
-						int red = (val >>> 10) & 0x1F;
-						int green = (val >>> 5) & 0x1F;
-						int blue = val & 0x1F;
-						
-						a = NDSGraphics.scale5Bit_to_8Bit(a);
-						red = NDSGraphics.scale5Bit_to_8Bit(red);
-						green = NDSGraphics.scale5Bit_to_8Bit(green);
-						blue = NDSGraphics.scale5Bit_to_8Bit(blue);
-						
-						int argb = (a << 24) | (red << 16) | (green << 8) | blue;
+						int argb = DolGraphics.RGB5A3_to_ARGB(val);
 						img.setRGB(x+l, y+r, argb);
 					}
 				}
@@ -419,6 +398,14 @@ public class GCMemCard {
 		
 		return list;
 	}
+	
+	public Collection<GCMemCardFile> getFiles(){
+		List<GCMemCardFile> list = new LinkedList<GCMemCardFile>();
+		if(files == null) return list;
+		list.addAll(files.values());
+		return list;
+	}
+	
 	
 	/*----- Debug -----*/
 	

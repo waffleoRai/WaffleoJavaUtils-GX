@@ -11,14 +11,14 @@ public class DolGraphics {
 	{
 		//TODO Not sure which bits are which.
 		
-		boolean flag = (color & 0x8000) != 0;
+		boolean flag = (color & 0x8000) == 0;
 		if(flag)
 		{
-			//ABGR???
+			//ARGB
 			int a = (color >>> 12) & 0x7;
-			int b = (color >>> 8) & 0xF;
+			int r = (color >>> 8) & 0xF;
 			int g = (color >>> 4) & 0xF;
-			int r = (color) & 0xF;
+			int b = (color) & 0xF;
 			
 			int blue = upscale4(b);
 			int green = upscale4(g);
@@ -29,10 +29,10 @@ public class DolGraphics {
 		}
 		else
 		{
-			//BGR???
-			int b = (color >>> 10) & 0x1F;
+			//RGB
+			int r = (color >>> 10) & 0x1F;
 			int g = (color >>> 5) & 0x1F;
-			int r = (color) & 0x1F;
+			int b = (color) & 0x1F;
 			
 			int blue = upscale5(b);
 			int green = upscale5(g);
@@ -45,7 +45,6 @@ public class DolGraphics {
 	
 	public static short ARGB_to_RGB5A3(int color)
 	{
-		//TODO Not sure which bits are which.
 		
 		int alpha = (color >>> 24) & 0xFF;
 		int red = (color >>> 16) & 0xFF;
@@ -55,26 +54,27 @@ public class DolGraphics {
 		int out = 0;
 		if(alpha != 255)
 		{
-			out |= 0x8000;
+			//out |= 0x8000;
 			int a = downscale3(alpha);
 			int r = downscale4(red);
 			int g = downscale4(green);
 			int b = downscale4(blue);
 			
-			out |= (r & 0xF);
+			out |= (b & 0xF);
 			out |= (g & 0xF) << 4;
-			out |= (b & 0xF) << 8;
+			out |= (r & 0xF) << 8;
 			out |= (a & 0x7) << 12;
 		}
 		else
 		{
+			out |= 0x8000;
 			int r = downscale5(red);
 			int g = downscale5(green);
 			int b = downscale5(blue);
 			
-			out |= (r & 0x1F);
+			out |= (b & 0x1F);
 			out |= (g & 0x1F) << 5;
-			out |= (b & 0x1F) << 10;
+			out |= (r & 0x1F) << 10;
 		}
 		
 		return (short)out;

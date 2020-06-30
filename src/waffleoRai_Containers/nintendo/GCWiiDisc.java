@@ -6,10 +6,13 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
 
+import waffleoRai_Executable.nintendo.DolExe;
+import waffleoRai_Files.FileTypeDefNode;
 import waffleoRai_Utils.CacheFileBuffer;
 import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileNode;
+import waffleoRai_fdefs.nintendo.PowerGCSysFileDefs;
 
 public class GCWiiDisc {
 	
@@ -197,25 +200,30 @@ public class GCWiiDisc {
 		DirectoryNode root = new DirectoryNode(null, "");
 		//-- System...
 		long cpos = 0;
-		DirectoryNode sysdir = new DirectoryNode(root, "sys");
+		//DirectoryNode sysdir = new DirectoryNode(root, "sys");
 		//Header
-		FileNode fn = new FileNode(sysdir, "boot.bin");
+		FileNode fn = new FileNode(root, "boot.bin");
 		fn.setOffset(0); fn.setLength(HEADER_SIZE);
+		fn.setTypeChainHead(new FileTypeDefNode(PowerGCSysFileDefs.getHeaderDef()));
 		cpos = HEADER_SIZE;
 		//Bi2
-		fn = new FileNode(sysdir, "bi2.bin");
+		fn = new FileNode(root, "bi2.bin");
 		fn.setOffset(cpos); fn.setLength(BI2_SIZE);
+		fn.setTypeChainHead(new FileTypeDefNode(PowerGCSysFileDefs.getBi2Def()));
 		cpos += BI2_SIZE;
 		//FST
-		fn = new FileNode(sysdir, "fst.bin");
+		fn = new FileNode(root, "fst.bin");
 		FileBuffer fstbuff = extractFST();
 		fn.setOffset(fst_offset); fn.setLength(fstbuff.getFileSize());
+		fn.setTypeChainHead(new FileTypeDefNode(PowerGCSysFileDefs.getFSTDef()));
 		//main.dol
-		fn = new FileNode(sysdir, "main.dol");
+		fn = new FileNode(root, "main.dol");
 		fn.setOffset(dol_offset); fn.setLength(dol_size);
+		fn.setTypeChainHead(new FileTypeDefNode(DolExe.getDefinition()));
 		//Apploader
-		fn = new FileNode(sysdir, "apploader.img");
+		fn = new FileNode(root, "apploader.img");
 		fn.setOffset(OFFSET_APPL_ADDR); fn.setLength(appl_size);
+		fn.setTypeChainHead(new FileTypeDefNode(PowerGCSysFileDefs.getApploaderDef()));
 		
 		//File System...
 		String mycode = header.getFullGameCode();
