@@ -38,11 +38,19 @@ public class WiiDataCluster {
 		long cpos = WiiDisc.DATACLUSTER_IV_OFFSET + stpos;
 		for(int i = 0; i < 16; i++) {data_iv[i] = src.getByte(cpos); cpos++;}
 		
+		//Debug
+		/*System.err.println("Data IV:");
+		for(int i = 0; i < 16; i++){
+			System.err.print(String.format("%02x ", data_iv[i]));
+		}
+		System.err.println();*/
+		
 		//Now read the hash tables
 		byte[] nulliv = new byte[16];
 		//Copy
-		byte[] hashdata = src.getBytes(stpos, stpos+0x400);
+		byte[] hashdata = src.getBytes(stpos, stpos+WiiDisc.DATACLUSTER_DATA_OFFSET);
 		cpos = stpos + WiiDisc.DATACLUSTER_DATA_OFFSET;
+		//System.err.println("data start = 0x" + Long.toHexString(cpos));
 		byte[] rawdata = src.getBytes(cpos, cpos + WiiDisc.DATACLUSTER_DATA_SIZE);
 		//(DEBUG) See if it's a zero cluster
 		if(isZeroBlock(hashdata, rawdata)){data = new byte[WiiDisc.DATACLUSTER_DATA_SIZE]; zero_sector = true; return;}
@@ -71,7 +79,15 @@ public class WiiDataCluster {
 			byte[] myhash = group_hashTable[i];
 			for(int j = 0; j < 20; j++){myhash[j] = hashdata[k]; k++;}
 		}
-
+		
+		//Debug - check data...
+		/*String testpath = "E:\\Library\\Games\\Console\\decbuff\\test\\SOUE_p0-0\\cluster0_enc_data.bin";
+		try{BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(testpath));
+		bos.write(rawdata);
+		bos.close();
+		}
+		catch(IOException x){x.printStackTrace();}*/
+		
 		//Finally, the actual data
 		data = partitionCracker.decrypt(data_iv, rawdata);
 	}
@@ -81,12 +97,10 @@ public class WiiDataCluster {
 	}
 	
 	private boolean isZeroBlock(byte[] hashblock, byte[] datablock){
-		for(int i = 0; i < WiiDisc.DATACLUSTER_DATA_OFFSET; i++)
-		{
+		for(int i = 0; i < WiiDisc.DATACLUSTER_DATA_OFFSET; i++){
 			if(hashblock[i] != 0) return false;
 		}
-		for(int i = 0; i < WiiDisc.DATACLUSTER_DATA_SIZE; i++)
-		{
+		for(int i = 0; i < WiiDisc.DATACLUSTER_DATA_SIZE; i++){
 			if(datablock[i] != 0) return false;
 		}
 		return true;
@@ -103,6 +117,12 @@ public class WiiDataCluster {
 				sha.update(data, blockStart, WiiDisc.DATACLUSTER_DATA_OFFSET);
 				byte[] ref = cluster_hashTable[i];
 				byte[] hash = sha.digest();
+				
+				//Debug print
+				/*System.err.println("Checksum cluster " + i + ":");
+				for(int j = 0; j < 20; j++) System.err.print(String.format("%02x", hash[j]));
+				System.err.println();*/
+				
 				if(!MessageDigest.isEqual(ref, hash)) return false;
 				blockStart += WiiDisc.DATACLUSTER_DATA_OFFSET;
 			}

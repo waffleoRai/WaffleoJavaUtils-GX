@@ -4,7 +4,12 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 import waffleoRai_Executable.nintendo.DolExe;
 import waffleoRai_Files.FileTypeDefNode;
@@ -39,7 +44,10 @@ public class GCWiiDisc {
 	private GCWiiHeader header;
 	private DirectoryNode root;
 	
+	private boolean is_wii;
+	
 	private long fst_offset;
+	private long fst_size;
 	private long dol_offset;
 	private long dol_size;
 	//private long appl_offset;
@@ -47,28 +55,34 @@ public class GCWiiDisc {
 	
 	/* ----- Construction ----- */
 	
-	public GCWiiDisc(String image_path) throws IOException
-	{
+	public GCWiiDisc(String image_path) throws IOException{
+		//System.err.println("GCWiiDisc.<init> || Source path: " + image_path);
 		filePath = image_path;
 		readDiskInfo();
 	}
 	
 	/* ----- Parsing ----- */
 	
-	private void readDiskInfo() throws IOException
-	{
+	private void readDiskInfo() throws IOException{
 		//Header
-		//openFile = new StreamBuffer(filePath, true);
 		openFile = CacheFileBuffer.getReadOnlyCacheBuffer(filePath, true);
+		
+		//First thing's first. We need to see if it's a Wii or GC header!
+		int wiiword = openFile.intFromFile(0x18);
+		is_wii = (wiiword == GCWiiDisc.WII_HEADER_MAGIC);
+		
 		header = GCWiiHeader.readHeader(openFile, 0);
-		//System.err.println("fst offset raw: 0x" + Integer.toHexString(openFile.intFromFile(OFFSET_FST_ADDR)));
-		//fst_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_ADDR)) << 2;
 		fst_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_ADDR));
+		if(is_wii) fst_offset = fst_offset << 2;
+		fst_size = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_SIZE));
+		if(is_wii) fst_size = fst_size << 2;
 		root = readFileSystem();
-		//dol_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_DOL_ADDR)) << 2;
+		
 		dol_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_DOL_ADDR));
-		//appl_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_DOL_ADDR));
+		if(is_wii) dol_offset = dol_offset << 2;
 		dol_size = calculateDOLSize(dol_offset);
+		
+		//appl_offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_DOL_ADDR));
 		appl_size = getAppLoaderSize(OFFSET_APPL_ADDR);
 	}
 	
@@ -100,17 +114,11 @@ public class GCWiiDisc {
 		return sz;
 	}
 	
-	private FileBuffer extractFST() throws IOException
-	{
-		//final long FSTOFF_OFF = 0x424;
-		//final long FSTSIZE_OFF = 0x428;
-		
-		//if(openFile == null) openFile = new StreamBuffer(filePath);
+	private FileBuffer extractFST() throws IOException{
 		if(openFile == null) openFile = CacheFileBuffer.getReadOnlyCacheBuffer(filePath, true);
-		//long offset = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_ADDR)) << 2;
+		
 		long offset = fst_offset;
-		//long size = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_SIZE)) << 2;
-		long size = Integer.toUnsignedLong(openFile.intFromFile(OFFSET_FST_SIZE));
+		long size = fst_size;
 		
 		//System.err.println("GCWiiDisc.extractFST || -DEBUG- FST Offset: 0x" + Long.toHexString(offset));
 		//System.err.println("GCWiiDisc.extractFST || -DEBUG- FST Size: 0x" + Long.toHexString(size));
@@ -128,8 +136,7 @@ public class GCWiiDisc {
 		return readFileSystem(fst);
 	}
 	
-	public DirectoryNode readFileSystem(FileBuffer fst)
-	{
+	public DirectoryNode readFileSystem(FileBuffer fst){
 		//Only concerned with the "fst"
 		//Read root record
 		long cpos = 8;
@@ -154,7 +161,7 @@ public class GCWiiDisc {
 			int nameOff = fst.shortishFromFile(cpos); cpos += 3;
 			int offsetRaw = fst.intFromFile(cpos); cpos += 4;
 			int sizeRaw = fst.intFromFile(cpos); cpos += 4;
-		//	System.err.println("\tName Offset: 0x" + Integer.toHexString(nameOff));
+			//System.err.println("\tName Offset: 0x" + Integer.toHexString(nameOff));
 			//System.err.println("\tFile Offset: 0x" + Integer.toHexString(offsetRaw));
 			//System.err.println("\tSize Offset: 0x" + Integer.toHexString(sizeRaw));
 			
@@ -169,7 +176,9 @@ public class GCWiiDisc {
 				//It's a file
 				//System.err.println("\tNode is a file!");
 				FileNode node = new FileNode(activeDir, node_name);
-				node.setOffset(Integer.toUnsignedLong(offsetRaw)); //Not sure if shifted!!
+				long off = offsetRaw;
+				if(is_wii) off = off << 2;
+				node.setOffset(off); //Not sure if shifted!!
 				node.setLength(Integer.toUnsignedLong(sizeRaw));
 				//System.err.println(node_index + "\tF\t" + node_name + "\t0x" + Long.toHexString(offsetRaw) + "\t0x" + Long.toHexString(sizeRaw));
 			}
@@ -185,14 +194,27 @@ public class GCWiiDisc {
 			}
 			
 			//Back up a directory if this directory is done
-			while(node_index >= activeDir.getEndIndex())
-			{
+			while(node_index >= activeDir.getEndIndex()){
 				activeDir = activeDir.getParent();
 				if(activeDir == null) break;
 			}
 		}
 		
 		return root;
+	}
+	
+	private static void mapByOffset(Map<Long, FileNode> osmap, DirectoryNode dir){
+		
+		List<FileNode> children = dir.getChildren();
+		for(FileNode child : children){
+			if(child instanceof DirectoryNode){
+				mapByOffset(osmap, ((DirectoryNode)child));
+			}
+			else{
+				osmap.put(child.getOffset(), child);
+			}
+		}
+		
 	}
 	
 	public DirectoryNode getDiscTree() throws IOException{
@@ -230,6 +252,34 @@ public class GCWiiDisc {
 		DirectoryNode fsdir = readFileSystem(fstbuff);
 		fsdir.setFileName(mycode);
 		fsdir.setParent(root);
+		
+		//Raw data...
+		Map<Long, FileNode> osmap = new TreeMap<Long, FileNode>();
+		mapByOffset(osmap, root);
+		List<Long> keylist = new ArrayList<Long>(osmap.size()+1);
+		keylist.addAll(osmap.keySet());
+		Collections.sort(keylist);
+		List<long[]> rlist = new LinkedList<long[]>();
+		long lastend = 0L;
+		for(Long k : keylist){
+			fn = osmap.get(k);
+			long st = fn.getOffset();
+			long ed = st + fn.getLength();
+			if(st - lastend > 0x20){
+				rlist.add(new long[]{lastend, st});
+			}
+			lastend = ed;
+		}
+		
+		if(!rlist.isEmpty()){
+			DirectoryNode rawdir = new DirectoryNode(root, "ofsdat");
+			for(long[] ival : rlist){
+				long off = ival[0];
+				fn = new FileNode(rawdir, "DOLDISCDAT_0x" + Long.toHexString(off));
+				fn.setOffset(off);
+				fn.setLength(ival[1] - ival[0]);
+			}
+		}
 		
 		return root;
 	}

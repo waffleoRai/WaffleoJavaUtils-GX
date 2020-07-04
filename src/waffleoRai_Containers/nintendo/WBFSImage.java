@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import waffleoRai_Containers.nintendo.wiidisc.WiiCryptListener;
 import waffleoRai_Image.nintendo.DolGraphics;
 import waffleoRai_Utils.CacheFileBuffer;
 import waffleoRai_Utils.FileBuffer;
@@ -272,12 +273,12 @@ public class WBFSImage {
 		return discView;
 	}
 
-	public static WiiDisc readWiiDisc(String path, int discIndex) throws IOException, UnsupportedFileTypeException
+	public static WiiDisc readWiiDisc(String path, int discIndex, WiiCryptListener observer) throws IOException, UnsupportedFileTypeException
 	{
 		//System.err.println("WBFSImage.readWiiDisc || -DEBUG- Function called!");
 		WBFSImage wbfs = readWBFS(path);
 		FileBuffer discView = wbfs.generateDiscView(discIndex);
-		WiiDisc image = WiiDisc.parseFromData(discView);
+		WiiDisc image = WiiDisc.parseFromData(discView, observer);
 
 		return image;
 	}

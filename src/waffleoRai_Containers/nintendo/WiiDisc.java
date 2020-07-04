@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
 
+import waffleoRai_Containers.nintendo.wiidisc.WiiCryptListener;
 import waffleoRai_Containers.nintendo.wiidisc.WiiPartition;
 import waffleoRai_Containers.nintendo.wiidisc.WiiPartitionGroup;
 import waffleoRai_Files.FileTypeDefNode;
@@ -76,7 +77,7 @@ public class WiiDisc{
 	
 	/* ----- Parsing ----- */
 	
-	public static WiiDisc parseFromData(FileBuffer src) throws IOException, UnsupportedFileTypeException
+	public static WiiDisc parseFromData(FileBuffer src, WiiCryptListener observer) throws IOException, UnsupportedFileTypeException
 	{
 		//It will start at 0x00 - if it's wrapped in a wbfs, must advance ptr!
 		WiiDisc disc = new WiiDisc();
@@ -123,9 +124,20 @@ public class WiiDisc{
 		cpos = REGION_INFO_OFFSET;
 		for(int i = 0; i < REGION_INFO_SIZE; i++){disc.rawRegionInfo.addToFile(src.getByte(cpos)); cpos++;}
 		
+		//Count partitions for the observer
+		if(observer != null){
+			int pcount = 0;
+			for(int i = 0; i < disc.oParts.length; i++){
+				if (disc.oParts[i] != null){
+					pcount += disc.oParts[i].getSubPartitions().size();
+				}
+			}
+			observer.setPartitionCount(pcount);
+		}
+		
 		//Now, parse the partitions...
 		for(int i = 0; i < disc.oParts.length; i++){
-			if (disc.oParts[i] != null) disc.oParts[i].readPartion(src);
+			if (disc.oParts[i] != null) disc.oParts[i].readPartion(src, observer);
 		}
 		
 		return disc;

@@ -1,22 +1,16 @@
 package waffleoRai_Containers.nintendo.wiidisc;
 
-import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 import waffleoRai_Containers.nintendo.GCWiiDisc;
-import waffleoRai_Containers.nintendo.WBFSImage;
 import waffleoRai_Containers.nintendo.WiiDisc;
 import waffleoRai_Encryption.AES;
 import waffleoRai_Files.FileTypeDefNode;
@@ -29,7 +23,7 @@ import waffleoRai_Utils.MultiFileBuffer;
 
 public class WiiPartition {
 	
-	public static final int DECRYPT_THREADS = 64; //512
+	//public static final int DECRYPT_THREADS = 4;
 	
 	/* --- Instance Variables --- */
 	
@@ -54,138 +48,10 @@ public class WiiPartition {
 	private AES oDecryptor;
 	private List<WiiCertificate> lCertChain;
 	
-	private volatile long sectors_read_counter;
+	//private volatile long sectors_read_counter;
 	
 	private GCWiiDisc decryptedPart;
 	
-	/* --- Decryption Parallelization --- */
-	
-	private static class SectorBank{
-		
-		private WiiDataCluster[] clusters;
-		private volatile int logCount;
-					
-		private int expectedLast;
-
-		public SectorBank(){
-			clusters = new WiiDataCluster[DECRYPT_THREADS];
-			expectedLast = -1;
-		}
-		
-		public synchronized void enterCluster(int index, WiiDataCluster cluster){
-			clusters[index] = cluster;
-			logCount++;
-		}
-		
-		public synchronized List<WiiDataCluster> dump(){
-			List<WiiDataCluster> clist = new ArrayList<WiiDataCluster>(DECRYPT_THREADS);
-			for(int i = 0; i < clusters.length; i++){
-				clist.add(clusters[i]);
-				clusters[i] = null;
-			}
-			logCount = 0;
-
-			return clist;
-		}
-		
-		public synchronized boolean channelClear(int index){return clusters[index] == null;}
-		
-		public boolean readyForDump(){
-			if(expectedLast < 0) return logCount >= DECRYPT_THREADS;
-			else return logCount >= expectedLast;
-		}
-		
-		public void setLast(int i){
-			expectedLast = i;
-		}
-		
-	}
-	
-	private synchronized void incrementSectorsRead(){
-		sectors_read_counter++;
-	}
-	
-	private class DRunnable implements Runnable{
-		
-		public static final int MAX_CLUSTERS_QUEUED = 5;
-		
-		private int index;
-		private int maxSector;
-		private FileBuffer dataLink;
-		
-		private Map<Long, WiiDataCluster> queuedMap;
-		
-		private SectorBank bank;
-
-		public DRunnable(int i, int maxSec, FileBuffer data){
-			index = i;
-			maxSector = maxSec;
-			dataLink = data;
-			queuedMap = new HashMap<Long, WiiDataCluster>();
-		}
-		
-		public synchronized void setBank(SectorBank b){
-			bank = b;
-		}
-		
-		public synchronized boolean bankHold(){
-			if(bank == null){return true;}
-			return !bank.channelClear(index);
-		}
-		
-		public void run() {
-			long nextSector = Integer.toUnsignedLong(index);
-			long decSector = nextSector;
-			
-			while(nextSector < maxSector)
-			{
-				//Calculate offset
-				long pos = iAddress + iDataOff + (nextSector << WBFSImage.WII_SEC_SZ_S);
-				//long dpos = pos;
-				//System.err.println("WiiDisc.SubPartition.DRunnable.run || Decryptor " + index + ": Ready to read sector " + nextSector);
-				
-				//Hold until ready...
-				while(bankHold()){
-					//Decrypt next sector if there's space
-					if(queuedMap.size() < MAX_CLUSTERS_QUEUED){
-						long dpos = iAddress + iDataOff + (decSector << WBFSImage.WII_SEC_SZ_S);
-						WiiDataCluster precluster = new WiiDataCluster();
-						precluster.readCluster(dataLink, dpos, oDecryptor);
-						queuedMap.put(decSector, precluster);
-						decSector += DECRYPT_THREADS;
-					}
-					else{
-						//Else sleep
-						try {
-							Thread.sleep(10);
-						} 
-						catch (InterruptedException e) {
-							e.printStackTrace();
-						}	
-					}
-				}
-				
-				//See if the next sector is already decrypted
-				WiiDataCluster cluster = null;
-				cluster = queuedMap.remove(nextSector);
-				//Decrypt and store
-				//System.err.println("WiiDisc.SubPartition.DRunnable.run || Decryptor " + index + ": Clear to decrypt sector " + nextSector);
-				if(cluster == null)
-				{
-					cluster = new WiiDataCluster();
-					cluster.readCluster(dataLink, pos, oDecryptor);
-				}	
-				//System.err.println("WiiDisc.SubPartition.DRunnable.run || Decryptor " + index + ": Decrypted sector " + nextSector);
-				bank.enterCluster(index, cluster);
-				incrementSectorsRead();
-				
-				nextSector += DECRYPT_THREADS;
-			}
-			
-		}
-		
-	}
-
 	/* --- Construction/Parsing --- */
 	
 	public WiiPartition(int type, long staddr) throws IOException{
@@ -197,9 +63,9 @@ public class WiiPartition {
 		aH3Table = new byte[WiiDisc.H3_TABLE_ENTRIES][20];
 	}
 	
-	public void readFromDisc(FileBuffer discData) throws IOException, UnsupportedFileTypeException{
+	public void readFromDisc(FileBuffer discData, WiiCryptListener observer) throws IOException, UnsupportedFileTypeException{
 		//If they are relative to something like the partition, this needs to be changed!
-		sectors_read_counter = 0;
+		//sectors_read_counter = 0;
 		
 		//Read the partition header
 		long cpos = iAddress;
@@ -256,152 +122,20 @@ public class WiiPartition {
 		}
 		//System.err.println("WiiDisc.SubPartition.readFromDisc || H3 Table read!");
 		//System.exit(2);
-		
-		if(WiiDisc.getCommonKey() != null) decryptData(discData);
+
+		if(WiiDisc.getCommonKey() != null) decryptData(discData, observer);
 		
 	}
 	
-	private void decryptData(FileBuffer discData) throws IOException{
+	private void decryptData(FileBuffer discData, WiiCryptListener observer) throws IOException{
+		
 		//Read the data (Copy to temp file)
 		//long cpos = iDataOff + iAddress;
 		int sectorCount = (int)(iDataSize/(long)WiiDisc.DATACLUSTER_SIZE);
 		Files.deleteIfExists(Paths.get(pTempFile));
 		
-		//DEBUG BLOCK - Read the first sector
-		/*String debug_write_hash = "C:\\Users\\Blythe\\Documents\\Game Stuff\\Wii\\Gamedata\\SkywardSword\\test\\debug\\sector_1_hash.bin";
-		String debug_write_data = "C:\\Users\\Blythe\\Documents\\Game Stuff\\Wii\\Gamedata\\SkywardSword\\test\\debug\\sector_1_test.bin";
-		DataCluster debug_dc = new DataCluster();
-		debug_dc.readCluster(discData, cpos, oDecryptor);
-		debug_dc.dumpHashTables(debug_write_hash);
-		debug_dc.dumpData(debug_write_data);
-		System.exit(2);*/
-		
-		//Threads:
-		//	512 for sector parsing
-		//	1 for writing
-		//	1 for progress updates
-		
-		//I am way too lazy to actually fix the AES algorithm (or even cut
-		//	out the cumbersome parts
-		//So let's just parallelize this.
-		
-		SectorBank bank1 = new SectorBank();
-		SectorBank bank2 = new SectorBank();
-		
-		DRunnable[] decryptors = new DRunnable[DECRYPT_THREADS];
-		for (int i = 0; i < DECRYPT_THREADS; i++){
-			decryptors[i] = new DRunnable(i, sectorCount, discData);
-			decryptors[i].setBank(bank1);
-		}
-		
-		Runnable writer = new Runnable(){
-			
-			public void run() {
-				int sectors_written = 0;
-				SectorBank activeBank = bank1;
-				SectorBank inactiveBank = bank2;
-				
-				try {
-					BufferedOutputStream bw = new BufferedOutputStream(new FileOutputStream(pTempFile));
-					
-					//Loop
-					boolean dzSwitch = true;
-					while(sectors_written < sectorCount){
-						//Wait for activeBank to be dump ready...
-						//System.err.println("WiiDisc.SubPartition.readFromDisc.<Runnable>.run || Writer: Preparing to write sector " + sectors_written);
-						while(!activeBank.readyForDump())
-						{
-							try {Thread.sleep(10);} 
-							catch (InterruptedException e) {e.printStackTrace();}
-						}
-						//System.err.println("WiiDisc.SubPartition.readFromDisc.<Runnable>.run || Writer: Cleared to write sector " + sectors_written);
-						//Switch banks
-						SectorBank temp = activeBank;
-						activeBank = inactiveBank;
-						inactiveBank = temp;
-						int sleft = sectorCount - (int)sectors_read_counter;
-						if(sleft < DECRYPT_THREADS) activeBank.setLast(sleft);
-						for (int i = 0; i < DECRYPT_THREADS; i++){decryptors[i].setBank(activeBank);}
-						
-						//Start writing from the inactive bank
-						List<WiiDataCluster> datadump = inactiveBank.dump();
-						for(WiiDataCluster dc : datadump){
-							if(dc!=null){
-								//DEBUG - demarcate zero/data blocks
-								if(dzSwitch){
-									if(dc.isZeroBlock()){
-										dzSwitch = false;
-										//System.err.println("WiiDisc.readFromDisc || -DEBUG- Entering chunk of zero-sectors! Sectors written: " + sectors_written);
-									}
-								}
-								else{
-									if(!dc.isZeroBlock()){
-										dzSwitch = true;
-										//System.err.println("WiiDisc.readFromDisc || -DEBUG- Entering chunk of data-sectors! Sectors written: " + sectors_written);
-									}
-								}
-								//DEBUG - Check integrity
-								if(!dc.checkClusterHash()){
-									System.err.println("WiiDisc.readFromDisc || -DEBUG- Sector failed hash check! Sectors written: " + sectors_written);
-								}
-								//Write
-								bw.write(dc.getDecryptedData());
-							}
-							else{
-								System.err.println("WiiDisc.readFromDisc || -DEBUG- Null sector encountered! Sectors written: " + sectors_written);
-								bw.close();
-								return;
-							}
-							sectors_written++;
-						}
-					}
-					
-					bw.close();
-				} 
-				catch (IOException e){
-					e.printStackTrace();
-				}
-			}
-		};
-		
-		Runnable monitor = new Runnable(){
-			
-			public void run() {
-				while(sectors_read_counter < sectorCount){
-					double percent = ((double)sectors_read_counter/(double)sectorCount) * 100.0;
-					System.err.println("WiiDisc.readFromDisc || -DEBUG- Sectors read: " + sectors_read_counter + "/" + sectorCount + "(" + String.format("%.2f", percent) + "%)");
-					try {
-						Thread.sleep(5000);
-					} 
-					catch (InterruptedException e) {
-						e.printStackTrace();
-					}
-				}
-			}
-		};
-		
-		for (int i = 0; i < DECRYPT_THREADS; i++){
-			Thread t = new Thread(decryptors[i]);
-			t.setName("WiiPartitionDecryptor_" + i);
-			t.setDaemon(true);
-			t.start();
-		}
-		
-		Thread writerThread = new Thread(writer);
-		writerThread.setName("WiiPartitionTempWriter");
-		writerThread.setDaemon(true);
-		writerThread.start();
-		
-		Thread mThread = new Thread(monitor);
-		mThread.setName("WiiPartitionDecryptionMonitor");
-		mThread.setDaemon(true);
-		mThread.start();
-		
-		//Wait for all to finish...
-		while(sectors_read_counter < sectorCount || writerThread.isAlive()){
-			try {Thread.sleep(100);} 
-			catch (InterruptedException e) {e.printStackTrace();}
-		}
+		WiiCrypt crypto = new WiiCrypt(oDecryptor);
+		crypto.decryptPartitionData(discData, iAddress+iDataOff, sectorCount, observer, pTempFile);
 		
 		decryptedPart = new GCWiiDisc(pTempFile);
 	}

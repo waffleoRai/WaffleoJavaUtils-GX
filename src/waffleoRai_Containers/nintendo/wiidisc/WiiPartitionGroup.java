@@ -29,9 +29,9 @@ public class WiiPartitionGroup {
 	
 	/* --- Parsing --- */
 	
-	public void readPartion(FileBuffer discData) throws IOException, UnsupportedFileTypeException{
+	public void readPartion(FileBuffer discData, WiiCryptListener observer) throws IOException, UnsupportedFileTypeException{
 		for(int i = 0; i < oPartitions.length; i++){
-			if (oPartitions[i] != null) oPartitions[i].readFromDisc(discData);
+			if (oPartitions[i] != null) oPartitions[i].readFromDisc(discData, observer);
 		}
 	}
 
