@@ -25,7 +25,8 @@ public class WiiSaveBannerFile {
 	/*----- Instance Variables -----*/
 	
 	private boolean pingpong;
-	private int anim_speed;
+	//private int anim_speed;
+	private int[] frame_lens;
 	
 	private String title;
 	private String subtitle;
@@ -48,7 +49,7 @@ public class WiiSaveBannerFile {
 		if(moff < 0) throw new FileBuffer.UnsupportedFileTypeException("Wii Save Banner Magic WIBN not found!");
 		
 		WiiSaveBannerFile mybnr = new WiiSaveBannerFile();
-		data.setCurrentPosition(stpos+4);
+		data.setCurrentPosition(moff+4);
 		int flags = data.nextInt();
 		if((flags & 0x10) != 0) mybnr.pingpong = true;
 		
@@ -105,11 +106,13 @@ public class WiiSaveBannerFile {
 		}
 		
 		//Set animation speed...
-		/*if(speedraw > 0 && frames > 1){
-			mybnr.anim_speed = ANIM_SPEED_CONST * (speedraw >>> ((2*frames) & 0x3));
+		mybnr.frame_lens = new int[8];
+		int shift = 14;
+		for(int i = 0; i < frames; i++){
+			mybnr.frame_lens[i] = (speedraw >>> shift) & 0x3;
+			shift-=2;
 		}
-		else mybnr.anim_speed = -1;*/
-		mybnr.anim_speed = speedraw;
+		//mybnr.anim_speed = speedraw;
 		
 		return mybnr;
 	}
@@ -120,13 +123,30 @@ public class WiiSaveBannerFile {
 	public String getSubtitle(){return subtitle;}
 	public BufferedImage getBanner(){return banner;}
 	
+	public int getAnimationFrameCount(){
+		if(icon == null) return 0;
+		
+		//See if first two frame lens are 0, in which case 1...
+		if(frame_lens[0] == 0 && frame_lens[1] == 0) return 1;
+		
+		int count = 0;
+		for(int i = 0; i < icon.length; i++){
+			if(icon[i] != null) count++;
+		}
+		
+		return count;
+	}
+	
 	public Animation getIcon(){
-		int frames = icon.length;
+		int frames = getAnimationFrameCount();
 		SimpleAnimation anim = new SimpleAnimation(frames);
 		
+		int f = 0;
 		for(int i = 0; i < frames; i++){
-			AnimationFrame frame = new AnimationFrame(icon[i], anim_speed);
-			anim.setFrame(frame, i);
+			if(icon[i] != null){
+				AnimationFrame frame = new AnimationFrame(icon[i], frame_lens[i]);
+				anim.setFrame(frame, f++);	
+			}
 		}
 		
 		if(pingpong) anim.setAnimationMode(Animation.ANIM_MODE_PINGPONG);

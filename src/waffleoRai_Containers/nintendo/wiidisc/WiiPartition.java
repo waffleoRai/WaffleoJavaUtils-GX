@@ -63,7 +63,7 @@ public class WiiPartition {
 		aH3Table = new byte[WiiDisc.H3_TABLE_ENTRIES][20];
 	}
 	
-	public void readFromDisc(FileBuffer discData, WiiCryptListener observer) throws IOException, UnsupportedFileTypeException{
+	public void readFromDisc(FileBuffer discData, WiiCryptListener observer, boolean auto_decrypt) throws IOException, UnsupportedFileTypeException{
 		//If they are relative to something like the partition, this needs to be changed!
 		//sectors_read_counter = 0;
 		
@@ -123,11 +123,11 @@ public class WiiPartition {
 		//System.err.println("WiiDisc.SubPartition.readFromDisc || H3 Table read!");
 		//System.exit(2);
 
-		if(WiiDisc.getCommonKey() != null) decryptData(discData, observer);
+		if(auto_decrypt && WiiDisc.getCommonKey() != null) decryptData(discData, observer, true);
 		
 	}
 	
-	private void decryptData(FileBuffer discData, WiiCryptListener observer) throws IOException{
+	public void decryptData(FileBuffer discData, WiiCryptListener observer, boolean checkHash) throws IOException{
 		
 		//Read the data (Copy to temp file)
 		//long cpos = iDataOff + iAddress;
@@ -135,6 +135,7 @@ public class WiiPartition {
 		Files.deleteIfExists(Paths.get(pTempFile));
 		
 		WiiCrypt crypto = new WiiCrypt(oDecryptor);
+		crypto.setHashConfirm(checkHash);
 		crypto.decryptPartitionData(discData, iAddress+iDataOff, sectorCount, observer, pTempFile);
 		
 		decryptedPart = new GCWiiDisc(pTempFile);
@@ -247,6 +248,16 @@ public class WiiPartition {
 			fdir.setFileName(name);
 			fdir.setParent(root);
 		}
+		else if(decrypt_path != null && FileBuffer.fileExists(decrypt_path)){
+			//Reload from this path...
+			decryptedPart = new GCWiiDisc(decrypt_path);
+			String name = decryptedPart.getGameID();
+			DirectoryNode fdir = decryptedPart.getDiscTree();
+			//Rig source paths...
+			fdir.setSourcePathForTree(decrypt_path);
+			fdir.setFileName(name);
+			fdir.setParent(root);
+		}
 		else{
 			fn = new FileNode(root, "data.aes");
 			fn.setSourcePath(wiiimg_path); fn.setOffset(iAddress+ iDataOff); fn.setLength(iDataSize);
@@ -258,6 +269,9 @@ public class WiiPartition {
 	/* --- Writing/Serialization --- */
 	
 	public boolean writeDecryptedRaw(String outpath) throws IOException{
+		//See if outpath already exists. If it does, delete.
+		if(FileBuffer.fileExists(outpath)) Files.delete(Paths.get(outpath));
+		
 		if(FileBuffer.fileExists(pTempFile)) Files.copy(Paths.get(pTempFile), Paths.get(outpath));
 		else return false;
 		return true;
@@ -287,6 +301,7 @@ public class WiiPartition {
 		//closeOpenTempFile();
 		if(decryptedPart != null) decryptedPart.closeDiscStream();
 		Files.deleteIfExists(Paths.get(pTempFile));
+		decryptedPart = null;
 	}
 	
 }

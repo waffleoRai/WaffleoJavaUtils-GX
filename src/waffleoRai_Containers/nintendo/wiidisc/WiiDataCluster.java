@@ -53,7 +53,8 @@ public class WiiDataCluster {
 		//System.err.println("data start = 0x" + Long.toHexString(cpos));
 		byte[] rawdata = src.getBytes(cpos, cpos + WiiDisc.DATACLUSTER_DATA_SIZE);
 		//(DEBUG) See if it's a zero cluster
-		if(isZeroBlock(hashdata, rawdata)){data = new byte[WiiDisc.DATACLUSTER_DATA_SIZE]; zero_sector = true; return;}
+		if(isZeroBlock(hashdata, rawdata) || isBlankBlock(rawdata)){data = new byte[WiiDisc.DATACLUSTER_DATA_SIZE]; zero_sector = true; return;}
+		
 		//Decrypt hash data
 		hashdata = partitionCracker.decrypt(nulliv, hashdata);
 
@@ -96,12 +97,33 @@ public class WiiDataCluster {
 		return data;
 	}
 	
-	private boolean isZeroBlock(byte[] hashblock, byte[] datablock){
+	private boolean isZeroBlock(byte[] hashblock, byte[] datablock_enc){
+		//I guess it can sometimes happen that either...
+		//1. A block is 100% zeroes (generated buffer from a wbfs), so unused.
+		//2. A block has a hashtable, but the data is all 0xFF or 0x00, implying that it's unused
+
+		//Check hashblock
 		for(int i = 0; i < WiiDisc.DATACLUSTER_DATA_OFFSET; i++){
-			if(hashblock[i] != 0) return false;
+			if(hashblock[i] != 0){
+				return false;
+			}
 		}
+		
 		for(int i = 0; i < WiiDisc.DATACLUSTER_DATA_SIZE; i++){
-			if(datablock[i] != 0) return false;
+			if(datablock_enc[i] != 0){
+				return false;
+			}
+		}
+		return true;
+	}
+	
+	private boolean isBlankBlock(byte[] datablock_enc){
+		//I guess it can sometimes happen that either...
+		//1. A block is 100% zeroes (generated buffer from a wbfs), so unused.
+		//2. A block has a hashtable, but the data is all 0xFF or 0x00, implying that it's unused
+
+		for(int i = 0; i < WiiDisc.DATACLUSTER_DATA_SIZE; i++){
+			if(datablock_enc[i] != (byte)0xFF) return false;
 		}
 		return true;
 	}

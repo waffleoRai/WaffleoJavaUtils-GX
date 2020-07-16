@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.LinkedList;
 import java.util.List;
 
 import waffleoRai_Containers.nintendo.wiidisc.WiiCryptListener;
@@ -77,7 +78,11 @@ public class WiiDisc{
 	
 	/* ----- Parsing ----- */
 	
-	public static WiiDisc parseFromData(FileBuffer src, WiiCryptListener observer) throws IOException, UnsupportedFileTypeException
+	public static WiiDisc parseFromData(FileBuffer src, WiiCryptListener observer) throws IOException, UnsupportedFileTypeException{
+		return parseFromData(src, observer, true);
+	}
+	
+	public static WiiDisc parseFromData(FileBuffer src, WiiCryptListener observer, boolean auto_decrypt) throws IOException, UnsupportedFileTypeException
 	{
 		//It will start at 0x00 - if it's wrapped in a wbfs, must advance ptr!
 		WiiDisc disc = new WiiDisc();
@@ -137,7 +142,7 @@ public class WiiDisc{
 		
 		//Now, parse the partitions...
 		for(int i = 0; i < disc.oParts.length; i++){
-			if (disc.oParts[i] != null) disc.oParts[i].readPartion(src, observer);
+			if (disc.oParts[i] != null) disc.oParts[i].readPartion(src, observer, auto_decrypt);
 		}
 		
 		return disc;
@@ -281,6 +286,22 @@ public class WiiDisc{
 		}
 		
 		return root;
+	}
+	
+	public List<long[]> getEncryptedIntervals(){
+		List<long[]> list = new LinkedList<long[]>();
+		for(int i = 0; i < 4; i++){
+			if(oParts[i] != null){
+				List<WiiPartition> parts = oParts[i].getSubPartitions();
+				for(WiiPartition part : parts){
+					long off = part.getAddress() + part.getDataOffset();
+					long edoff = off + part.getDataSize();
+					list.add(new long[]{off, edoff});
+				}
+			}
+		}
+		
+		return list;
 	}
 	
 	/* ----- Cleanup ----- */
