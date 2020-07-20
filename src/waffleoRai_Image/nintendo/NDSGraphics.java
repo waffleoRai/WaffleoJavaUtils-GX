@@ -117,5 +117,21 @@ public class NDSGraphics {
 		return (int)Math.round(PC);
 	}
 	
-
+	public static int RGB565LE_to_ARGB(short val){
+		//For 3DS
+		
+		int vali = Short.toUnsignedInt(val);
+		int r5 = (vali >>> 11) & 0x1F;
+		int g6 = (vali >>> 5) & 0x3F;
+		int b5 = vali & 0x1F;
+		
+		int a = 255;
+		int r = DolGraphics.upscale5(r5);
+		int g = DolGraphics.upscale6(g6);
+		int b = DolGraphics.upscale5(b5);
+		
+		return (a << 24) | (r << 16) | (g << 8) | b;
+	}
+	
+	
 }

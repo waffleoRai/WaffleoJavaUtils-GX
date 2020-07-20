@@ -16,6 +16,7 @@ public class PowerGCSysFileDefs {
 	
 	private static WiiRSADef rsa_def;
 	private static WiiPartTableDef pt_def;
+	private static WiiUPartTableDef pt_def_u;
 	private static WiiRegInfoDef reg_def;
 	private static WiiTicketDef ticket_def;
 	private static WiiTMDDef tmd_def;
@@ -49,6 +50,11 @@ public class PowerGCSysFileDefs {
 	public static WiiPartTableDef getPartTableDef(){
 		if(pt_def == null) pt_def = new WiiPartTableDef();
 		return pt_def;
+	}
+	
+	public static WiiUPartTableDef getWiiUPartTableDef(){
+		if(pt_def_u == null) pt_def_u = new WiiUPartTableDef();
+		return pt_def_u;
 	}
 	
 	public static WiiRegInfoDef getRegInfoDef(){
@@ -227,6 +233,32 @@ public class PowerGCSysFileDefs {
 		
 	}
 	
+	public static class WiiUPartTableDef implements FileTypeDefinition{
+		
+		private static String DEFO_ENG_DESC = "Nintendo Wii U Disc Partition Table";
+		public static int TYPE_ID = 0x7c59782c;
+		
+		private String str;
+		
+		public WiiUPartTableDef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			slist.add("bin");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.SYSTEM;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "bin";}
+		
+	}
+	
 	public static class WiiRegInfoDef implements FileTypeDefinition{
 		
 		private static String DEFO_ENG_DESC = "Nintendo Wii Region Info";
@@ -255,7 +287,7 @@ public class PowerGCSysFileDefs {
 	
 	public static class WiiTicketDef implements FileTypeDefinition{
 		
-		private static String DEFO_ENG_DESC = "Nintendo Wii Partition Ticket";
+		private static String DEFO_ENG_DESC = "Nintendo Wii/Wii U Partition Ticket";
 		public static int TYPE_ID = 0x7cd498ee;
 		
 		private String str;
@@ -281,7 +313,7 @@ public class PowerGCSysFileDefs {
 	
 	public static class WiiTMDDef implements FileTypeDefinition{
 		
-		private static String DEFO_ENG_DESC = "Nintendo Wii Title Metadata";
+		private static String DEFO_ENG_DESC = "Nintendo Wii/Wii U Title Metadata";
 		public static int TYPE_ID = 0x7c286a84;
 		
 		private String str;

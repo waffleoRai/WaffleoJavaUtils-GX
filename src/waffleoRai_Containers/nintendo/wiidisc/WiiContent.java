@@ -37,6 +37,7 @@ public class WiiContent {
 		iSize = src.longFromFile(cpos); cpos += 8;
 		for(int i = 0; i < 20; i++){aSHA[i] = src.getByte(cpos); cpos++;}
 	}
+	
 
 	/* --- Getters --- */
 	
@@ -60,9 +61,9 @@ public class WiiContent {
 	}
 	
 	public void printInfo(){
-		System.out.println("\tContent ID: " + iContentID);
+		System.out.println("\tContent ID: 0x" + Integer.toHexString(iContentID));
 		System.out.println("\tIndex: " + iIndex);
-		System.out.println("\tType: " + eType);
+		System.out.println("\tType: 0x" + Integer.toHexString(eType));
 		System.out.println("\tSize: 0x" + Long.toHexString(iSize));
 		System.out.println("\tSHA Checksum: ");
 		System.out.print("\t\t");

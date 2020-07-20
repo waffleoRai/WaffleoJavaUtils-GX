@@ -1,18 +1,20 @@
 package waffleoRai_Containers.nintendo.citrus;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
-import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
 
 import waffleoRai_Encryption.AES;
+import waffleoRai_Files.FileTypeDefNode;
+import waffleoRai_Files.GenericSystemDef;
 import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -28,7 +30,6 @@ import waffleoRai_Utils.FileNode;
  * 
  */
 
-
 public class CitrusNCC {
 
 	/*----- Constants -----*/
@@ -40,6 +41,8 @@ public class CitrusNCC {
 	public static final int IV_TYPE_ROMFS = 3;
 	
 	public static final int EXHEADER_OFFSET = 0x200;
+	
+	public static final String METAKEY_ENC = "NCC_USEASIS";
 	
 	/*----- Instance Variables -----*/
 	
@@ -274,17 +277,22 @@ public class CitrusNCC {
 		return (this.content_type_mask & 0x02) != 0;
 	}
 		
-	public long getPartitionID(){
-		return this.part_id;
-	}
+	public long getPartitionID(){return this.part_id;}
+	public String getProductID(){return this.product_code;}
+	public String getMakerCode(){return this.maker_code;}
+	public byte[] getLogoHash(){return hash_logo;}
+	public byte[] getExeFSHash(){return exefs_hash;}
+	public byte[] getRomFSHash(){return romfs_hash;}
 	
-	public byte[] getRomFSHash(){
-		return romfs_hash;
-	}
+	public long getExeFSOffset(){return this.exefs_offset;}
+	public long getExeFSSize(){return this.exefs_len;}
+	public long getRomFSOffset(){return this.romfs_offset;}
+	public long getRomFSSize(){return this.romfs_len;}
+	
+	public byte[] getSetRomID(){return romid;}
 	
 	public DirectoryNode getFileTree(){
-		//TODO
-		
+
 		String rname = Long.toHexString(part_id);
 		boolean cxi = isCXI();
 		if(cxi) rname += ".cxi";
@@ -304,31 +312,67 @@ public class CitrusNCC {
 		//System: ncch.bin, exheader.bin, accessdesc.bin
 		FileNode fn = new FileNode(root, "ncch.bin");
 		fn.setOffset(eoff); fn.setLength(0x200); fn.setSourcePath(epath);
+		fn.setMetadataValue(METAKEY_ENC, "true");
+		fn.setTypeChainHead(new FileTypeDefNode(getHeaderDef()));
 		
 		if(cxi){
 			fn = new FileNode(root, "accessdesc.bin");
 			fn.setOffset(eoff + 0x600); fn.setLength(0x400); fn.setSourcePath(epath);
+			fn.setMetadataValue(METAKEY_ENC, "true");
+			fn.setTypeChainHead(new FileTypeDefNode(getAccessDescDef()));
 			
 			if(isdec){
 				fn = new FileNode(root, "exheader.bin");
 				fn.setOffset(0); fn.setLength(0x400); fn.setSourcePath(dpath);
+				fn.setTypeChainHead(new FileTypeDefNode(getExHeaderDef()));
 			}
 			else{
 				fn = new FileNode(root, "exheader.aes");
 				fn.setOffset(eoff + 0x200); fn.setLength(0x400); fn.setSourcePath(epath);
+				fn.setMetadataValue(METAKEY_ENC, "true");
 			}
 			
 			//Plain region
 			if(plain_len > 0){
 				fn = new FileNode(root, "plaindat.bin");
-				fn.setOffset(plain_offset); fn.setLength(plain_len); fn.setSourcePath(epath);	
+				fn.setOffset(eoff+ plain_offset); fn.setLength(plain_len); fn.setSourcePath(epath);	
+				fn.setMetadataValue(METAKEY_ENC, "true");
+				fn.setTypeChainHead(new FileTypeDefNode(getPlainRegDef()));
 			}
 		}
 		
 		//ExeFS
-		//RomFS
+		if(exefs != null){
+			DirectoryNode exe_root = exefs.getFileTree();
+			exe_root.setFileName("ExeFS");
+			exe_root.setParent(root);
+			exe_root.incrementTreeOffsetsBy(0x600); //Offset of exefs in dec buffer
+			exe_root.setSourcePathForTree(dpath);
+		}
+		else{
+			//Definitely encrypted...
+			if(exefs_len > 0){
+				fn = new FileNode(root, "exefs.aes");
+				fn.setOffset(eoff + exefs_offset); fn.setLength(exefs_len); fn.setSourcePath(epath);
+				fn.setMetadataValue(METAKEY_ENC, "true");	
+			}
+		}
 		
-		return null;
+		//RomFS
+		if(romfs != null){
+			DirectoryNode rom_root = romfs.getFileTree();
+			rom_root.setFileName("RomFS");
+			rom_root.setParent(root);
+			rom_root.incrementTreeOffsetsBy(0x400 + exefs_len); //Offset of romfs in dec buffer
+			rom_root.setSourcePathForTree(dpath);
+		}
+		else{
+			fn = new FileNode(root, "romfs.aes");
+			fn.setOffset(eoff + romfs_offset); fn.setLength(romfs_len); fn.setSourcePath(epath);
+			fn.setMetadataValue(METAKEY_ENC, "true");
+		}
+		
+		return root;
 	}
 	
 	/*----- Setters -----*/
@@ -396,18 +440,22 @@ public class CitrusNCC {
 			//System.err.println("Evil 2ndary key >:(");
 		}
 		
-		//Determine slot...
+		//Determine slot... (and check if apprioriate X is set...)
 		switch(crypto_type){
 		case 0x0:
+			if(crypto.slotXEmpty(0x2C)) return null;
 			crypto.setKeyY(0x2C, keyY);
 			return crypto.getNormalKey(0x2C);
 		case 0x1:
+			if(crypto.slotXEmpty(0x25)) return null;
 			crypto.setKeyY(0x25, keyY);
 			return crypto.getNormalKey(0x25);
 		case 0xA:
+			if(crypto.slotXEmpty(0x18)) return null;
 			crypto.setKeyY(0x18, keyY);
 			return crypto.getNormalKey(0x18);
 		case 0xB:
+			if(crypto.slotXEmpty(0x1B)) return null;
 			crypto.setKeyY(0x1B, keyY);
 			return crypto.getNormalKey(0x1B);
 		}
@@ -601,49 +649,52 @@ public class CitrusNCC {
 				}
 				else{
 					//Needs to be decrypted again with secondary key
-					file_enc = src.loadData(exefs_offset + 0x200 + fn.getOffset(), fn.getLength());
-					AES aes = new AES(key2);
-					aes.setCTR();
-					aes.initDecrypt(genIV(IV_TYPE_EXEFS, 0x200 + fn.getOffset()));
-					
-					MessageDigest sha = null;
-					try{sha = MessageDigest.getInstance("SHA-256");}
-					catch(Exception x){
-						x.printStackTrace();
-						goodhash = false;
-					}
-					
-					BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(ftemppath));
-					long remain = fn.getLength();
-					long fpos = 0;
-					boolean last = false;
-					while(remain > 0){
-						int bsz = 0x200;
-						if(remain < bsz){
-							bsz = (int)remain;
-							last = true;
+					if(key2 != null){
+						file_enc = src.loadData(exefs_offset + 0x200 + fn.getOffset(), fn.getLength());
+						AES aes = new AES(key2);
+						aes.setCTR();
+						aes.initDecrypt(genIV(IV_TYPE_EXEFS, 0x200 + fn.getOffset()));
+						
+						MessageDigest sha = null;
+						try{sha = MessageDigest.getInstance("SHA-256");}
+						catch(Exception x){
+							x.printStackTrace();
+							goodhash = false;
 						}
 						
-						byte[] in = file_enc.getBytes(fpos, fpos+bsz);
-						byte[] out = aes.decryptBlock(in, last);
-						sha.update(out);
-						bos.write(out);
+						BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(ftemppath));
+						long remain = fn.getLength();
+						long fpos = 0;
+						boolean last = false;
+						while(remain > 0){
+							int bsz = 0x200;
+							if(remain < bsz){
+								bsz = (int)remain;
+								last = true;
+							}
+							
+							byte[] in = file_enc.getBytes(fpos, fpos+bsz);
+							byte[] out = aes.decryptBlock(in, last);
+							sha.update(out);
+							bos.write(out);
+							
+							remain -= bsz; fpos += bsz;
+						}
 						
-						remain -= bsz; fpos += bsz;
+						bos.close();
+						
+						hashbuff = sha.digest();
+						goodhash = MessageDigest.isEqual(refhash, hashbuff);
+						
+						file_dec = FileBuffer.createBuffer(ftemppath);	
 					}
-					
-					bos.close();
-					
-					hashbuff = sha.digest();
-					goodhash = MessageDigest.isEqual(refhash, hashbuff);
-					
-					file_dec = FileBuffer.createBuffer(ftemppath);
+					else goodhash = false;
 				}
 				
 				if(!goodhash){
 					//If fail, then write encrypted data to buffer and add ".aes" to file name
 					if(verbose){
-						System.err.println("ExeFS File \"" + fn.getFileName() + "\" failed hash check.");
+						System.err.println("ExeFS File \"" + fn.getFileName() + "\" failed hash check or otherwise could not be decrypted.");
 						System.err.println("Ref Hash: " + printHash(refhash));
 						System.err.println("DecBuffer Hash: " + printHash(hashbuff));
 					}
@@ -677,7 +728,7 @@ public class CitrusNCC {
 		}
 
 		//RomFS
-		if(romfs_len > 0){
+		if(romfs_len > 0 && (key2 != null)){
 			if(verbose) System.err.println("Now decrypting RomFS...");
 			System.err.println("RomFS Hash Size: 0x" + Long.toHexString(this.romfs_hashregsize));
 			
@@ -686,7 +737,9 @@ public class CitrusNCC {
 			//I think I can get away with doing it block by block (since don't want to load all into memory)
 			
 			//FileBuffer romfs_raw = FileBuffer.createBuffer(src.getSourcePath(), romfs_offset, romfs_offset+romfs_len, false);
-			FileBuffer romfs_raw = src.loadData(romfs_offset, romfs_offset+romfs_len);
+			//FileBuffer romfs_raw = src.loadData(romfs_offset, romfs_offset+romfs_len);
+			BufferedInputStream romfs_is = new BufferedInputStream(new FileInputStream(src.getSourcePath()));
+			romfs_is.skip(src.getOffset() + romfs_offset);
 			final int blocksize = 0x200;
 			
 			//Prepare decryption stuff
@@ -714,7 +767,9 @@ public class CitrusNCC {
 					last = true;
 				}
 				
-				byte[] encdat = romfs_raw.getBytes(pos, pos+bsz);
+				//byte[] encdat = romfs_raw.getBytes(pos, pos+bsz);
+				byte[] encdat = new byte[bsz];
+				romfs_is.read(encdat);
 				byte[] decdat = aes.decryptBlock(encdat, last);
 				dstr.write(decdat);
 				
@@ -753,7 +808,70 @@ public class CitrusNCC {
 		return b;
 	}
 	
-	/*----- Definition -----*/
+	/*----- Definitions -----*/
+	
+	private static NCCHeaderDef header_def;
+	private static NCCAccessDescDef accessdesc_def;
+	private static NCCExHeaderDef exheader_def;
+	private static NCCPlainDatDef plaindat_def;
+	
+	public static NCCHeaderDef getHeaderDef(){
+		if(header_def == null) header_def = new NCCHeaderDef();
+		return header_def;
+	}
+	
+	public static NCCAccessDescDef getAccessDescDef(){
+		if(accessdesc_def == null) accessdesc_def = new NCCAccessDescDef();
+		return accessdesc_def;
+	}
+	
+	public static NCCExHeaderDef getExHeaderDef(){
+		if(exheader_def == null) exheader_def = new NCCExHeaderDef();
+		return exheader_def;
+	}
+	
+	public static NCCPlainDatDef getPlainRegDef(){
+		if(plaindat_def == null) plaindat_def = new NCCPlainDatDef();
+		return plaindat_def;
+	}
+	
+	public static class NCCHeaderDef extends GenericSystemDef{
+		
+		private static String DEFO_ENG_DESC = "Nintendo 3DS NCCH Header";
+		public static int TYPE_ID = 0x3dcc6903;
+
+		public NCCHeaderDef(){
+			super(DEFO_ENG_DESC, TYPE_ID);
+		}
+
+	}
+	
+	public static class NCCAccessDescDef extends GenericSystemDef{
+		
+		private static String DEFO_ENG_DESC = "Nintendo 3DS NCCH Access Descriptor";
+		public static int TYPE_ID = 0x3dacce55;
+
+		public NCCAccessDescDef(){super(DEFO_ENG_DESC, TYPE_ID);}
+
+	}
+	
+	public static class NCCExHeaderDef extends GenericSystemDef{
+		
+		private static String DEFO_ENG_DESC = "Nintendo 3DS CXI Extended Header";
+		public static int TYPE_ID = 0x3de75628;
+
+		public NCCExHeaderDef(){super(DEFO_ENG_DESC, TYPE_ID);}
+
+	}
+	
+	public static class NCCPlainDatDef extends GenericSystemDef{
+		
+		private static String DEFO_ENG_DESC = "Nintendo 3DS CXI Plain Binary Data";
+		public static int TYPE_ID = 0x3db1b148;
+
+		public NCCPlainDatDef(){super(DEFO_ENG_DESC, TYPE_ID);}
+
+	}
 	
 	/*----- Debug -----*/
 	
@@ -786,7 +904,7 @@ public class CitrusNCC {
 	}
 
 	public static String printHash(byte[] hash){
-		if(hash == null) return "";
+		if(hash == null) return "<NULL>";
 		
 		int chars = hash.length << 1;
 		StringBuilder sb = new StringBuilder(chars+2);

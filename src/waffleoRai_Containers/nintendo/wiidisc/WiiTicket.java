@@ -3,6 +3,7 @@ package waffleoRai_Containers.nintendo.wiidisc;
 import java.util.Random;
 
 import waffleoRai_Containers.nintendo.WiiDisc;
+import waffleoRai_Containers.nintendo.cafe.WiiUDisc;
 import waffleoRai_Encryption.AES;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -125,10 +126,22 @@ public class WiiTicket {
 	/* --- Utility --- */
 	
 	public byte[] decryptTitleKey() throws UnsupportedFileTypeException{
+		return decryptTitleKey(false);
+	}
+	
+	public byte[] decryptTitleKey(boolean wiiu) throws UnsupportedFileTypeException{
 		if(eCommonKeyIndex != 0) throw new FileBuffer.UnsupportedFileTypeException("Ticket requests unknown common key!");
 		
 		//If no common key, return null!
-		int[] common = WiiDisc.getCommonKey();
+		byte[] common = null;
+		if(wiiu) common = WiiUDisc.getCommonKey();
+		else{
+			int[] common_raw = WiiDisc.getCommonKey();
+			if(common_raw != null){
+				common = new byte[16];
+				for(int i = 0; i < common_raw.length; i++) common[i] = (byte)common_raw[i];	
+			}
+		}
 		if(common == null) return null;
 		
 		AES wiiCrypt = new AES(common);

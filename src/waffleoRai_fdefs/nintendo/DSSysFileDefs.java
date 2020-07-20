@@ -72,7 +72,7 @@ public class DSSysFileDefs {
 		}
 
 		public String getDescription() {return str;}
-		public FileClass getFileClass() {return FileClass.SYSTEM;}
+		public FileClass getFileClass() {return FileClass.DAT_BANNER;}
 		public int getTypeID() {return TYPE_ID;}
 		public void setDescriptionString(String s) {str = s;}
 		

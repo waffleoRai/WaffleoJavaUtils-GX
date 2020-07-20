@@ -114,7 +114,7 @@ public class CitrusROMFS {
 		DirectoryNode dir = new DirectoryNode(parent, name);
 		//Mark sib
 		dir.setOffset(Integer.toUnsignedLong(siboff)); //A field to hold it...
-		//System.err.println("Directory found: " + dir.getFullPath());
+		System.err.println("Directory found: " + dir.getFullPath());
 		
 		//Do file children
 		long nextfile = Integer.toUnsignedLong(fchildoff);
@@ -131,7 +131,7 @@ public class CitrusROMFS {
 			fn.setOffset(foff); fn.setLength(flen);
 			
 			//Debug
-			//System.err.println("File found: " + fn.getFullPath() + " (" + fn.getLocationString() + ")");
+			System.err.println("File found: " + fn.getFullPath() + " (" + fn.getLocationString() + ")");
 		}
 		
 		//Do directory children
@@ -145,8 +145,34 @@ public class CitrusROMFS {
 		return dir;
 	}
 	
-	
 	/*----- Getters -----*/
+	
+	public long getLogicalOffset(int level){
+		switch(level){
+		case 1: return l1_logical_off;
+		case 2: return l2_logical_off;
+		case 3: return l3_logical_off;
+		}
+		return -1;
+	}
+	
+	public long getLevelHashtableSize(int level){
+		switch(level){
+		case 1: return l1_hashtable_size;
+		case 2: return l2_hashtable_size;
+		case 3: return l3_hashtable_size;
+		}
+		return -1;
+	}
+	
+	public int getLevelBlockSize(int level){
+		switch(level){
+		case 1: return l1_block_size;
+		case 2: return l2_block_size;
+		case 3: return l3_block_size;
+		}
+		return -1;
+	}
 	
 	public DirectoryNode getFileTree(){
 		return root;

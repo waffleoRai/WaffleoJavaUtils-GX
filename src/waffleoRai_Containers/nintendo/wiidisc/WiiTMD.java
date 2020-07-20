@@ -41,7 +41,14 @@ public class WiiTMD {
 	}
 	
 	public WiiTMD(FileBuffer src, long stpos){
-		this();
+		this(src, stpos, false);
+	}
+	
+	public WiiTMD(FileBuffer src, long stpos, boolean wiiu){
+		eSigType = WiiDisc.SIGTYPE_RSA2048;
+		aRatings = new byte[16];
+		aIPCMask = new byte[12];
+		
 		long cpos = stpos;
 		
 		eSigType = src.intFromFile(cpos); cpos += 4;
@@ -77,12 +84,15 @@ public class WiiTMD {
 		cpos += 2; //Padding
 		
 		//Read the "Content" records
+		if(wiiu) cpos = stpos + 0xb04;
 		aContents = new WiiContent[iContentCount];
 		for(int i = 0; i < iContentCount; i++){
 			aContents[i] = new WiiContent(src, cpos);
 			cpos += WiiContent.SIZE_LONG;
-		}
+			if(wiiu) cpos += 12;
+		}	
 	}
+	
 	
 	/* --- Getters --- */
 	

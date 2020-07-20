@@ -3,6 +3,7 @@ package waffleoRai_Containers.nintendo.citrus;
 import java.io.File;
 import java.io.IOException;
 
+import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_Utils.FileNode;
@@ -10,6 +11,8 @@ import waffleoRai_Utils.FileNode;
 //https://www.3dbrew.org/wiki/NCSD
 
 public class CitrusNCSD {
+	
+	//TODO Add NCSD system files to tree?
 	
 	/*----- Constants -----*/
 	
@@ -126,8 +129,32 @@ public class CitrusNCSD {
 	
 	/*----- Getters -----*/
 	
+	public byte[] getRSASig(){return this.rsa_sig;}
+	public byte[] getExtendedHeaderHash(){return this.exheader_hash;}
+	
+	public int getPartitionCount(){return partitions.length;}
+	
 	public CitrusNCC getPartition(int idx){
 		return partitions[idx];
+	}
+		
+	public long getPartitionOffset(int idx){
+		return part_locs[idx][0];
+	}
+	
+	public DirectoryNode getFileTree(){
+		DirectoryNode root = new DirectoryNode(null, "");
+		
+		for(int i = 0; i < 8; i++){
+			if(partitions[i] != null){
+				DirectoryNode partroot = partitions[i].getFileTree();
+				partroot.setFileName(Long.toHexString(partitions[i].getPartitionID()));
+				partroot.setParent(root);
+				//updateRawOffsets(partroot, part_locs[i][0]);
+			}
+		}
+				
+		return root;
 	}
 	
 	/*----- Setters -----*/

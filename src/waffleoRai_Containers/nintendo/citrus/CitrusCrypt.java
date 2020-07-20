@@ -322,6 +322,19 @@ public class CitrusCrypt {
 		return keyslots[slot].normal;
 	}
 	
+	public boolean slotXEmpty(int slot){
+		if(slot < 0 | slot >= keyslots.length) return true;
+		if(keyslots[slot] == null) return true;
+		KeySlot s = keyslots[slot];
+		if(s.keyX == null) return true;
+		
+		for(int i = 0; i < s.keyX.length; i++){
+			if(s.keyX[i] != 0) return false;
+		}
+		
+		return true;
+	}
+	
 	/*----- Setters -----*/
 	
 	public void setKeyX(int slot, byte[] keyX){

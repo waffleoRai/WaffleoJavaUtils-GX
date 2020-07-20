@@ -1,5 +1,14 @@
 package waffleoRai_Containers.nintendo.citrus;
 
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
+
+import waffleoRai_Executable.BinInst;
+import waffleoRai_Executable.BincodeTypeDef;
+import waffleoRai_Files.FileClass;
+import waffleoRai_Files.FileTypeDefNode;
+import waffleoRai_Files.FileTypeDefinition;
 import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileNode;
@@ -61,6 +70,11 @@ public class CitrusEXEFS {
 			FileNode fn = new FileNode(root, name);
 			fn.setOffset(offsets[i]);
 			fn.setLength(lengths[i]);
+			
+			//Type
+			if(name.equals(".code")) fn.setTypeChainHead(new FileTypeDefNode(getMainExeDef()));
+			else if(name.equals("banner")) fn.setTypeChainHead(new FileTypeDefNode(getBannerDef()));
+			else if(name.equals("icon")) fn.setTypeChainHead(new FileTypeDefNode(CitrusSMDH.getIconDef()));
 		}
 		
 		return root;
@@ -77,5 +91,75 @@ public class CitrusEXEFS {
 	}
 	
 	/*----- Setters -----*/
+	
+	/*----- Definition -----*/
+	
+	private static CitrusBannerDef bnr_def;
+	private static CxiMainExeDef code_def;
+	
+	public static CitrusBannerDef getBannerDef(){
+		if(bnr_def == null) bnr_def = new CitrusBannerDef();
+		return bnr_def;
+	}
+	
+	public static CxiMainExeDef getMainExeDef(){
+		if(code_def == null) code_def = new CxiMainExeDef();
+		return code_def;
+	}
+	
+	public static class CitrusBannerDef implements FileTypeDefinition{
+
+		private static String DEFO_ENG_DESC = "Nintendo 3DS System Banner";
+		public static int TYPE_ID = 0x3d5987b0;
+		
+		private String str;
+		
+		public CitrusBannerDef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			//slist.add("bin");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.DAT_BANNER;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "";}
+		
+	}
+	
+	public static class CxiMainExeDef extends BincodeTypeDef{
+
+		private static String DEFO_ENG_DESC = "Nintendo 3DS CXI ARM11 Executable";
+		public static int TYPE_ID = 0x3dc0de00;
+		
+		private String str;
+		
+		public CxiMainExeDef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			//slist.add("bin");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.EXECUTABLE;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "";}
+		
+		public boolean canDisassemble(){return false;}
+		public Collection<BinInst> disassemble(){return null;}
+		
+	}
 
 }
