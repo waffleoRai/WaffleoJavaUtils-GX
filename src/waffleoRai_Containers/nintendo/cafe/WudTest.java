@@ -43,18 +43,19 @@ public class WudTest {
 			
 			WiiUDisc mydisc = WiiUDisc.readWUD(wudpath, gkey);
 			System.err.println("Initial disc read complete.");
-			WudPartition part3 = mydisc.getPartition(3);
+			/*WudPartition part3 = mydisc.getPartition(3);
 			WiiTMD tmd3 = part3.getTMD();
 			CafeFST fst3 = part3.getFST();
 			
+			fst3.printClustersToStderr();
+			tmd3.printInfo();*/
 			
-			
-			/*mydisc.setDecryptionBufferDir(bigbuffdir);
+			mydisc.setDecryptionBufferDir(bigbuffdir);
 			mydisc.decryptPartitionsTo(bigbuffdir, new CafeCryptListener(){
 
 				private int pcount = 0;
-				private int fcount = 0;
-				private long psize = 0L;
+				private int ccount = 0;
+				private long csize = 0L;
 				
 				public void setPartitionCount(int count) {pcount = count;}
 
@@ -62,30 +63,26 @@ public class WudTest {
 					System.err.println("Partition " + (idx+1) + " of " + pcount + " decrypted!");
 				}
 
-				public void setFileCount(int count) {fcount = count;}
-
-				public void onFileStart(String fname) {
-					System.err.println("Processing file " + fname);
+				public int getUpdateInterval() {
+					return 2500;
 				}
 
-				public void onFileComplete(int idx) {
-					int r = rand.nextInt(100);
-					if(r == 1){
-						System.err.println((idx+1) + " of " + fcount + " files processed");
+				public void setClusterSize(long size) {csize = size;}
+
+				public void setClusterPosition(long cpos) {
+					int i = rand.nextInt(10000);
+					if(i == 1){
+						double perc = ((double)cpos / (double)csize) * 100.0;
+						System.err.println("0x" + Long.toHexString(cpos) + 
+								" bytes of 0x" + Long.toHexString(csize) + 
+								" (" + String.format("%.2f", perc) + "%)");
 					}
 				}
 
-				public void setPartitionSize(long size) {
-					psize = size;
-				}
+				public void setClusterCount(int count) {ccount = count;}
 
-				public void setCurrentPosition(long cpos) {
-					double percent = ((double)cpos / (double)psize) * 100.0;
-					System.err.println("0x" + Long.toHexString(cpos) + " bytes processed (" + String.format("%.2f", percent) + "%)");
-				}
-
-				public int getUpdateInterval() {
-					return 2500;
+				public void onClusterStart(int idx) {
+					System.err.println("Processing cluster " + (idx+1) + " of " + ccount);
 				}
 
 				
@@ -93,7 +90,7 @@ public class WudTest {
 			mydisc.getFileTree().printMeToStdErr(0);
 			
 			//Copy all tga files to file...
-			Collection<FileNode> fnlist = mydisc.getFileTree().getAllDescendants(false);
+			/*Collection<FileNode> fnlist = mydisc.getFileTree().getAllDescendants(false);
 			for(FileNode fn : fnlist){
 				if(fn.getFileName().endsWith(".tga")){
 					String outpath = outdir + "\\" + fn.getFullPath().replace("/", "-");

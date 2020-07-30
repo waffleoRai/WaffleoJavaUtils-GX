@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.security.MessageDigest;
 import java.util.List;
 
 import waffleoRai_Containers.nintendo.wiidisc.WiiContent;
@@ -35,9 +36,9 @@ public class WudPartition {
 	private DirectoryNode tree; //Relative to decrypted partition buffer
 	
 	private String src_path; //Path on local system to source container
-	private String dec_path; //Path on local system to decrypted partition buffer
+	private String dec_stem; //Path on local system to decrypted partition buffer
 	
-	private volatile long prog_pos;
+	//private volatile long prog_pos;
 	
 	/*----- Construction/Parsing -----*/
 	
@@ -66,10 +67,41 @@ public class WudPartition {
 			part.fst = CafeFST.readWiiUFST(fst_buff, 0);
 			
 			//Set tree to encrypted version...
-			part.tree = part.fst.getTree(false);
-			part.tree.setSourcePathForTree(srcPath);
-			part.tree.incrementTreeOffsetsBy(partitionOffset);
+			//part.tree = part.fst.getTree(false);
+			part.tree = part.fst.getTree();
+			//part.tree.setSourcePathForTree(srcPath);
+			//part.tree.incrementTreeOffsetsBy(partitionOffset);
 		}
+		
+		return part;
+	}
+	
+	public static WudPartition loadPredecedPartition(String wudpath, long part_offset, byte[] key, WiiTMD tmd, String pname, String decdir) throws UnsupportedFileTypeException, IOException{
+
+		if(decdir == null) throw new UnsupportedFileTypeException("Load failed: Decryption target path not set!");
+		if(key == null) throw new UnsupportedFileTypeException("Load failed: WUD unique key not set!");
+		if(wudpath == null) throw new UnsupportedFileTypeException("Load failed: WUD source path not set!");
+		
+		WudPartition part = new WudPartition();
+		part.part_key = key;
+		part.src_path = wudpath;
+		part.wud_offset = part_offset;
+		part.tmd = tmd;
+		part.name = pname;
+		part.dec_stem = decdir + File.separator + part.name;
+		
+		//FST
+		String fst_path = decdir + File.separator + "fst_" + part.name + ".bin";
+		FileBuffer fst_file = null;
+		if (FileBuffer.fileExists(fst_path)) fst_file = FileBuffer.createBuffer(fst_path, true);
+		else{
+			if(WiiUDisc.getCommonKey() == null) throw new UnsupportedFileTypeException("Load failed: Wii U common key not set!");
+			fst_file = part.loadFST();
+		}
+		if(fst_file == null) throw new UnsupportedFileTypeException("Load failed: FST could not be decrypted!");
+		part.fst = CafeFST.readWiiUFST(fst_file, 0);
+		
+		part.updateTreePaths();
 		
 		return part;
 	}
@@ -112,26 +144,196 @@ public class WudPartition {
 	public CafeFST getFST(){return fst;}
 	public DirectoryNode getTree(){return tree;}
 	public String getWUDPath(){return src_path;}
-	public String getDecryptBufferPath(){return dec_path;}
+	public String getDecryptBufferPathStem(){return dec_stem;}
 	
 	/*----- Setters -----*/
 	
 	public void setPartitionName(String s){name = s;}
 	
-	public void setDecryptBufferPath(String path){
-		dec_path = path;
+	public void setDecryptBufferPathStem(String path){
+		dec_stem = path;
+	}
+	
+	/*----- Tree -----*/
+	
+	private void updateTreePathsDir(DirectoryNode dir){
+		
+		List<FileNode> children = dir.getChildren();
+		for(FileNode child : children){
+			if(child instanceof DirectoryNode){
+				updateTreePathsDir((DirectoryNode)child);
+			}
+			else{
+				String spath = dec_stem + "_" + child.getSourcePath() + ".bin";
+				child.setSourcePath(spath);
+			}
+		}
+		
+	}
+	
+	private void updateTreePaths(){
+		tree = fst.getTree();
+		updateTreePathsDir(tree);
 	}
 	
 	/*----- Crypto -----*/
+	
+	protected void decryptCluster(int cidx, CafeCryptListener l) throws IOException{
+		if(l != null) l.onClusterStart(cidx);
+		
+		//System.err.println("Partition key: " + CitrusNCC.printHash(part_key));];
+		int flags = 0;
+		
+		if(tmd != null){
+			flags = tmd.getContent(cidx).getType();
+		}
+		boolean hashflag = (flags & 0x02) != 0;
+		if(hashflag) decryptHashCluster(cidx, l);
+		else decryptHashlessCluster(cidx, l);
+	}
 
+	private void decryptHashlessCluster(int cidx, CafeCryptListener l) throws IOException{
+
+		AES aes = new AES(part_key);
+		long offset = fst.getClusterOffset(cidx);
+		long size = fst.getClusterSize(cidx);
+		int content_index = 0;
+		
+		if(tmd != null){
+			content_index = tmd.getContent(cidx).getIndex(); //Used for IV???
+			size = tmd.getContent(cidx).getSize();
+		}
+		if (size < 1) return;
+		
+		byte[] iv = new byte[16];
+		iv[0] = (byte)((content_index >>> 8) & 0xFF);
+		iv[1] = (byte)(content_index & 0xFF);
+		aes.initDecrypt(iv);
+		
+		String stem = this.dec_stem + "_" + String.format("%04d", cidx);
+		String cpath = stem + ".bin";
+		BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(cpath));
+		BufferedInputStream bis = new BufferedInputStream(new FileInputStream(src_path));
+		bis.skip(wud_offset);
+		bis.skip(offset);
+		//System.err.println("Total Cluster offset: 0x" + Long.toHexString(wud_offset + offset));
+		
+		long remain = size;
+		while((remain % 0x10) != 0) remain++;
+		if(l != null){l.setClusterSize(remain); l.setClusterPosition(0L);}
+		boolean last = false;
+		long pos = 0;
+		while(remain > 0){
+			
+			int bsz = 0x8000;
+			if(remain <= bsz){
+				bsz = (int)remain;
+				last = true;
+			}
+			
+			byte[] enc = new byte[bsz];
+			bis.read(enc);
+			byte[] dec = aes.decryptBlock(enc, last);
+			bos.write(dec);
+			
+			remain -= bsz;
+			pos += bsz;
+			if(l != null) l.setClusterPosition(pos);
+		}
+		bis.close();
+		bos.close();
+		
+	}
+	
+	private void decryptHashCluster(int cidx, CafeCryptListener l) throws IOException{
+		
+		AES aes = new AES(part_key);
+		long offset = fst.getClusterOffset(cidx);
+		long size = fst.getClusterSize(cidx);
+		boolean allgood = true;
+		
+		if(tmd != null){
+			size = tmd.getContent(cidx).getSize();
+		}
+		if (size < 1) return;
+
+		String stem = this.dec_stem + "_" + String.format("%04d", cidx);
+		
+		//TODO copy h3
+		//String h3path = stem + "_h3.bin";
+		
+		String cpath = stem + ".bin";
+		BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(cpath));
+		BufferedInputStream bis = new BufferedInputStream(new FileInputStream(src_path));
+		bis.skip(wud_offset);
+		bis.skip(offset);
+		//System.err.println("Total Cluster offset: 0x" + Long.toHexString(wud_offset + offset));
+		
+		long remain = size;
+		while((remain % 0x10) != 0) remain++;
+		if(l != null){l.setClusterSize(remain); l.setClusterPosition(0L);}
+		long pos = 0;
+		int h0_idx = 0;
+		while(remain > 0){
+			
+			int bsz = 0x10000;
+
+			//Read the hash table
+			byte[] iv = new byte[16];
+			byte[] htenc = new byte[0x400];
+			bis.read(htenc);
+			byte[] htdec = aes.decrypt(iv, htenc);
+			
+			//Get expected hash for block and IV
+			int h0_off = h0_idx * 20;
+			byte[] h0 = new byte[20];
+			for(int i = 0; i < 20; i++) h0[i] = htdec[h0_off + i];
+			for(int i = 0; i < 16; i++) iv[i] = h0[i]; //Dunno if that's true.
+			
+			//DEBUG---
+			//bos.write(htdec);
+			
+			//Do data
+			byte[] enc = new byte[bsz-0x400];
+			bis.read(enc);
+			byte[] dec = aes.decrypt(iv, enc);
+			
+			//Check hash
+			try{
+				MessageDigest sha = MessageDigest.getInstance("SHA1");
+				sha.update(dec);
+				byte[] hashbuff = sha.digest();
+				if(!MessageDigest.isEqual(h0, hashbuff)){
+					//I'll suppress the warning for now because I still don't know the IV...
+					//System.err.println("WARNING: Section @ 0x" + Long.toHexString(pos) + " failed h0 hash check --");
+					allgood = false;
+				}
+			}
+			catch(Exception x){
+				x.printStackTrace();
+			}
+			bos.write(dec);
+			
+			//Advance position
+			remain -= bsz;
+			pos += bsz;
+			if(l != null) l.setClusterPosition(pos);
+			if(++h0_idx >= 16) h0_idx = 0;
+		}
+		bis.close();
+		bos.close();
+		
+		if(!allgood) System.err.println("WARNING: At least one section in this cluster did not pass h0 hash check!");
+	}
+	
 	public void decryptToBuffer(CafeCryptListener l) throws UnsupportedFileTypeException, IOException{
 		
-		if(dec_path == null) throw new UnsupportedFileTypeException("Decryption failed: Decryption target path not set!");
+		if(dec_stem == null) throw new UnsupportedFileTypeException("Decryption failed: Decryption target path not set!");
 		if(src_path == null) throw new UnsupportedFileTypeException("Decryption failed: WUD source path not set!");
 		if(part_key == null) throw new UnsupportedFileTypeException("Decryption failed: Partition key not set!");
 		
 		//First, dump the fst to a separate file
-		String decdir = FileBuffer.chopPathToDir(dec_path);
+		String decdir = FileBuffer.chopPathToDir(dec_stem);
 		String fst_outpath = decdir + File.separator + "fst_" + name + ".bin";
 		FileBuffer fstbuff = loadFST();
 		if(fstbuff != null){
@@ -139,113 +341,27 @@ public class WudPartition {
 			if(fst == null) fst = CafeFST.readWiiUFST(fstbuff, 0);
 		}
 		
+		//Count the clusters...
+		int ccount = fst.getClusterCount();
+		if(l != null) l.setClusterCount(ccount);
+		
 		//Now, decrypt files...
-		AES aes = new AES(part_key);
-		tree = fst.getTree(true);
-		tree.setSourcePathForTree(dec_path);
-		List<FileNode> list = fst.getList(false);
-		if(l != null) l.setFileCount(list.size());
-		
-		//Calculate partition size to send to listener...
-		if(l != null){
-			long total_size = 0;
-			for(FileNode fn : list) total_size += fn.getLength();
-			if(l != null) l.setPartitionSize(total_size);
-		}
-
-		//fst.printToStderr();
-		
-		Runnable worker = new Runnable(){
-
-			public void run() {
-				
-				try{
-					prog_pos = 0L;
-					int fidx = 0;
-					
-					BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(dec_path));
-					//long pos = 0; //DEBUG
-					for(FileNode fn : list){
-						//DEBUG
-						//System.err.println("Decrypting " + fn.getFullPath() + " to 0x" + Long.toHexString(pos));
-						//System.err.println("Partition offset: 0x" + Long.toHexString(fn.getOffset()));
-						if(l != null) l.onFileStart(fn.getFullPath());
-						
-						//List has raw offsets...
-						//Open stream
-						long offset = fn.getOffset(); //Offset from partition start.
-						offset += wud_offset; //Offset from wud start
-						BufferedInputStream bis = new BufferedInputStream(new FileInputStream(src_path));
-						bis.skip(offset);
-						
-						//System.err.println("WUD offset: 0x" + Long.toHexString(offset));
-						//System.err.println("Length: 0x" + Long.toHexString(fn.getLength()));
-						
-						//Get IV
-						//long ivlo = fn.getOffset() >>> 16;
-						String ivlo_str = fn.getMetadataValue(CafeFST.METAKEY_IVLO);
-						long ivlo = Long.parseUnsignedLong(ivlo_str, 16);
-						byte[] iv = new byte[16];
-						long mask = 0xFFL << 56;
-						int shift = 56;
-						for(int i = 0; i < 8; i++){
-							iv[i+8] = (byte)((ivlo & mask) >>> shift);
-							mask = mask >>> 8;
-							shift -= 8;
-						}
-						aes.initDecrypt(iv);
-						
-						//Decrypt to buffer
-						long len = fn.getLength();
-						long remain = len;
-						boolean last = false;
-						while(remain > 0){
-							int bsz = 0x8000;
-							if(remain <= bsz){
-								bsz = (int)remain;
-								last = true;
-							}
-							while((bsz % 0x10) != 0) bsz++;
-							byte[] enc = new byte[bsz];
-							bis.read(enc);
-							
-							byte[] dec = aes.decryptBlock(enc, last);
-							bos.write(dec);
-							
-							remain -= bsz;
-							//pos+=bsz;
-							prog_pos += bsz;
-						}
-						bis.close();
-						if(l != null) {l.onFileComplete(fidx++);}
-					}
-					bos.close();	
-				}
-				catch(IOException x){
-					x.printStackTrace();
-					return;
-				}	
-			}
-			
-		};
-		
-		Thread worker_thread = new Thread(worker);
-		worker_thread.setName("WUDPartition_Decrypt_Worker");
-		worker_thread.setDaemon(true);
-		worker_thread.start();
-		
-		long sleeplen = 5000;
-		if(l != null) sleeplen = l.getUpdateInterval();
-		while(worker_thread.isAlive()){
-			if(l != null) l.setCurrentPosition(prog_pos);
-			try {Thread.sleep(sleeplen);} 
-			catch (InterruptedException e) {
-				System.err.println("Unexpected interrupt! Ignoring...");
-				e.printStackTrace();
-			}
+		for(int i = 1; i < ccount; i++){
+			decryptCluster(i, l);
 		}
 		
+		this.updateTreePaths();
+	}
+	
+	public static String printHash(byte[] hash){
+		if(hash == null) return "<NULL>";
 		
+		int chars = hash.length << 1;
+		StringBuilder sb = new StringBuilder(chars+2);
+		
+		for(int i = 0; i < hash.length; i++) sb.append(String.format("%02x", hash[i]));
+		
+		return sb.toString();
 	}
 	
 }

@@ -110,6 +110,22 @@ public class CafeFST {
 	
 	/*----- Getters -----*/
 	
+	public long getClusterOffset(int cidx){
+		if(clusters == null) return -1;
+		if(cidx >= clusters.size()) return -1;
+		return clusters.get(cidx).offset << 15;
+	}
+	
+	public long getClusterSize(int cidx){
+		if(clusters == null) return -1;
+		if(cidx >= clusters.size()) return -1;
+		return clusters.get(cidx).size << 15;
+	}
+	
+	public int getClusterCount(){
+		return clusters.size();
+	}
+	
 	private DirectoryNode buildDirectory(DirectoryNode parent, int didx, FileTableEntry[] arr){
 
 		FileTableEntry dentry = arr[didx];
@@ -134,8 +150,9 @@ public class CafeFST {
 				String ivlo = Long.toHexString(offset >>> 16);
 				fn.setMetadataValue(METAKEY_IVLO, ivlo);
 				
-				ClusterInfo c = clusters.get(centry.cluster_idx);
-				offset += c.offset * 0x8000;
+				//ClusterInfo c = clusters.get(centry.cluster_idx);
+				//offset += c.offset * 0x8000;
+				fn.setSourcePath(String.format("%04d", centry.cluster_idx));
 				fn.setOffset(offset);
 				fn.setLength(centry.size);
 				idx++; remain--;
@@ -143,6 +160,17 @@ public class CafeFST {
 		}
 		
 		return dir;
+	}
+	
+	public DirectoryNode getTree(){
+		
+		int ecount = file_entries.size();
+		FileTableEntry[] earr = new FileTableEntry[ecount];
+		int i = 0;
+		for(FileTableEntry e : file_entries){earr[i++] = e;}
+		DirectoryNode root = buildDirectory(null, 0, earr);
+
+		return root;
 	}
 	
 	public DirectoryNode getTree(boolean dec_optimize){
@@ -217,6 +245,17 @@ public class CafeFST {
 	/*----- Setters -----*/
 	
 	/*----- Debug -----*/
+	
+	public void printClustersToStderr(){
+		System.err.println("===== CafeOS FST =====");
+		System.err.println("-- Clusters -- ");
+		int i = 0;
+		for(ClusterInfo c : clusters){
+			System.err.print("Cluster " + i++ + "\t0x" + Long.toHexString(c.offset) + "\t0x" + Long.toHexString(c.size));
+			System.err.print("\t0x" + Long.toHexString(c.offset << 15) + "\t0x" + Long.toHexString(c.size << 15));
+			System.err.println();
+		}
+	}
 	
 	public void printToStderr(){
 

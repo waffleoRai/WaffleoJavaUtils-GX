@@ -47,6 +47,16 @@ public class WiiContent {
 	public long getSize(){return iSize;}
 	public byte[] getSHAHash(){return aSHA;}
 	
+	public long getH3Size(){
+		//Determine number of hashes...
+		//Bump size up to a multiple of the coverage...
+		long sz = iSize;
+		sz += 0xFFFFFFFL;
+		long hashcount = sz >>> 28;
+		
+		return hashcount * 20;
+	}
+	
 	/* --- Serialization --- */
 	
 	public FileBuffer serializeContent(){

@@ -1,11 +1,20 @@
 package waffleoRai_Containers.nintendo.cafe;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Map;
+
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
 
 import waffleoRai_Containers.nintendo.citrus.CitrusNCC;
 import waffleoRai_Containers.nintendo.wiidisc.WiiTMD;
@@ -90,18 +99,18 @@ public class WiiUDisc {
 			}
 		}
 		if(mydisc.si_part_idx == -1) throw new UnsupportedFileTypeException("SI partition could not be found!");
-		mydisc.loadSIPartition();
+		mydisc.loadSIPartition(false);
 		//Decrypt SI to a temporary buffer...
 		String temppath = FileBuffer.generateTemporaryPath("wud_si_dec");
 		WudPartition si = mydisc.parts[mydisc.si_part_idx];
-		si.setDecryptBufferPath(temppath);
+		si.setDecryptBufferPathStem(temppath);
 		si.decryptToBuffer(null);
 		DirectoryNode si_tree = si.getTree();
 		//si_tree.printMeToStdErr(0);
 		
 		//Set keys and TMDs for the other partitions...
 		for(int i = 0; i < pcount; i++){
-			System.err.println("Doing partition " + i);
+			//System.err.println("Doing partition " + i);
 			if(i == mydisc.si_part_idx) continue;
 			
 			//Temporary measure
@@ -139,6 +148,81 @@ public class WiiUDisc {
 		
 		//Delete SI fst temp....
 		Files.deleteIfExists(Paths.get(temppath));
+		
+		return mydisc;
+	}
+	
+	public static WiiUDisc loadPredecedWUD(String wud_path, byte[] game_key, String decdir) throws IOException, UnsupportedFileTypeException{
+
+		if(game_key == null) throw new UnsupportedFileTypeException("WUD Read Failed: Game key is required to read partition table.");
+		
+		//Instantiate
+		WiiUDisc mydisc = new WiiUDisc();
+		mydisc.src_path = wud_path;
+		mydisc.gamekey = game_key;
+		mydisc.dec_dir = decdir;
+		
+		FileBuffer strbuff = FileBuffer.createBuffer(wud_path, 0, 0x20, true);
+		mydisc.gamecode_long = strbuff.getASCII_string(0, 0x16);
+		
+		//Load decrypted partition table
+		FileBuffer ptable = mydisc.loadPartitionTable();
+		int pcount = ptable.intFromFile(28);
+		mydisc.parts = new WudPartition[pcount];
+		mydisc.part_names = new String[pcount];
+		mydisc.part_offs = new long[pcount];
+		ptable.setCurrentPosition(0x800);
+		for(int i = 0; i < pcount; i++){
+			mydisc.part_names[i] = ptable.getASCII_string(ptable.getCurrentPosition(), 0x1f);
+			ptable.skipBytes(0x20);
+			mydisc.part_offs[i] = Integer.toUnsignedLong(ptable.nextInt()) << 15;
+			ptable.skipBytes(0x5c);
+		}
+		
+		//Read in SI to get tickets and TMDs
+		for(int i = 0; i < pcount; i++){
+			if(mydisc.part_names[i].equals(SI_PART_NAME)){
+				mydisc.si_part_idx = i;
+				break;
+			}
+		}
+		if(mydisc.si_part_idx == -1) throw new UnsupportedFileTypeException("SI partition could not be found!");
+		mydisc.loadSIPartition(true);
+		WudPartition si = mydisc.parts[mydisc.si_part_idx];
+		DirectoryNode si_tree = si.getTree();
+		
+		for(int i = 0; i < pcount; i++){
+			if(i == mydisc.si_part_idx) continue; //Already loaded.
+			
+			//Temporary measure
+			if(!mydisc.part_names[i].startsWith("GM")) continue;
+			
+			String pnum = String.format("%02d", i);
+			FileNode tmd_node = si_tree.getNodeAt("/" + pnum + "/title.tmd");
+			FileNode tik_node = si_tree.getNodeAt("/" + pnum + "/title.tik");
+			
+			if(tik_node != null){
+				//Reject if common key is not present...
+				if(common_key == null) continue; //Leave this partition null.
+				//System.err.println("Ticket found...");
+			
+				WiiTicket tik = new WiiTicket(tik_node.loadData(), 0);
+				byte[] key = tik.decryptTitleKey(true);
+				WiiTMD tmd = null;
+				if(tmd_node != null) tmd = new WiiTMD(tmd_node.loadData(), 0, true);
+				
+				WudPartition part = 
+						WudPartition.loadPredecedPartition(wud_path, mydisc.part_offs[i], key, tmd, mydisc.part_names[i], decdir);
+				mydisc.parts[i] = part;
+			}
+			else{
+				//Assume game key?
+				WudPartition part = 
+						WudPartition.loadPredecedPartition(mydisc.src_path, mydisc.part_offs[i],
+								mydisc.gamekey, null, mydisc.part_names[i], decdir);
+				mydisc.parts[i] = part;
+			}
+		}
 		
 		return mydisc;
 	}
@@ -224,13 +308,78 @@ public class WiiUDisc {
 					dir.setMetadataValue(CafeFST.METAKEY_PARTIDX, Integer.toString(i));
 				}
 			}
+			else{
+				//Partition probably just couldn't be decrypted.
+				String pname = part_names[i];
+				if(pname == null || pname.isEmpty()) pname = "part" + i;
+				long poff = part_offs[i];
+				//Get size from partition header...
+				try{
+					FileBuffer phdr = FileBuffer.createBuffer(src_path, poff, poff+16, true);
+					long len = Integer.toUnsignedLong(phdr.intFromFile(0x8)) << 15;	
+					fn = new FileNode(root, pname + ".aes");
+					fn.setSourcePath(src_path);
+					fn.setOffset(poff);
+					fn.setLength(len);
+				}
+				catch(IOException x){
+					x.printStackTrace();
+				}
+			}
 		}
 		
 		return root;
 	}
 	
+	public String getPartitionName(int idx){
+		return part_names[idx];
+	}
+	
+	public long getPartitionOffset(int idx){
+		return part_offs[idx];
+	}
+	
+	public long getPartitionSize(int idx) throws IOException{
+		if(part_offs == null) return 0;
+		if(idx < 0 || idx >= part_offs.length) return 0;
+		long offset = part_offs[idx];
+		
+		FileBuffer phdr = new FileBuffer(src_path, offset, offset + 0x10, true);
+		long sz = Integer.toUnsignedLong(phdr.intFromFile(0x8L)) << 15;
+		
+		return sz;
+	}
+	
 	public WudPartition getPartition(int idx){
 		return parts[idx];
+	}
+	
+	public String getIconPath(){
+		//Pull from first GM partition
+		
+		if(parts == null) return null;
+		for(int i = 0; i < parts.length; i++){
+			if(parts[i] == null) continue;
+			if(parts[i].getName().startsWith("GM")){
+				return "/" + parts[i].getName() + "/meta/iconTex.tga";
+			}
+		}
+		
+		return null;
+	}
+	
+	public String getMetaXMLPath(){
+		//Pull from first GM partition
+		
+		if(parts == null) return null;
+		for(int i = 0; i < parts.length; i++){
+			if(parts[i] == null) continue;
+			if(parts[i].getName().startsWith("GM")){
+				return "/" + parts[i].getName() + "/meta/meta.xml";
+			}
+		}
+		
+		return null;
 	}
 	
 	/*----- Setters -----*/
@@ -242,8 +391,8 @@ public class WiiUDisc {
 		if(parts == null) return;
 		for(int i = 0; i < parts.length; i++){
 			if(parts[i] != null){
-				String decpath = dirpath + File.separator + parts[i].getName() + ".bin";
-				parts[i].setDecryptBufferPath(decpath);
+				String decpath = dirpath + File.separator + parts[i].getName();
+				parts[i].setDecryptBufferPathStem(decpath);
 			}
 		}
 	}
@@ -289,8 +438,10 @@ public class WiiUDisc {
 		return ptbl;
 	}
 	
-	private void loadSIPartition() throws IOException, UnsupportedFileTypeException{
-		WudPartition si_part = WudPartition.readWUDPartition(src_path, part_offs[si_part_idx], gamekey, null);
+	private void loadSIPartition(boolean predec) throws IOException, UnsupportedFileTypeException{
+		WudPartition si_part = null;
+		if(!predec) si_part = WudPartition.readWUDPartition(src_path, part_offs[si_part_idx], gamekey, null);
+		else si_part = WudPartition.loadPredecedPartition(src_path, part_offs[si_part_idx], gamekey, null, "SI", dec_dir);
 		si_part.setPartitionName(part_names[si_part_idx]);
 		parts[si_part_idx] = si_part;
 	}
@@ -323,6 +474,58 @@ public class WiiUDisc {
 		}
 
 		return good;
+	}
+	
+	/*----- Util -----*/
+	
+	public static Map<String, String[]> readMetaXML(FileNode node) throws IOException, XMLStreamException{
+		if(node == null) return null;
+		Map<String, String[]> map = new HashMap<String, String[]>();
+		
+		XMLInputFactory xif = XMLInputFactory.newInstance();
+		XMLStreamReader reader = xif.createXMLStreamReader(new ByteArrayInputStream(node.loadDecompressedData().getBytes()));
+		
+		LinkedList<String> elements = new LinkedList<String>();
+		while(reader.hasNext()){
+			if(reader.getEventType() == XMLStreamReader.START_ELEMENT){
+				String str = reader.getLocalName();
+				elements.push(str);
+			}
+			else if(reader.getEventType() == XMLStreamReader.END_ELEMENT){
+				elements.pop();
+			}
+			else if(reader.getEventType() == XMLStreamReader.CHARACTERS){
+				String str = reader.getText();
+				String key = elements.getFirst();
+				
+				String lan = null;
+				int idx = -1;
+				if(key.startsWith("shortname_")){
+					idx = 0;
+					lan = key.substring(key.indexOf('_'));
+				}
+				else if (key.startsWith("longname_")){
+					idx = 1;
+					lan = key.substring(key.indexOf('_'));
+				}
+				else if(key.startsWith("publisher_")){
+					idx = 1;
+					lan = key.substring(key.indexOf('_'));
+				}
+				
+				if(idx >= 0){
+					String[] bnr = map.get(lan);
+					if(bnr == null){
+						bnr = new String[3];
+						map.put(lan, bnr);
+					}
+					bnr[idx] = str;
+				}
+			}
+			reader.next();
+		}
+
+		return map;
 	}
 	
 }
