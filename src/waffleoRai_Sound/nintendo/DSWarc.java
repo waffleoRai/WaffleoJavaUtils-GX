@@ -13,8 +13,8 @@ import waffleoRai_Files.Converter;
 import waffleoRai_Sound.Sound;
 import waffleoRai_Sound.WaveArcDef;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+import waffleoRai_Files.tree.FileNode;
 
 public class DSWarc extends WaveArchive{
 	

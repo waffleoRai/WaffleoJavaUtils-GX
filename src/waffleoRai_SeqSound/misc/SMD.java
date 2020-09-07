@@ -18,8 +18,8 @@ import waffleoRai_SeqSound.MIDI;
 import waffleoRai_SeqSound.SoundSeqDef;
 import waffleoRai_SeqSound.misc.smd.*;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+import waffleoRai_Files.tree.FileNode;
 
 /*
  * UPDATES

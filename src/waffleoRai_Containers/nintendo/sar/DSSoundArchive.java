@@ -20,11 +20,11 @@ import waffleoRai_Files.Converter;
 import waffleoRai_SeqSound.ninseq.DSSeq;
 import waffleoRai_Sound.nintendo.DSStream;
 import waffleoRai_Sound.nintendo.DSWarc;
-import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
 import waffleoRai_soundbank.nintendo.DSBank;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 
 public class DSSoundArchive extends NDKDSFile{
 	

@@ -14,9 +14,9 @@ import java.util.TreeMap;
 import waffleoRai_Executable.nintendo.DolExe;
 import waffleoRai_Files.FileTypeDefNode;
 import waffleoRai_Utils.CacheFileBuffer;
-import waffleoRai_Utils.DirectoryNode;
+import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_fdefs.nintendo.PowerGCSysFileDefs;
 
 public class GCWiiDisc {
@@ -149,7 +149,8 @@ public class GCWiiDisc {
 		
 		DirectoryNode root = new DirectoryNode(null, "root");
 		DirectoryNode activeDir = root;
-		root.setEndIndex(num_entries);
+		//root.setEndIndex(num_entries);
+		root.setScratchValue(num_entries);
 		
 		cpos = 0xC;
 		for(int i = 1; i < num_entries; i++)
@@ -186,7 +187,8 @@ public class GCWiiDisc {
 			{
 				//It's a directory
 				DirectoryNode node = new DirectoryNode(activeDir, node_name);
-				node.setEndIndex(sizeRaw);
+				//node.setEndIndex(sizeRaw);
+				node.setScratchValue(sizeRaw);
 				node.setOffset(offsetRaw);
 				//System.err.println("\tNode is a directory! End Node: " + sizeRaw);
 				activeDir = node;
@@ -194,7 +196,7 @@ public class GCWiiDisc {
 			}
 			
 			//Back up a directory if this directory is done
-			while(node_index >= activeDir.getEndIndex()){
+			while(node_index >= activeDir.getScratchValue()){
 				activeDir = activeDir.getParent();
 				if(activeDir == null) break;
 			}

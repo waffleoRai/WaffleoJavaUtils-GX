@@ -11,10 +11,10 @@ import java.util.TreeMap;
 import waffleoRai_Compression.nintendo.NinLZ;
 import waffleoRai_Containers.ArchiveDef;
 import waffleoRai_Files.Converter;
-import waffleoRai_Utils.DirectoryNode;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_Utils.FileNode;
 
 
 //TODO LZ77 inside the content area...
@@ -99,8 +99,7 @@ public class NARC extends NDKDSFile{
 		//System.err.println("Dir Count: " + dcount);
 		
 		int[][] dirtbl = new int[dcount][3];
-		for(int i = 0; i < dcount; i++)
-		{
+		for(int i = 0; i < dcount; i++){
 			dirtbl[i][0] = btnf.intFromFile(cpos); cpos+=4; //Offset
 			dirtbl[i][1] = Short.toUnsignedInt(btnf.shortFromFile(cpos)); cpos+=2; //First file
 			dirtbl[i][2] = Short.toUnsignedInt(btnf.shortFromFile(cpos)); cpos+=2; //Parent
@@ -114,8 +113,7 @@ public class NARC extends NDKDSFile{
 		Map<Integer, FileNode> nmap = new TreeMap<Integer, FileNode>();
 		
 		//Now fill in the branches...
-		for(int i = 0; i < dcount; i++)
-		{
+		for(int i = 0; i < dcount; i++){
 			//Mmm children!
 			long noff = Integer.toUnsignedLong(dirtbl[i][0]) + name_off;
 			//System.err.println("Name Offset: 0x" + Long.toHexString(noff));
@@ -176,7 +174,8 @@ public class NARC extends NDKDSFile{
 				//Offset is relative to start of decompressed GMIF (?)
 				System.err.println("NARC.readNARC || -DEBUG- LZ compressed GMIF detected!");
 				off = fat[i][0] - 12;
-				fn.addCompressionChainNode(NinLZ.getDefinition(), gmif_off+12, gmif_len-12);
+				//TODO commented out for compilation - needs to be rewritten for FileNode 3.0.0!!!
+				//fn.addCompressionChainNode(NinLZ.getDefinition(), gmif_off+12, gmif_len-12);
 			}
 			
 			fn.setOffset(off);

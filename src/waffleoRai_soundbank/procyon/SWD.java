@@ -14,10 +14,8 @@ import java.util.List;
 import waffleoRai_Files.Converter;
 import waffleoRai_SoundSynth.SynthBank;
 import waffleoRai_SoundSynth.SynthProgram;
-import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_Utils.FileNode;
 import waffleoRai_soundbank.SimpleBank;
 import waffleoRai_soundbank.SimpleInstrument;
 import waffleoRai_soundbank.SimplePreset;
@@ -25,6 +23,8 @@ import waffleoRai_soundbank.SingleBank;
 import waffleoRai_soundbank.SoundbankDef;
 import waffleoRai_soundbank.SoundbankNode;
 import waffleoRai_soundbank.sf2.SF2;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 
 //Thank you extremely specific PMD2 modding community!
 //https://projectpokemon.org/docs/mystery-dungeon-nds/dse-swdl-format-r14/

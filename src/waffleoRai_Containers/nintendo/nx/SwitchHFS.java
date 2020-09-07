@@ -8,6 +8,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -18,11 +19,11 @@ import java.util.List;
 import waffleoRai_Encryption.FileCryptRecord;
 import waffleoRai_Encryption.FileCryptTable;
 import waffleoRai_Files.FileTypeDefNode;
-import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_fdefs.nintendo.NXSysDefs;
-import waffleoRai_Utils.FileNode;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 
 public class SwitchHFS implements NXContainer{
 
@@ -233,6 +234,55 @@ public class SwitchHFS implements NXContainer{
 		return rlist;
 	}
 	
+	public SwitchNCA getNCAByName(String nca_name){
+		//Scans full file system for correct NCA
+		int i = 0;
+		for(FileEntry fe : filelist){
+			//System.err.println("FE Name: " + fe.name + " | Search Name: " + nca_name);
+			if(fe.name.equals(nca_name)){
+				//Nab container and return
+				//System.err.println("Match!");
+				if(contents[i] == null) return null;
+				else return (SwitchNCA)contents[i];
+			}
+			else if(contents[i] != null && (contents[i] instanceof SwitchHFS)){
+				//Recursively search
+				SwitchNCA hit = ((SwitchHFS)contents[i]).getNCAByName(nca_name);
+				if(hit != null) return hit;
+			}
+			i++;
+		}
+		
+		return null;
+	}
+	
+	public FileNode getNCANodeByName(String nca_name){
+		int i = 0;
+		for(FileEntry fe : filelist){
+			//System.err.println("FE Name: " + fe.name + " | Search Name: " + nca_name);
+			if(fe.name.equals(nca_name)){
+				//Determine location and create node...
+				//System.err.println("Match!");
+				FileNode ncanode = new FileNode(null, "ncanode_" + nca_name);
+				ncanode.setSourcePath(src_path);
+				ncanode.setOffset(fe.offset); //Relative to HFS!
+				ncanode.setLength(fe.size);
+				return ncanode;
+			}
+			else if(contents[i] != null && (contents[i] instanceof SwitchHFS)){
+				//Recursively search
+				FileNode fn = ((SwitchHFS)contents[i]).getNCANodeByName(nca_name);
+				if(fn != null){
+					fn.setOffset(fn.getOffset() + fe.offset);
+					return fn;
+				}
+			}
+			i++;
+		}
+		
+		return null;
+	}
+	
 	/*----- Setters -----*/
 	
 	/*----- Crypto -----*/
@@ -242,6 +292,7 @@ public class SwitchHFS implements NXContainer{
 		boolean b = true;
 		for(int i = 0; i < contents.length; i++){
 			if(contents[i] != null){
+				//System.err.println("Now unlocking: " + filelist.get(i).name);
 				b = b && contents[i].unlock(cryptstate);
 			}
 		}
@@ -250,6 +301,20 @@ public class SwitchHFS implements NXContainer{
 	}
 	
 	/*----- Debug -----*/
+	
+	public void printInfo(Writer out) throws IOException{
+		out.write("-------- HAC File System Container --------\n");
+		out.write("File Data Offset: 0x" + Long.toHexString(fdat_off) +"\n");
+		
+		out.write("\n");
+		int i = 0;
+		for(FileEntry fe : filelist){
+			out.write("~> " + fe.name + "\n");
+			NXContainer c = contents[i++];
+			if(c != null) c.printInfo(out);
+			else out.write("<NULL HFS Slot>\n");
+		}
+	}
 	
 	public void extractRawNCAsTo(String dirpath) throws IOException{
 		if(filelist == null) return;

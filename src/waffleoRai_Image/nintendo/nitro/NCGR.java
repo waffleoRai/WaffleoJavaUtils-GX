@@ -24,8 +24,8 @@ import waffleoRai_Image.Tileset;
 import waffleoRai_Image.TilesetDef;
 import waffleoRai_Image.nintendo.NDSGraphics;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+import waffleoRai_Files.tree.FileNode;
 
 public class NCGR extends NDKDSFile{
 	

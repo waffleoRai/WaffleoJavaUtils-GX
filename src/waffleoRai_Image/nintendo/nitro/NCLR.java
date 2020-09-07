@@ -16,8 +16,8 @@ import waffleoRai_Image.Palette;
 import waffleoRai_Image.PaletteFileDef;
 import waffleoRai_Image.nintendo.NDSGraphics;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+import waffleoRai_Files.tree.FileNode;
 
 public class NCLR extends NDKDSFile{
 	

@@ -1,18 +1,18 @@
 package waffleoRai_Containers.nintendo.nx;
 
 import java.io.IOException;
+import java.io.Writer;
 import java.security.MessageDigest;
 import java.util.Collection;
-import java.util.List;
 
 import waffleoRai_Encryption.FileCryptRecord;
 import waffleoRai_Encryption.nintendo.NinCryptTable;
 import waffleoRai_Files.FileTypeDefNode;
-import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_Utils.FileNode;
 import waffleoRai_fdefs.nintendo.NXSysDefs;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 
 public class NXCartImage {
 	
@@ -37,7 +37,7 @@ public class NXCartImage {
 	/*----- Instance Variables -----*/
 	
 	private String src_path;
-	private String dec_dir;
+	//private String dec_dir;
 	
 	private byte[] rsa_sig; //For cart HEAD
 	
@@ -189,6 +189,26 @@ public class NXCartImage {
 		return tbl;
 	}
 	
+	public long getPackageID(){
+		return this.packageID;
+	}
+	
+	public SwitchNCA getNCAByName(String nca_name){
+		//Scans full file system for correct NCA
+		return rootHFS.getNCAByName(nca_name);
+	}
+	
+	public FileNode getNCANodeByName(String nca_name){
+		//Scans full file system for correct NCA
+		FileNode node = rootHFS.getNCANodeByName(nca_name);
+		if(node == null) return null;
+		
+		//Add HFS offset
+		node.setOffset(node.getOffset() + hfs0_off);
+		
+		return node;
+	}
+	
 	/*----- Setters -----*/
 	
 	/*----- Crypto -----*/
@@ -201,6 +221,59 @@ public class NXCartImage {
 	/*----- Util -----*/
 	
 	/*----- Debug -----*/
+	
+	public void printInfo(Writer out) throws IOException{
+		out.write("============== Nintendo Switch (NX) Cartridge Image (.xci) ==============\n");
+		
+		out.write("RSA Signature: \n");
+		int k = 0;
+		for(int i = 0; i < 16; i++){
+			for(int j = 0; j < 16; j++){
+				out.write(String.format("%02x ", rsa_sig[k++]));
+			}
+			out.write("\n");
+		}
+		out.write("\n");
+		
+		out.write("Secure Address: 0x" + Long.toHexString(secure_addr) + "\n");
+		out.write("Backup Address: 0x" + Long.toHexString(backup_addr) + "\n");
+		out.write("TitleKeyDec Index: " + idx_tkd + "\n");
+		out.write("KEK Index: " + idx_kek + "\n");
+		out.write("Header Version: " + header_ver + "\n");
+		out.write("Cartridge Capacity: ");
+		switch(cart_size){
+		case CARTSIZE_1GB: out.write("1 GB\n"); break;
+		case CARTSIZE_2GB: out.write("2 GB\n"); break;
+		case CARTSIZE_4GB: out.write("4 GB\n"); break;
+		case CARTSIZE_8GB: out.write("8 GB\n"); break;
+		case CARTSIZE_16GB: out.write("16 GB\n"); break;
+		case CARTSIZE_32GB: out.write("32 GB\n"); break;
+		}
+		out.write("Cartridge Flags: 0x" + Integer.toHexString(cart_flags) + "\n");
+		
+		out.write("Package ID: " + Long.toHexString(packageID) + "\n");
+		out.write("Data End Address: 0x" + Long.toHexString(data_end_addr) + "\n");
+		out.write("Normal End Address: 0x" + Long.toHexString(normal_end_addr) + "\n");
+		out.write("Gamecard Info Area IV: \n");
+		for(int i = 0; i < 16; i++){
+			out.write(String.format("%02x", gc_info_iv[i]));
+		}
+		out.write("\n");
+		
+		out.write("Root HFS Offset: 0x" + Long.toHexString(hfs0_off) + "\n");
+		out.write("Root HFS Header Size: 0x" + Long.toHexString(hfs0_headsize) + "\n");
+		out.write("Root HFS Header SHA-256: " + NXCrypt.printHash(sha_hfshead) + "\n");
+		out.write("InitData SHA-256: " + NXCrypt.printHash(sha_initdat) + "\n");
+		
+		out.write("Security Mode: " + security_mode + "\n");
+		out.write("T1 Key Index: " + idx_t1k + "\n");
+		out.write("Key Index: " + idx_key + "\n");
+		
+		out.write("\n");
+		if(rootHFS != null) rootHFS.printInfo(out);
+		else out.write("<Root HFS is null or unparsed!>\n");
+		
+	}
 	
 	public void dumpRawNCAs(String dirpath) throws IOException{
 		if(rootHFS != null){

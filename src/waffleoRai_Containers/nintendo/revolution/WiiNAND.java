@@ -3,8 +3,8 @@ package waffleoRai_Containers.nintendo.revolution;
 import java.io.IOException;
 import java.util.ArrayList;
 
-import waffleoRai_Files.FragFileNode;
-import waffleoRai_Utils.DirectoryNode;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FragFileNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.MultiFileBuffer;
 

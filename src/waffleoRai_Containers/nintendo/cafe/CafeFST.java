@@ -8,10 +8,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-import waffleoRai_Utils.DirectoryNode;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_Utils.FileNode;
 
 public class CafeFST {
 	
@@ -145,7 +145,8 @@ public class CafeFST {
 			}
 			else{
 				FileNode fn = new FileNode(dir, centry.name);
-				fn.setUID(Integer.toUnsignedLong(idx));
+				//fn.setUID(Integer.toUnsignedLong(idx));
+				fn.setScratchLong(Integer.toUnsignedLong(idx));
 				long offset = centry.offset * miniblock_size;
 				String ivlo = Long.toHexString(offset >>> 16);
 				fn.setMetadataValue(METAKEY_IVLO, ivlo);
@@ -185,12 +186,14 @@ public class CafeFST {
 			Map<Long, Long> omap = new HashMap<Long, Long>();
 			List<FileNode> offlist = getList(true);
 			for(FileNode fn : offlist){
-				omap.put(fn.getUID(), fn.getOffset());
+				//omap.put(fn.getUID(), fn.getOffset());
+				omap.put(fn.getScratchLong(), fn.getOffset());
 				//System.err.println("UID: " + fn.getUID() + ", Offset: 0x" + Long.toHexString(fn.getOffset()));
 			}
 			Collection<FileNode> allfiles = root.getAllDescendants(false);
 			for(FileNode fn : allfiles){
-				Long noff = omap.get(fn.getUID());
+				//Long noff = omap.get(fn.getUID());
+				Long noff = omap.get(fn.getScratchLong());
 				if(noff == null) continue;
 				fn.setOffset(noff);
 			}
@@ -218,7 +221,8 @@ public class CafeFST {
 			
 			fn.setOffset(offset);
 			fn.setLength(e.size);
-			fn.setUID(idx++);
+			//fn.setUID(idx++);
+			fn.setScratchLong(idx++);
 			list.add(fn);
 		}
 		

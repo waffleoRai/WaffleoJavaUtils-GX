@@ -3,10 +3,10 @@ package waffleoRai_Containers.nintendo.citrus;
 import java.io.File;
 import java.io.IOException;
 
-import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_Utils.FileNode;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 
 //https://www.3dbrew.org/wiki/NCSD
 

@@ -8,9 +8,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 
-import waffleoRai_Utils.DirectoryNode;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
 
 public class NDSTest {
 

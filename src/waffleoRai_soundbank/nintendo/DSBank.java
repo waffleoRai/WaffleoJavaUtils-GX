@@ -14,11 +14,11 @@ import waffleoRai_Files.Converter;
 import waffleoRai_Sound.nintendo.DSWarc;
 import waffleoRai_SoundSynth.SynthBank;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
 import waffleoRai_soundbank.SimpleBank;
 import waffleoRai_soundbank.SoundbankDef;
 import waffleoRai_soundbank.sf2.SF2;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+import waffleoRai_Files.tree.FileNode;
 
 public class DSBank extends NinBank{
 	

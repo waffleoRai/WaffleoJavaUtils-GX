@@ -6,7 +6,7 @@ import java.util.LinkedList;
 import java.util.List;
 
 import waffleoRai_Containers.nintendo.NARC;
-import waffleoRai_Utils.DirectoryNode;
+import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.StreamWrapper;
 

@@ -1,8 +1,11 @@
 package waffleoRai_Containers.nintendo.nx;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.Writer;
 
 import waffleoRai_Containers.nintendo.nx.SwitchNCA.BKTREntry;
 import waffleoRai_Containers.nintendo.nx.SwitchNCA.FSHashInfo;
@@ -14,15 +17,21 @@ import waffleoRai_Encryption.FileCryptTable;
 import waffleoRai_Encryption.nintendo.NinCTRCryptRecord;
 import waffleoRai_Encryption.nintendo.NinCrypto;
 import waffleoRai_Encryption.nintendo.NinXTSCryptRecord;
+import waffleoRai_Files.EncryptionDefinition;
+import waffleoRai_Files.FileNodeModifierCallback;
 import waffleoRai_Files.FileTypeDefNode;
-import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_fdefs.nintendo.NXSysDefs;
 import waffleoRai_fdefs.nintendo.NinDefs;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 
 public class NXNCAPart {
+	
+	/*----- Constants -----*/
+	
+	/*----- Instance Variables -----*/
 	
 	private int version;
 	private int fs_type;
@@ -43,6 +52,10 @@ public class NXNCAPart {
 	
 	private DirectoryNode root;
 	
+	private NXPatchInfo patchdat; //Only if applicable
+	
+	/*----- Getters -----*/
+	
 	public long getOffset(){return offset;}
 	public long getSize(){return size;}
 	public int getFSType(){return fs_type;}
@@ -51,6 +64,11 @@ public class NXNCAPart {
 	public FSHashInfo getHashInfo(){return hash_info;}
 	public BKTREntry[] getPatchInfo(){return patch_info;}
 	public byte[] getSparseInfo(){return sparse_info;}
+	public byte[] getKey(){return key;}
+	
+	public NXPatchInfo getPatchData(){return this.patchdat;}
+	
+	/*----- Setters -----*/
 	
 	public void setVersion(int val){version = val;}
 	public void setFSType(int val){fs_type = val;}
@@ -66,6 +84,10 @@ public class NXNCAPart {
 	
 	public void setOffset(long val){offset = val;}
 	public void setSize(long val){size = val;}
+	
+	public void setKey(byte[] k){key = k;}
+	
+	/*----- Crypto -----*/
 	
 	public long updateCryptRegUID(){
 		long val = 0L;
@@ -84,6 +106,7 @@ public class NXNCAPart {
 		}
 		
 		long ofs = (offset + part_offset) >>> 4;
+		//long ofs = (part_offset) >>> 4;
 		for(int i = 0; i < 8; i++){
 			ctr[16-i-1] = (byte)(ofs & 0xFF);
 			ofs = ofs >>> 8;
@@ -91,77 +114,6 @@ public class NXNCAPart {
 		
 		return ctr;
 	}
-	
-	public void printMe(int tabs){
-		String indent = "";
-		if(tabs > 0){
-			StringBuilder sb = new StringBuilder(tabs);
-			for(int i = 0; i < tabs; i++)sb.append('\t');
-			indent = sb.toString();
-		}
-		
-		//System.err.println(indent + "------------- FSEntry -------------");
-		System.err.println(indent + "Version: " + version);
-		
-		String s = "PartitionFS";
-		if(fs_type == 0) s = "RomFS";
-		System.err.println(indent + "Type: " + s);
-		
-		s = "Auto";
-		switch(hash_type){
-		case SwitchNCA.NCA_HASHTYPE_HIERSHA256: 
-			s = "Hierarchical SHA-256";
-			break;
-		case SwitchNCA.NCA_HASHTYPE_IVFC:
-			s = "IVFC";
-			break;
-		}
-		System.err.println(indent + "Hash Type: " + s);
-		
-		switch(enc_type){
-		case SwitchNCA.NCA_CRYPTTYPE_AUTO: 
-			s = "Auto";
-			break;
-		case SwitchNCA.NCA_CRYPTTYPE_NONE: 
-			s = "None";
-			break;
-		case SwitchNCA.NCA_CRYPTTYPE_AESXTS: 
-			s = "AES-XTS (Older Firmware)";
-			break;
-		case SwitchNCA.NCA_CRYPTTYPE_AESCTR: 
-			s = "AES-CTR";
-			break;
-		case SwitchNCA.NCA_CRYPTTYPE_AESCTR_BKTR: 
-			s = "AES-CTR (BKTR)";
-			break;
-		}
-		System.err.println(indent + "Encryption Type: " + s);
-		
-		if(hash_type != 0){
-			System.err.println(indent + "Hash Info: ");
-			hash_info.printMe(tabs+1);
-		}
-		
-		if(patch_info != null){
-			for(int i = 0; i < patch_info.length; i++){
-				System.err.print(indent + "BKTR " + i + ": ");
-				BKTREntry bktr = patch_info[i];
-				if(bktr != null){
-					long ed = bktr.offset + bktr.size;
-					System.err.print("0x" + Long.toHexString(bktr.offset) + " - ");
-					System.err.print("0x" + Long.toHexString(ed) + "\n");
-				}
-				else System.err.print("<NULL>\n");
-			}
-		}
-		
-		System.err.println(indent + "Key Generation: " + generation);
-		System.err.println(indent + "Secure Value: 0x" + Integer.toHexString(secure_val));
-		System.err.println(indent + "Offset: 0x" + Long.toHexString(offset));
-		System.err.println(indent + "Size: 0x" + Long.toHexString(size));
-	}
-	
-	public void setKey(byte[] k){key = k;}
 	
 	public boolean decryptRegion(InputStream input, OutputStream output, long part_offset, long length) throws IOException{
 		if(key == null && enc_type != SwitchNCA.NCA_CRYPTTYPE_NONE) {
@@ -237,6 +189,83 @@ public class NXNCAPart {
 		return true;
 	}
 	
+	public FileCryptRecord addEncryptionInfo(FileCryptTable table){
+		
+		FileCryptRecord rec = null;
+		long cuid = this.updateCryptRegUID();
+		
+		int kidx = -1;
+		switch(enc_type){
+		case SwitchNCA.NCA_CRYPTTYPE_AESCTR:
+		case SwitchNCA.NCA_CRYPTTYPE_AESCTR_BKTR:
+			rec = new NinCTRCryptRecord(cuid);
+			rec.setIV(genCTR(0L));
+			rec.setKeyType(NinCrypto.KEYTYPE_128);
+			kidx = table.getIndexOfKey(NinCrypto.KEYTYPE_128, key);
+			if(kidx == -1) kidx = table.addKey(NinCrypto.KEYTYPE_128, key);
+			rec.setKeyIndex(kidx);
+			break;
+		case SwitchNCA.NCA_CRYPTTYPE_NONE: return null;
+		case SwitchNCA.NCA_CRYPTTYPE_AESXTS:
+			NinXTSCryptRecord xtsr = new NinXTSCryptRecord(cuid);
+			xtsr.setSector(0L);
+			rec = xtsr;
+			rec.setKeyType(NinCrypto.KEYTYPE_256);
+			kidx = table.getIndexOfKey(NinCrypto.KEYTYPE_256, key);
+			if(kidx == -1) kidx = table.addKey(NinCrypto.KEYTYPE_256, key);
+			rec.setKeyIndex(kidx);
+			break;
+		}
+		
+		rec.setCryptOffset(0); //For now, relative to partition start. Should be updated as needed.
+		//This field as used here is to indicate start of encrypted region.
+		//That way offsets of files can be used to generate tweak/CTR as needed.
+		
+		table.addRecord(cuid, rec);
+		
+		//tag all file tree nodes with this UID
+		if(root != null) root.setMetaValueForTree(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(cuid));
+		
+		return rec;
+	}
+	
+	public boolean readPatchInfo(String src_path, long part_off) throws IOException{
+
+		if(patch_info == null) return false;
+		
+		long sz1 = patch_info[0].size;
+		long sz2 = patch_info[1].size;
+		if(sz1 <= 0 || sz2 <= 0) return false;
+		
+		long off1 = patch_info[0].offset;
+		long off2 = patch_info[1].offset;
+		
+		//Figure out chunk to decrypt...
+		long ed1 = off1 + sz1;
+		long ed2 = off2 + sz2;
+		
+		long st = off1<off2?off1:off2;
+		long ed = ed1>ed2?ed1:ed2;
+		
+		//Grab encrypted data
+		FileBuffer src = FileBuffer.createBuffer(src_path, false);
+		byte[] indat = src.getBytes(part_off + st, part_off + ed);
+		
+		//Create Streams
+		InputStream in = new ByteArrayInputStream(indat);
+		ByteArrayOutputStream out = new ByteArrayOutputStream((int)(ed-st));
+		
+		if(!decryptRegion(in, out, st, (ed-st))) return false;
+		
+		//Wrap the byte array from out and parse.
+		FileBuffer pdat = FileBuffer.wrap(out.toByteArray());
+		patchdat = NXPatchInfo.readFromNCA(pdat, off1-st, off2-st);
+		
+		return (patchdat != null);
+	}
+	
+	/*----- Tree -----*/
+	
 	public boolean buildFileTree(FileBuffer src, long offset, boolean includeFSFiles){
 		//Assumes offset is the start of the partition
 		if(key == null && enc_type != SwitchNCA.NCA_CRYPTTYPE_NONE) {
@@ -286,6 +315,8 @@ public class NXNCAPart {
 			long foff = offset + datoff;
 			byte[] enc = src.getBytes(foff, foff+0x200);
 			byte[] dec = null;
+			//System.err.println("Data offset: 0x" + Long.toHexString(datoff));
+			//System.err.println("Net offset: 0x" + Long.toHexString(foff));
 			
 			switch(enc_type){
 			case SwitchNCA.NCA_CRYPTTYPE_AESCTR:
@@ -466,51 +497,183 @@ public class NXNCAPart {
 		}
 		
 		if(enc_type != SwitchNCA.NCA_CRYPTTYPE_NONE) root.setMetaValueForTree(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(updateCryptRegUID()));
-		return true;
-	}
-	
-	public FileCryptRecord addEncryptionInfo(FileCryptTable table){
 		
-		FileCryptRecord rec = null;
-		long cuid = this.updateCryptRegUID();
-		
-		int kidx = -1;
+		//Mark with enc def
+		EncryptionDefinition edef = null;
 		switch(enc_type){
 		case SwitchNCA.NCA_CRYPTTYPE_AESCTR:
 		case SwitchNCA.NCA_CRYPTTYPE_AESCTR_BKTR:
-			rec = new NinCTRCryptRecord(cuid);
-			rec.setIV(genCTR(0L));
-			rec.setKeyType(NinCrypto.KEYTYPE_128);
-			kidx = table.getIndexOfKey(NinCrypto.KEYTYPE_128, key);
-			if(kidx == -1) kidx = table.addKey(NinCrypto.KEYTYPE_128, key);
-			rec.setKeyIndex(kidx);
+			edef = NXSysDefs.getCTRCryptoDef();
 			break;
-		case SwitchNCA.NCA_CRYPTTYPE_NONE: return null;
 		case SwitchNCA.NCA_CRYPTTYPE_AESXTS:
-			NinXTSCryptRecord xtsr = new NinXTSCryptRecord(cuid);
-			xtsr.setSector(0L);
-			rec = xtsr;
-			rec.setKeyType(NinCrypto.KEYTYPE_256);
-			kidx = table.getIndexOfKey(NinCrypto.KEYTYPE_256, key);
-			if(kidx == -1) kidx = table.addKey(NinCrypto.KEYTYPE_256, key);
-			rec.setKeyIndex(kidx);
+			edef = NXSysDefs.getXTSCryptoDef();
 			break;
 		}
 		
-		rec.setCryptOffset(0); //For now, relative to partition start. Should be updated as needed.
-		//This field as used here is to indicate start of encrypted region.
-		//That way offsets of files can be used to generate tweak/CTR as needed.
+		if(edef != null){
+			EncryptionDefinition edef_final = edef; //Eat shit, JAva
+			root.doForTree(new FileNodeModifierCallback(){
+
+				public void doToNode(FileNode node) {
+					//node.setEncryption(edef_final);
+					node.addEncryption(edef_final);
+				}
+				
+			});	
+		}
 		
-		table.addRecord(cuid, rec);
-		
-		//tag all file tree nodes with this UID
-		if(root != null) root.setMetaValueForTree(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(cuid));
-		
-		return rec;
+		return true;
 	}
 	
 	public DirectoryNode getFileTree(){
 		return root;
 	}
 
+	/*----- Debug -----*/
+	
+	public void printMe(int tabs){
+		String indent = "";
+		if(tabs > 0){
+			StringBuilder sb = new StringBuilder(tabs);
+			for(int i = 0; i < tabs; i++)sb.append('\t');
+			indent = sb.toString();
+		}
+		
+		//System.err.println(indent + "------------- FSEntry -------------");
+		System.err.println(indent + "Version: " + version);
+		
+		String s = "PartitionFS";
+		if(fs_type == 0) s = "RomFS";
+		System.err.println(indent + "Type: " + s);
+		
+		s = "Auto";
+		switch(hash_type){
+		case SwitchNCA.NCA_HASHTYPE_HIERSHA256: 
+			s = "Hierarchical SHA-256";
+			break;
+		case SwitchNCA.NCA_HASHTYPE_IVFC:
+			s = "IVFC";
+			break;
+		}
+		System.err.println(indent + "Hash Type: " + s);
+		
+		switch(enc_type){
+		case SwitchNCA.NCA_CRYPTTYPE_AUTO: 
+			s = "Auto";
+			break;
+		case SwitchNCA.NCA_CRYPTTYPE_NONE: 
+			s = "None";
+			break;
+		case SwitchNCA.NCA_CRYPTTYPE_AESXTS: 
+			s = "AES-XTS (Older Firmware)";
+			break;
+		case SwitchNCA.NCA_CRYPTTYPE_AESCTR: 
+			s = "AES-CTR";
+			break;
+		case SwitchNCA.NCA_CRYPTTYPE_AESCTR_BKTR: 
+			s = "AES-CTR (BKTR)";
+			break;
+		}
+		System.err.println(indent + "Encryption Type: " + s);
+		
+		if(hash_type != 0){
+			System.err.println(indent + "Hash Info: ");
+			hash_info.printMe(tabs+1);
+		}
+		
+		if(patch_info != null){
+			for(int i = 0; i < patch_info.length; i++){
+				System.err.print(indent + "BKTR " + i + ": ");
+				BKTREntry bktr = patch_info[i];
+				if(bktr != null){
+					long ed = bktr.offset + bktr.size;
+					System.err.print("0x" + Long.toHexString(bktr.offset) + " - ");
+					System.err.print("0x" + Long.toHexString(ed) + "\n");
+				}
+				else System.err.print("<NULL>\n");
+			}
+		}
+		
+		System.err.println(indent + "Key Generation: " + generation);
+		System.err.println(indent + "Secure Value: 0x" + Integer.toHexString(secure_val));
+		System.err.println(indent + "Offset: 0x" + Long.toHexString(offset));
+		System.err.println(indent + "Size: 0x" + Long.toHexString(size));
+	}
+	
+	public void printInfo(Writer out, int indents) throws IOException{
+
+		String indent = "";
+		if(indents > 0){
+			StringBuilder sb = new StringBuilder(indents);
+			for(int i = 0; i < indents; i++)sb.append('\t');
+			indent = sb.toString();
+		}
+		
+		//System.err.println(indent + "------------- FSEntry -------------");
+		out.write(indent + "Version: " + version + "\n");
+		
+		String s = "PartitionFS (PFS)";
+		if(fs_type == 0) s = "RomFS";
+		out.write(indent + "Type: " + s + "\n");
+		
+		s = "Auto";
+		switch(hash_type){
+		case SwitchNCA.NCA_HASHTYPE_HIERSHA256: 
+			s = "Hierarchical SHA-256";
+			break;
+		case SwitchNCA.NCA_HASHTYPE_IVFC:
+			s = "IVFC";
+			break;
+		}
+		out.write(indent + "Hash Type: " + s + "\n");
+		
+		switch(enc_type){
+		case SwitchNCA.NCA_CRYPTTYPE_AUTO: 
+			s = "Auto";
+			break;
+		case SwitchNCA.NCA_CRYPTTYPE_NONE: 
+			s = "None";
+			break;
+		case SwitchNCA.NCA_CRYPTTYPE_AESXTS: 
+			s = "AES-XTS (Older Firmware)";
+			break;
+		case SwitchNCA.NCA_CRYPTTYPE_AESCTR: 
+			s = "AES-CTR";
+			break;
+		case SwitchNCA.NCA_CRYPTTYPE_AESCTR_BKTR: 
+			s = "AES-CTR (BKTR)";
+			break;
+		}
+		out.write(indent + "Encryption Type: " + s + "\n");
+		if(key != null){
+			out.write(indent + "Key: " + NXCrypt.printHash(key) + "\n");
+		}
+		else{
+			out.write(indent + "Key: <Unset or N/A>\n");
+		}
+		
+		if(hash_type != 0){
+			out.write(indent + "Hash Info: \n");
+			hash_info.printInfo(out, indents+1);
+		}
+		
+		if(patch_info != null){
+			for(int i = 0; i < patch_info.length; i++){
+				out.write(indent + "BKTR " + i + ": ");
+				BKTREntry bktr = patch_info[i];
+				if(bktr != null){
+					long ed = bktr.offset + bktr.size;
+					out.write("0x" + Long.toHexString(bktr.offset) + " - ");
+					out.write("0x" + Long.toHexString(ed) + "\n");
+				}
+				else out.write("<NULL>\n");
+			}
+		}
+		
+		out.write(indent + "Key Generation: " + generation + "\n");
+		out.write(indent + "Secure Value: 0x" + Integer.toHexString(secure_val) + "\n");
+		out.write(indent + "Offset: 0x" + Long.toHexString(offset) + "\n");
+		out.write(indent + "Size: 0x" + Long.toHexString(size) + "\n");
+	}
+	
 }

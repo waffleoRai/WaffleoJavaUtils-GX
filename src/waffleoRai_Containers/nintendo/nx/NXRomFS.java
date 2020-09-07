@@ -4,9 +4,9 @@ import java.util.Collection;
 
 import waffleoRai_Encryption.FileCryptRecord;
 import waffleoRai_Encryption.FileCryptTable;
-import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 
 public class NXRomFS{
 	
@@ -58,6 +58,13 @@ public class NXRomFS{
 		romfs.ftbl_off = data.nextLong();
 		romfs.ftbl_size = data.nextLong();
 		romfs.fdat_off = data.nextLong();
+		
+		/*System.err.println("Header Size: 0x" + romfs.hdr_size);
+		System.err.println("Dir Table Offset: 0x" + romfs.dtbl_off);
+		System.err.println("Dir Table Size: 0x" + romfs.dtbl_size);
+		System.err.println("File Table Offset: 0x" + romfs.ftbl_off);
+		System.err.println("File Table Size: 0x" + romfs.ftbl_size);
+		System.err.println("File Data Offset: 0x" + romfs.fdat_off);*/
 		
 		return romfs;
 	}

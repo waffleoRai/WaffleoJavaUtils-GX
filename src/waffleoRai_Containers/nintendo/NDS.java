@@ -24,9 +24,9 @@ import waffleoRai_Image.Palette;
 import waffleoRai_Image.PaletteRaster;
 import waffleoRai_Image.Picture;
 import waffleoRai_Image.nintendo.NDSGraphics;
-import waffleoRai_Utils.DirectoryNode;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
 import waffleoRai_Utils.StreamWrapper;
 
 public class NDS {
@@ -701,22 +701,18 @@ public class NDS {
 		return darr[0];
 	}
 	
-	private void scanForEncryption(DirectoryNode dir)
-	{
+	private void scanForEncryption(DirectoryNode dir){
 		List<FileNode> children = dir.getChildren();
-		for(FileNode child : children)
-		{
-			if(child instanceof DirectoryNode)
-			{
+		for(FileNode child : children){
+			if(child instanceof DirectoryNode){
 				scanForEncryption((DirectoryNode)child);
 			}
-			else
-			{
-				if(child.isLeaf())
-				{
-					if(modcryptRegion(child.getOffset(), child.getLength()) != 0)
-					{
-						child.setEncryption(getModcryptDef());
+			else{
+				if(child.isLeaf()){
+					if(modcryptRegion(child.getOffset(), child.getLength()) != 0){
+						//child.setEncryption(getModcryptDef());
+						//TODO add modcrypt location...
+						child.addEncryption(getModcryptDef());
 					}
 				}
 			}
@@ -955,7 +951,8 @@ public class NDS {
 		if(armoff >= 0x4000 && armoff < 0x8000){
 			long st = armoff - 0x4000;
 			long len = 0x800 - st;
-			fn.setEncryption(getBlowfishDef(), st, len);
+			//fn.setEncryption(getBlowfishDef(), st, len);
+			fn.addEncryption(getBlowfishDef(), st, len);
 		}
 		
 		fn = arm7.addFileNode(iroot);

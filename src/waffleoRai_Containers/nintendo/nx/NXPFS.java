@@ -1,9 +1,15 @@
 package waffleoRai_Containers.nintendo.nx;
 
-import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_Utils.FileNode;
+
+import java.io.IOException;
+import java.io.Writer;
+import java.util.LinkedList;
+import java.util.List;
+
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 
 public class NXPFS{
 	
@@ -18,6 +24,8 @@ public class NXPFS{
 	private String[] names;
 	
 	private long fdat_off;
+	
+	//private SwitchNCA[] ncas;
 	
 	/*----- Construction/Parsing -----*/
 	
@@ -63,6 +71,7 @@ public class NXPFS{
 		DirectoryNode root = new DirectoryNode(null, "");
 		int fcount = offsets.length;
 		for(int i = 0; i < fcount; i++){
+			//System.err.println("PFS File found: " + names[i]);
 			FileNode fn = new FileNode(root, names[i]);
 			fn.setOffset(fdat_off + offsets[i]);
 			fn.setLength(sizes[i]);
@@ -71,7 +80,37 @@ public class NXPFS{
 		return root;
 	}
 	
+	public List<FileNode> getFileList(){
+		List<FileNode> files = new LinkedList<FileNode>();
+		int count = names.length;
+		for(int i = 0; i < count; i++){
+			FileNode fn = new FileNode(null, names[i]);
+			fn.setOffset(fdat_off + offsets[i]);
+			fn.setLength(sizes[i]);
+			files.add(fn);
+		}
+		return files;
+	}
 	
 	/*----- Setters -----*/
+	
+	/*----- Debug -----*/
 
+	public void printInfo(Writer out, boolean includeFiles) throws IOException{
+		out.write("-------- Partition File System Container --------\n");
+		out.write("File Data Offset: 0x" + Long.toHexString(fdat_off) +"\n");
+		
+		out.write("\n");
+		if(includeFiles){
+			out.write("Contents: \n");
+			for(int i = 0; i < names.length; i++){
+				out.write("\t-> ");
+				out.write(names[i] + " (");
+				out.write("0x" + Long.toHexString(offsets[i]) + " - ");
+				out.write("0x" + Long.toHexString(offsets[i] + sizes[i]) + ")\n");
+			}
+		}
+	}
+	
+	
 }

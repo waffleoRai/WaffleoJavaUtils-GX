@@ -21,10 +21,10 @@ import waffleoRai_Containers.nintendo.wiidisc.WiiTMD;
 import waffleoRai_Containers.nintendo.wiidisc.WiiTicket;
 import waffleoRai_Encryption.AES;
 import waffleoRai_Files.FileTypeDefNode;
-import waffleoRai_Utils.DirectoryNode;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_Utils.FileNode;
 import waffleoRai_fdefs.nintendo.PowerGCSysFileDefs;
 
 public class WiiUDisc {

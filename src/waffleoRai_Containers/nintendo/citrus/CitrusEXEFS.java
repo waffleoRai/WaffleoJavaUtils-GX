@@ -9,9 +9,9 @@ import waffleoRai_Executable.BincodeTypeDef;
 import waffleoRai_Files.FileClass;
 import waffleoRai_Files.FileTypeDefNode;
 import waffleoRai_Files.FileTypeDefinition;
-import waffleoRai_Utils.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 
 public class CitrusEXEFS {
 	

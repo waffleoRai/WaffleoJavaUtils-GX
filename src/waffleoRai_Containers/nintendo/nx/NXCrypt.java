@@ -18,7 +18,7 @@ import waffleoRai_Encryption.AESXTS;
 import waffleoRai_Encryption.FileCryptRecord;
 import waffleoRai_Encryption.nintendo.NinCrypto;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
+import waffleoRai_Files.tree.FileNode;
 
 /*
  * Key file formats...
@@ -256,12 +256,18 @@ public class NXCrypt {
 	}
 	
 	public byte[] getTitleKey(byte[] rightsid, int key_idx){
+		//System.err.println("RightsID: " + NXCrypt.printHash(rightsid));
+		//System.err.println("KEK Index: " + key_idx);
+		
 		byte[] raw = getRawTitleKey(rightsid);
 		if(raw == null) return null;
 		byte[] kek = title_KEK[key_idx];
 		AES aes = new AES(kek);
 		aes.setECB();
 		byte[] dec = aes.decrypt(new byte[16], raw);
+		
+		//System.err.println("Raw Title Key: " + NXCrypt.printHash(raw));
+		//System.err.println("KEK: " + NXCrypt.printHash(kek));
 		
 		return dec;
 	}

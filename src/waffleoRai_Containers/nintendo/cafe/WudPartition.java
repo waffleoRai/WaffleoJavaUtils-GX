@@ -12,10 +12,10 @@ import java.util.List;
 import waffleoRai_Containers.nintendo.wiidisc.WiiContent;
 import waffleoRai_Containers.nintendo.wiidisc.WiiTMD;
 import waffleoRai_Encryption.AES;
-import waffleoRai_Utils.DirectoryNode;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_Utils.FileNode;
 
 public class WudPartition {
 	

@@ -1,22 +1,8 @@
 package waffleoRai_Containers.nintendo.cafe;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.security.MessageDigest;
-import java.util.Collection;
-import java.util.List;
 import java.util.Random;
 
-import waffleoRai_Containers.nintendo.citrus.CitrusNCC;
-import waffleoRai_Containers.nintendo.wiidisc.WiiContent;
-import waffleoRai_Containers.nintendo.wiidisc.WiiCryptListener;
-import waffleoRai_Containers.nintendo.wiidisc.WiiTMD;
-import waffleoRai_Containers.nintendo.wiidisc.WiiTicket;
-import waffleoRai_Encryption.AES;
 import waffleoRai_Utils.FileBuffer;
-import waffleoRai_Utils.FileNode;
 
 public class WudTest {
 
