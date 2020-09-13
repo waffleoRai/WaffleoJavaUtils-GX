@@ -278,6 +278,7 @@ public class NXPatchInfo {
 					myctr[i+4] = (byte)b;
 					shamt-=8;
 				}
+				myctr = NXCrypt.adjustCTR(myctr, entry.address);
 				rec.setIV(myctr);
 				
 				//Add

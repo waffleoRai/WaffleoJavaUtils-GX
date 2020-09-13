@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.Writer;
 import java.security.MessageDigest;
 import java.util.Collection;
+import java.util.Map;
 
 import waffleoRai_Encryption.FileCryptRecord;
 import waffleoRai_Encryption.nintendo.NinCryptTable;
@@ -72,6 +73,25 @@ public class NXCartImage {
 	
 	private SwitchHFS rootHFS;
 	
+	//Primary game contents
+	/*
+	 * This is the game NCA.
+	 * It should be the only NCA in /secure/ with the ExeFS files:
+	 * 		main, main.npdm, rtld, sdk, subsdk0
+	 * The large partition should be the primary RomFS
+	 * This should be the target of any patches
+	 * 
+	 * The /update partition has a lot of ExeFS/RomFS pairs too, but
+	 * they are probably??? not for the game proper? (I assume firmware junk?)
+	 * 
+	 * Also note: icons are held in /secure/icon_[lan].dat (These are jpgs)
+	 * Banner titles, 5 letter gamecode, and version # are in /secure/control.nacp
+	 * 
+	 * In the low level file system, these are not generally in the same NCA
+	 * as the primary game data.
+	 */
+	//private String main_nca;
+		
 	/*----- Construction/Parsing -----*/
 	
 	private NXCartImage(){}
@@ -135,7 +155,7 @@ public class NXCartImage {
 		
 		//Parse root HFS header
 		//System.err.println("NXCartImage.readXCI || Now parsing root HFS @ 0x" + Long.toHexString(xci.hfs0_off));
-		xci.rootHFS = SwitchHFS.readHFS(dat, xci.hfs0_off);
+		xci.rootHFS = SwitchHFS.readHFS(dat, xci.hfs0_off, "");
 		
 		return xci;
 	}
@@ -209,7 +229,23 @@ public class NXCartImage {
 		return node;
 	}
 	
+	public void mapNCAs(Map<String, SwitchNCA> map){
+		rootHFS.mapNCAs(map);
+	}
+	
+	public void mapNCANodes(Map<String, FileNode> map){
+		Collection<FileNode> mynodes = rootHFS.mapNCANodes(map);
+		for(FileNode fn : mynodes){
+			//Add offset of rootHFS
+			fn.setOffset(fn.getOffset() + hfs0_off);
+		}
+	}
+	
 	/*----- Setters -----*/
+	
+	public SwitchNCA removeNCA(String nca_id){
+		return rootHFS.removeNCA(nca_id);
+	}
 	
 	/*----- Crypto -----*/
 	

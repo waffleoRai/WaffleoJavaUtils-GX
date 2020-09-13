@@ -15,6 +15,7 @@ import java.util.Map.Entry;
 
 import waffleoRai_Encryption.AES;
 import waffleoRai_Encryption.AESXTS;
+import waffleoRai_Encryption.DecryptorMethod;
 import waffleoRai_Encryption.FileCryptRecord;
 import waffleoRai_Encryption.nintendo.NinCrypto;
 import waffleoRai_Utils.FileBuffer;
@@ -55,6 +56,58 @@ public class NXCrypt {
 	private byte[][][] kaek;
 	
 	private Map<String, byte[]> titlekey_map; //Raw title keys?
+	
+	/* ----- Subclasses ----- */
+	
+	public static class NXCTRDecMethod implements DecryptorMethod{
+
+		private AES aes;
+		private byte[] base_ctr; //For THIS FILE (not container!)
+		
+		public NXCTRDecMethod(AES engine, byte[] basectr){
+			aes = engine;
+			base_ctr = basectr;
+		}
+		
+		public byte[] decrypt(byte[] input, long offval) {
+
+			//Calculate offset CTR
+			byte[] ctr = adjustCTR(base_ctr, offval);
+			
+			return aes.decrypt(ctr, input);
+		}
+		
+		public void adjustOffsetBy(long value){
+			base_ctr = adjustCTR(base_ctr, value);
+		}
+		
+	}
+	
+	public static class NXXTSDecMethod implements DecryptorMethod{
+
+		private byte[] key;
+		private long base_sec; //For THIS FILE (not container!)
+		private long sec_shamt;
+		
+		public NXXTSDecMethod(byte[] key, long base_sector, long sec_shift){
+			this.key = key;
+			base_sec = base_sector;
+			sec_shamt = sec_shift;
+		}
+		
+		public byte[] decrypt(byte[] input, long offval) {
+			long sector = offval >>> sec_shamt;
+			sector += base_sec;
+			
+			return decrypt_AESXTS_sector(key, input, sector);
+		}
+		
+		public void adjustOffsetBy(long value){
+			long secadd = value >>> sec_shamt;
+			base_sec += secadd;
+		}
+		
+	}
 	
 	/* ----- Construction ----- */
 	
@@ -460,6 +513,7 @@ public class NXCrypt {
 			int sum = Byte.toUnsignedInt(add[i]) + Byte.toUnsignedInt(base_ctr[i]);
 			if(carry) sum++;
 			if(sum > 0xFF) carry = true;
+			else carry = false;
 			out[i] = (byte)sum;
 		}
 		

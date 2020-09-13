@@ -50,6 +50,7 @@ public class NXPFS{
 		long stbl_off = offset + 0x10 + (fcount * 0x18);
 		pfs.fdat_off = stbl_off + stbl_sz;
 		
+		//System.err.println("NXPFS.readPFS || Filedata Offset: 0x" + Long.toHexString(pfs.fdat_off));
 		for(int i = 0; i < fcount; i++){
 			pfs.offsets[i] = src.nextLong();
 			pfs.sizes[i] = src.nextLong();
@@ -58,6 +59,7 @@ public class NXPFS{
 			
 			//Get name
 			pfs.names[i] = src.getASCII_string(stbl_off + soff, '\0');
+			//System.err.println("NXPFS.readPFS || File " + pfs.names[i] + " @ 0x" + Long.toHexString(pfs.offsets[i]));
 		}
 		
 		return pfs;

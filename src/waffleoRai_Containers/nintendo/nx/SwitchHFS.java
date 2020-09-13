@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 import waffleoRai_Encryption.FileCryptRecord;
 import waffleoRai_Encryption.FileCryptTable;
@@ -54,6 +55,8 @@ public class SwitchHFS implements NXContainer{
 	private NXContainer[] contents;
 	private DirectoryNode root;
 	
+	private String myname;
+	
 	/*----- Construction/Parsing -----*/
 	
 	public SwitchHFS(long addr, int entry_count){
@@ -63,7 +66,7 @@ public class SwitchHFS implements NXContainer{
 		contents = new NXContainer[entry_count];
 	}
 
-	public static SwitchHFS readHFS(FileBuffer data, long offset) throws UnsupportedFileTypeException, IOException{
+	public static SwitchHFS readHFS(FileBuffer data, long offset, String hfsname) throws UnsupportedFileTypeException, IOException{
 		if(data == null) throw new IOException("Provided data reference is null!");
 		if(data.findString(offset, offset+0x10, MAGIC) != offset) throw new UnsupportedFileTypeException("HFS0 magic number not found!");
 		//System.err.println("SwitchHFS.readHFS || HFS0 Offset: 0x" + Long.toHexString(offset));
@@ -76,6 +79,7 @@ public class SwitchHFS implements NXContainer{
 		long soff = offset + 0x10 + (fcount * 0x40);
 		long base = soff + strtbl_sz; //Base address of files...
 		SwitchHFS hfs = new SwitchHFS(base, fcount);
+		hfs.myname = hfsname;
 		hfs.base_addr = base;
 		hfs.fdat_off = 0x10 + (fcount * 0x40) + strtbl_sz;
 		hfs.src_path = data.getPath();
@@ -110,7 +114,7 @@ public class SwitchHFS implements NXContainer{
 			int i = -1;
 			for(FileEntry fe : hfs.filelist){
 				i++;
-				//System.err.println("SwitchHFS.readHFS || Now reading " + fe.name);
+				//System.err.println("SwitchHFS.readHFS || Now reading " + fe.name + " @ 0x" + Long.toHexString(fe.offset));
 				if(fe.name.endsWith(".nca")){
 					//Try to read header.
 					//System.err.println("SwitchHFS.readHFS || NCA found @ 0x" + Long.toHexString(fe.offset));
@@ -118,6 +122,7 @@ public class SwitchHFS implements NXContainer{
 						SwitchNCA nca = SwitchNCA.readNCA(data, base + fe.offset);
 						if(nca != null){
 							hfs.contents[i] = nca;
+							nca.setLocalNames(hfs.myname, fe.name);
 						}
 					}
 					catch(UnsupportedFileTypeException x){
@@ -126,7 +131,7 @@ public class SwitchHFS implements NXContainer{
 					}
 				}
 				try{
-					SwitchHFS hfs_inner = SwitchHFS.readHFS(data, base + fe.offset);
+					SwitchHFS hfs_inner = SwitchHFS.readHFS(data, base + fe.offset, fe.name);
 					hfs.contents[i] = hfs_inner;
 					//System.err.println("SwitchHFS.readHFS || HFS read @ 0x" + Long.toHexString(fe.offset));
 				}
@@ -265,7 +270,7 @@ public class SwitchHFS implements NXContainer{
 				//System.err.println("Match!");
 				FileNode ncanode = new FileNode(null, "ncanode_" + nca_name);
 				ncanode.setSourcePath(src_path);
-				ncanode.setOffset(fe.offset); //Relative to HFS!
+				ncanode.setOffset(fe.offset + fdat_off); //Relative to HFS!
 				ncanode.setLength(fe.size);
 				return ncanode;
 			}
@@ -273,7 +278,7 @@ public class SwitchHFS implements NXContainer{
 				//Recursively search
 				FileNode fn = ((SwitchHFS)contents[i]).getNCANodeByName(nca_name);
 				if(fn != null){
-					fn.setOffset(fn.getOffset() + fe.offset);
+					fn.setOffset(fn.getOffset() + fe.offset + fdat_off);
 					return fn;
 				}
 			}
@@ -283,7 +288,73 @@ public class SwitchHFS implements NXContainer{
 		return null;
 	}
 	
+	public void mapNCAs(Map<String, SwitchNCA> map){
+		int i = 0;
+		for(FileEntry fe : filelist){
+			if(fe.name.endsWith(".nca")){
+				if(contents[i] != null && contents[i] instanceof SwitchNCA){
+					String ncaid = fe.name.substring(0, fe.name.indexOf('.'));
+					map.put(ncaid, (SwitchNCA)contents[i]);
+				}
+			}
+			if(contents[i] != null && (contents[i] instanceof SwitchHFS)){
+				((SwitchHFS)contents[i]).mapNCAs(map);
+			}
+			i++;
+		}
+	}
+	
+	public Collection<FileNode> mapNCANodes(Map<String, FileNode> map){
+		int i = 0;
+		Collection<FileNode> mynodes = new LinkedList<FileNode>();
+		for(FileEntry fe : filelist){
+			if(fe.name.endsWith(".nca")){
+				String ncaid = fe.name.substring(0, fe.name.indexOf('.'));
+				FileNode fn = new FileNode(null, fe.name);
+				fn.setOffset(fe.offset + fdat_off);
+				fn.setLength(fe.size);
+				map.put(ncaid, fn);
+				mynodes.add(fn);
+			}
+			if(contents[i] != null && (contents[i] instanceof SwitchHFS)){
+				Collection<FileNode> lowernodes = ((SwitchHFS)contents[i]).mapNCANodes(map);
+				for(FileNode fn : lowernodes){
+					//Offset of inner HFS
+					//Relative to this HFS start
+					fn.setOffset(fn.getOffset() + fe.offset + fdat_off);
+					mynodes.add(fn);
+				}
+			}
+			i++;
+		}
+		return mynodes;
+	}
+	
 	/*----- Setters -----*/
+	
+	public SwitchNCA removeNCA(String nca_id){
+		int i = 0;
+		SwitchNCA nca = null;
+		List<FileEntry> flist2 = new ArrayList<FileEntry>(filelist.size());
+		for(FileEntry fe : filelist){
+			if(nca == null && fe.name.endsWith(".nca") && fe.name.contains(nca_id)){
+				if(contents[i] != null){
+					//Remove
+					nca = (SwitchNCA)contents[i];
+					contents[i] = null;
+				}
+			}
+			else flist2.add(fe);
+			if(nca == null && contents[i] != null && (contents[i] instanceof SwitchHFS)){
+				//Check the inner HFS
+				nca = ((SwitchHFS)contents[i]).removeNCA(nca_id);
+			}
+			i++;
+		}
+		
+		filelist = flist2;
+		return nca;
+	}
 	
 	/*----- Crypto -----*/
 	

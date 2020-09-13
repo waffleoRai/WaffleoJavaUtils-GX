@@ -54,6 +54,8 @@ public class NXNCAPart {
 	
 	private NXPatchInfo patchdat; //Only if applicable
 	
+	private String container_path; //This is mostly used for making unique
+	
 	/*----- Getters -----*/
 	
 	public long getOffset(){return offset;}
@@ -65,6 +67,39 @@ public class NXNCAPart {
 	public BKTREntry[] getPatchInfo(){return patch_info;}
 	public byte[] getSparseInfo(){return sparse_info;}
 	public byte[] getKey(){return key;}
+	
+	public boolean isBKTRPartition(){
+		if(patch_info == null) return false;
+		if(patch_info.length < 2) return false;
+		for(int i = 0; i < 2; i++){
+			if(patch_info[i] == null) return false;
+			if(patch_info[i].size <= 0L) return false;
+		}
+		return enc_type == SwitchNCA.NCA_CRYPTTYPE_AESCTR_BKTR;
+	}
+	
+	public boolean isRomFS(){
+		if(hash_info == null) return false;
+		return hash_info instanceof SwitchNCA.IVFCHashInfo;
+	}
+	
+	public long getDataOffset(){
+		if(hash_info instanceof SwitchNCA.IVFCHashInfo){
+			IVFCHashInfo hashdat = (IVFCHashInfo)hash_info;
+			int levels = hashdat.offsets.length;
+			int lowest = levels;
+			for(int i = levels-1; i >= 0; i--){
+				if(hashdat.sizes[i] > 0){lowest = i; break;}
+			}
+			
+			return hashdat.offsets[lowest];
+		}
+		else if(hash_info instanceof SwitchNCA.ShaHashInfo){
+			ShaHashInfo hashdat = (ShaHashInfo)hash_info;
+			return hashdat.rel_offset;
+		}
+		return 0L;
+	}
 	
 	public NXPatchInfo getPatchData(){return this.patchdat;}
 	
@@ -86,12 +121,14 @@ public class NXNCAPart {
 	public void setSize(long val){size = val;}
 	
 	public void setKey(byte[] k){key = k;}
+	public void setContainerPath(String s){this.container_path = s;}
 	
 	/*----- Crypto -----*/
 	
 	public long updateCryptRegUID(){
 		long val = 0L;
 		if(hash_info != null) val = hash_info.getQuickHash();
+		if(container_path != null) val ^= container_path.hashCode();
 		return val ^ ((offset << 32) ^ size);
 	}
 	
@@ -275,6 +312,48 @@ public class NXNCAPart {
 		
 		//All offsets are relative to partition
 		root = new DirectoryNode(null, "");
+		
+		//If it's a patch, just divide into patch lumps...
+		if(enc_type == SwitchNCA.NCA_CRYPTTYPE_AESCTR_BKTR){
+			long cuid = updateCryptRegUID();
+			long pstart = patch_info[0].offset;
+			long pend = patch_info[0].offset + patch_info[0].size;
+			
+			FileNode fn = new FileNode(root, "reloc.bktr1");
+			fn.setOffset(patch_info[0].offset);
+			fn.setLength(patch_info[0].size);
+			fn.addEncryption(NXSysDefs.getCTRCryptoDef());
+			root.setMetaValueForTree(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(cuid));
+			
+			fn = new FileNode(root, "subsec.bktr2");
+			fn.setOffset(patch_info[1].offset);
+			fn.setLength(patch_info[1].size);
+			fn.addEncryption(NXSysDefs.getCTRCryptoDef());
+			root.setMetaValueForTree(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(cuid));
+			if(patch_info[1].offset < pstart) pstart = patch_info[1].offset;
+			long p2end = patch_info[1].offset + patch_info[1].size;
+			if(p2end > pend) pend = p2end;
+			
+			fn = new FileNode(root, "patchdat.aes");
+			if(pstart > 0L){
+				fn.setOffset(0L);
+				fn.setLength(pstart);
+				
+				if(pend < size){
+					//Ends before end
+					fn = new FileNode(root, "patchdat1.aes");
+					fn.setOffset(pend);
+					fn.setLength(size - pend);
+				}
+				
+			}
+			else{
+				fn.setOffset(pend);
+				fn.setLength(size - pend);
+			}
+			
+			return true;
+		}
 		
 		//Nab hash table(s) & adjust offset
 		long datoff = 0L;

@@ -2,13 +2,20 @@ package waffleoRai_Containers.nintendo.nx;
 
 
 import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.OutputStreamWriter;
+import java.security.MessageDigest;
+import java.util.Collection;
 import java.util.List;
 
+import waffleoRai_Containers.nintendo.nx.NXPatcher.PatchedInfo;
 import waffleoRai_Encryption.FileCryptRecord;
+import waffleoRai_Encryption.StaticDecryption;
 import waffleoRai_Encryption.nintendo.NinCryptTable;
 import waffleoRai_Encryption.nintendo.NinCrypto;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_fdefs.nintendo.NXSysDefs;
+import waffleoRai_Files.NodeMatchCallback;
 import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Files.tree.PatchworkFileNode;
@@ -43,12 +50,50 @@ public class SwitchTest {
 			crypto.importCommonKeys(keypath_prod);
 			crypto.importTitleKeys(keypath_title);
 			
+			//Try patch...
+			PatchedInfo patched = NXPatcher.patchXCI(xci_path, patchnsp, crypto, true);
+			
 			//Load cart image & get base NCA
-			NXCartImage xci = NXCartImage.readXCI(xci_path);
+			/*NXCartImage xci = NXCartImage.readXCI(xci_path);
 			xci.unlock(crypto);
-			SwitchNCA nca_base = xci.getNCAByName(mainnca);
+			
+			//Dump all cnmt files...
+			DirectoryNode xciroot = xci.getFileTree(NXCartImage.TREEBUILD_COMPLEXITY_ALL);
+			NinCryptTable ctbl = xci.generateCryptTable();
+			ctbl.printMe();
+			NXDecryptor decer = new NXDecryptor(ctbl, testdir + "\\ADENB");
+			StaticDecryption.setDecryptorState(NXSysDefs.getCTRCryptoDef().getID(), decer);
+			String cnmt_dir = testdir + "\\ADENB";
+			
+			Collection<FileNode> cnmts = xciroot.getNodesThat(new NodeMatchCallback(){
+
+				public boolean meetsCondition(FileNode n) {
+					if(n.isDirectory()) return false;
+					return n.getFileName().endsWith(".cnmt");
+				}
+				
+			});
+			for(FileNode cnmtnode : cnmts){
+				System.err.println("CNMT Found: " + cnmtnode.getFullPath());
+				System.err.println("Location: " + cnmtnode.getLocationString());
+				System.err.println("File Size: 0x" + Long.toHexString(cnmtnode.getLength()));
+				System.err.println("Crypt Group: " + cnmtnode.getMetadataValue(NinCrypto.METAKEY_CRYPTGROUPUID));
+				String cnmt_path = cnmt_dir + "\\" + cnmtnode.getFileName() + ".txt";
+				
+				BufferedWriter bw = new BufferedWriter(new FileWriter(cnmt_path));
+				//Note the tree path
+				bw.write(cnmtnode.getFullPath() + "\n");
+				FileBuffer dat = cnmtnode.loadData();
+				dat.writeFile(cnmt_dir + "\\" + cnmtnode.getFileName());
+				NXContentMeta cnmt = NXContentMeta.readCMNT(dat, 0);
+				cnmt.printMeTo(bw);
+				bw.close();
+			}*/
+			
+			/*SwitchNCA nca_base = xci.getNCAByName(mainnca);
 			NXNCAPart base_part = nca_base.getPartition(1);
 			FileNode nca_node_base = xci.getNCANodeByName(mainnca);
+			nca_node_base.addEncryption(NXSysDefs.getCTRCryptoDef());
 			nca_node_base.setMetadataValue(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(base_part.updateCryptRegUID()));
 			System.err.println("Base NCA Node: " + nca_node_base.getSourcePath() + " @ " + nca_node_base.getLocationString());
 			
@@ -66,10 +111,11 @@ public class SwitchTest {
 				}
 			}
 			nca_node_patch.setSourcePath(patchnsp);
+			nca_node_patch.addEncryption(NXSysDefs.getCTRCryptoDef());
 			System.err.println("Patch NCA Node: " + nca_node_patch.getSourcePath() + " @ " + nca_node_patch.getLocationString());
 			
 			//Make an info writer directed to stderr
-			BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(System.err));
+			//BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(System.err));
 			
 			//Nab correct partitions and parse patch info
 			NXNCAPart patch_part = nca_patch.getPartition(1);
@@ -81,13 +127,101 @@ public class SwitchTest {
 			//Do patch
 			NinCryptTable ctbl = xci.generateCryptTable();
 			System.err.println("Patch Key: " + NXCrypt.printHash(patch_part.getKey()));
-			pinfo.addEncryptionInfo(patch_part.getKey(), patch_part.genCTR(0), ctbl);
+			Collection<FileCryptRecord> crecs = pinfo.addEncryptionInfo(patch_part.getKey(), patch_part.genCTR(0), ctbl);
 			//ctbl.printMe();
 			
-			PatchworkFileNode pfn = pinfo.generatePatchedImage(nca_node_base, nca_node_patch);
-			pfn.printDetailedTo(bw);
+			FileNode part_node_base = nca_node_base.getSubFile(base_part.getOffset(), base_part.getSize());
+			FileNode part_node_patch = nca_node_patch.getSubFile(patch_part.getOffset(), patch_part.getSize());
+			for(FileCryptRecord cr : crecs) cr.setCryptOffset(cr.getCryptOffset() + part_node_patch.getOffset());
+			PatchworkFileNode pfn = pinfo.generatePatchedImage(part_node_base, part_node_patch);
+			System.err.println("Node pieces: " + pfn.getBlocks().size());
+			System.err.println("Node size: 0x" + Long.toHexString(pfn.getLength()));
+			//pfn.printDetailedTo(bw);
 			
-			bw.close();
+			//bw.close();
+			
+			//Prepare decryptor
+			NXDecryptor decer = new NXDecryptor(ctbl, testdir + "\\patchtest");
+			StaticDecryption.setDecryptorState(NXSysDefs.getCTRCryptoDef().getID(), decer);
+			StaticDecryption.setDecryptorState(NXSysDefs.getXTSCryptoDef().getID(), decer);
+			
+			//Try to load node
+			FileBuffer dat = pfn.loadData();
+			System.err.println("File size: 0x" + Long.toHexString(dat.getFileSize()));*/
+			//while(true); //Hold to check memory burden
+			
+			/*String outpath = testdir + "\\patchtest\\ADENB_patched.bin";
+			dat.writeFile(outpath);
+			
+			//Load back in...
+			FileBuffer outfile = FileBuffer.createBuffer(outpath, false);
+			
+			//Hash check <3
+			int hbsz_shamt = 14;
+			long[] htbl_offs = {0x0, 0x4000, 0x8000, 0xc000, 0x1c000, 0x1a34000};
+			long[] htbl_sz = {0x4000, 0x4000, 0x4000, 0x10000, 0x1a18000, 0x342f2ec84L};
+			boolean okay = true;
+			for(int l = 0; l < 5; l++){
+				if(!okay) break;
+				System.err.println("Checking hash level " + l);
+				int bcount = (int)((htbl_sz[l+1] + 0x3FFF) >>> hbsz_shamt);
+				System.err.println("Level blocks " + bcount);
+				
+				long hoff = htbl_offs[l];
+				long boff = htbl_offs[l+1];
+				
+				for(int b = 0; b < bcount; b++){
+					//System.err.println("Checking block " + b);
+					byte[] hash = outfile.getBytes(hoff, hoff+32); hoff+=32;
+					byte[] block = outfile.getBytes(boff, boff + 0x4000); boff += 0x4000;
+					
+					byte[] bhash = NXCrypt.getSHA256(block);
+					if(!MessageDigest.isEqual(hash, bhash)){
+						System.err.println("Bad block found - level " + l + " @ 0x" + Long.toHexString(boff-0x4000) + " (block " + b + ")");
+						okay = false;
+						break;
+					}
+				}
+				
+			}*/
+			
+			//Dump partition 0 to see what's in it...
+			/*NXNCAPart patch_part_0 = nca_patch.getPartition(0);
+			patch_part_0.buildFileTree(patchdat, nca_node_patch.getOffset() + patch_part_0.getOffset(), true);
+			//DirectoryNode part0 = patch_part_0.getFileTree();
+			//part0.printMeToStdErr(0);
+			
+			flist = patch.getFileList();
+			for(FileNode f : flist){
+				if(f.getFileName().endsWith(".nca")){
+					SwitchNCA mynca = SwitchNCA.readNCA(patchdat, f.getOffset());
+					mynca.unlock(crypto);
+					crecs = mynca.addEncryptionInfo(ctbl);
+					for(FileCryptRecord cr : crecs) cr.setCryptOffset(cr.getCryptOffset() + f.getOffset());
+					
+					String outdir = testdir + "\\patchtest\\patchcontents\\" + f.getFileName();
+					mynca.buildFileTree(patchdat, f.getOffset(), NXCartImage.TREEBUILD_COMPLEXITY_ALL);
+					DirectoryNode root = mynca.getFileTree();
+					root.incrementTreeOffsetsBy(f.getOffset());
+					root.setSourcePathForTree(patchnsp);
+					root.printMeToStdErr(0);
+					root.dumpTo(outdir);
+				}
+			}*/
+			
+			/*String cnmt_path = testdir + "\\patchtest\\patchcontents\\537768169091e4f4ccb6be368fab83e9.cnmt.nca\\p00\\PFS0\\Patch_0100e95004038800.cnmt";
+			String nacp_path = testdir + "\\patchtest\\patchcontents\\66d0c70ed55cb34299409a14b0e62628.nca\\p00\\RomFS\\control.nacp";
+			
+			NXContentMeta cnmt = NXContentMeta.readCMNT(FileBuffer.createBuffer(cnmt_path, false), 0);
+			BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(System.out));
+			cnmt.printMeTo(bw);
+			bw.close();*/
+			
+			/*NXNACP nacp = NXNACP.readNACP(FileBuffer.createBuffer(nacp_path, false), 0);
+			BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(System.out));
+			nacp.printMeTo(bw);
+			bw.close();*/
+			
 		}
 		catch(Exception x){
 			x.printStackTrace();

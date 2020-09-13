@@ -97,6 +97,9 @@ public class SwitchNCA implements NXContainer{
 	private byte[] dec_key_dat; 
 	
 	private DirectoryNode root;
+	
+	private String container_name;
+	private String myname;
 
 	/*----- Structs -----*/
 		
@@ -345,6 +348,7 @@ public class SwitchNCA implements NXContainer{
 			fs_entries[i] = new NXNCAPart();
 			fs_entries[i].setOffset(stoff);
 			fs_entries[i].setSize(edoff-stoff);
+			fs_entries[i].setContainerPath("/" + this.container_name + "/" + this.myname);
 			
 			hdr_dec.skipBytes(8);
 		}
@@ -559,6 +563,8 @@ public class SwitchNCA implements NXContainer{
 		return fs_entries[i];
 	}
 	
+	public String getContainerName(){return this.container_name;}
+	
 	/*----- Setters -----*/
 	
 	public static void setCommonHeaderKey(byte[] key){
@@ -572,6 +578,14 @@ public class SwitchNCA implements NXContainer{
 	public void setSourceLocation(String path, long offset){
 		src_path = path;
 		src_off = offset;
+	}
+	
+	public void setLocalNames(String container, String ncaname){
+		this.container_name = container;
+		this.myname = ncaname;
+		for(int i = 0; i < 4; i++){
+			if(fs_entries[i] != null) fs_entries[i].setContainerPath("/" + this.container_name + "/" + this.myname);
+		}
 	}
 	
 	/*----- Crypto -----*/
