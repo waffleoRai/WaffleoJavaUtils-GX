@@ -230,6 +230,7 @@ public class SwitchNCA implements NXContainer{
 		public boolean validateHashes(FileBuffer dec_part, long p_off, boolean verbose){
 
 			int levels = offsets.length;
+			long fend = dec_part.getFileSize();
 			for(int i = 0; i < levels-1; i++){
 				dec_part.setCurrentPosition(p_off + offsets[i]);
 				long loff = offsets[i+1];
@@ -237,8 +238,13 @@ public class SwitchNCA implements NXContainer{
 				if(lsize <= 0L) break;
 				
 				long blocksize = 1L << bsz_shamt[i];
-				int blocks = (int)((lsize+blocksize) >>> bsz_shamt[i]);
-				if(verbose) System.err.println("Processing level " + i + " | Blocks: " + blocks);
+				int blocks = (int)((lsize+(blocksize-1)) >>> bsz_shamt[i]);
+				if(verbose){
+					System.err.println("Processing level " + i + " | Blocks: " + blocks);
+					//System.err.println("Offset: 0x" + Long.toHexString(offsets[i]));
+					//System.err.println("Block Size: 0x" + Long.toHexString(blocksize));
+				}
+				long off = p_off + loff;
 				for(int j = 0; j < blocks; j++){
 					
 					//Get reference hash
@@ -246,20 +252,28 @@ public class SwitchNCA implements NXContainer{
 					for(int k = 0; k < 32; k++) refhash[k] = dec_part.nextByte();
 					
 					//Get data block
-					long off = p_off + loff;
-					byte[] data = dec_part.getBytes(off, off + (blocksize));
+					long edoff = off + blocksize;
+					if(edoff > fend) edoff = fend; 
+					byte[] data = dec_part.getBytes(off, edoff);
+					if(data.length < blocksize){
+						//Try zero filling...
+						byte[] temp = new byte[(int)blocksize];
+						for(int k = 0; k < data.length; k++) temp[k] = data[k];
+						data = temp;
+					}
 					
 					//Check against hash...
 					byte[] dathash = NXCrypt.getSHA256(data);
 					if(!MessageDigest.isEqual(refhash, dathash)){
 						if(verbose){
-							System.err.println("Hash failed at block " + j);
-							System.err.print("Expected hash: " + NXCrypt.printHash(refhash));
-							System.err.print("Data hash: " + NXCrypt.printHash(dathash));
+							System.err.println("Hash failed at block " + j + " (0x" + Long.toHexString(off) + " - 0x" + Long.toHexString(edoff));
+							System.err.println("\tExpected hash: " + NXCrypt.printHash(refhash));
+							System.err.println("\tData hash: " + NXCrypt.printHash(dathash));
 						}
 						return false;
 					}
 					
+					off += 0x4000;
 				}
 				
 				if(verbose) System.err.println("Level " + i + " -- Hash check passed!");
@@ -450,7 +464,7 @@ public class SwitchNCA implements NXContainer{
 		//System.err.println("Parsing NCA from " + dat.getPath() + " @ 0x" + Long.toHexString(offset));
 		
 		root = new DirectoryNode(null, "");
-		if(complexity_level == NXCartImage.TREEBUILD_COMPLEXITY_ALL){
+		if(complexity_level == NXUtils.TREEBUILD_COMPLEXITY_ALL){
 			//Add header
 			FileNode fn = new FileNode(root, "ncaheader.bin");
 			fn.setTypeChainHead(new FileTypeDefNode(NXSysDefs.getNCAHeaderDef()));
@@ -467,13 +481,13 @@ public class SwitchNCA implements NXContainer{
 			if(part.getSize() <= 0L) continue;
 			//System.err.println("SwitchNCA.buildFileTree || Now parsing partition " + i + " @ 0x" + Long.toHexString(part.getOffset()));
 			
-			boolean success = part.buildFileTree(dat, offset + part.getOffset(), complexity_level == NXCartImage.TREEBUILD_COMPLEXITY_ALL);
+			boolean success = part.buildFileTree(dat, offset + part.getOffset(), complexity_level == NXUtils.TREEBUILD_COMPLEXITY_ALL);
 			b = b && success;
 			if(success){
 				//Mount tree
 				DirectoryNode partroot = part.getFileTree();
 				partroot.incrementTreeOffsetsBy(part.getOffset());
-				if(complexity_level == NXCartImage.TREEBUILD_COMPLEXITY_MERGED){
+				if(complexity_level == NXUtils.TREEBUILD_COMPLEXITY_MERGED){
 					//Mount part children directly to root
 					List<FileNode> children = partroot.getChildren();
 					for(FileNode child : children){
@@ -488,7 +502,7 @@ public class SwitchNCA implements NXContainer{
 			else{
 				//Mount as .aes file
 				String name = "p" + String.format("%02d", i) + ".aes";
-				if(complexity_level == NXCartImage.TREEBUILD_COMPLEXITY_MERGED){
+				if(complexity_level == NXUtils.TREEBUILD_COMPLEXITY_MERGED){
 					name = Long.toHexString(updateCryptRegUID()) + "_" + name;
 				}
 				FileNode fn = new FileNode(root, name);

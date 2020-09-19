@@ -24,6 +24,7 @@ public class NXCInfo {
 	public static final String OP_OUTPUT = "out";
 	public static final String OP_LOWTREE = "lowtree";
 	
+	
 	private static void printUsage(){
 		//TODO
 	}
@@ -36,8 +37,8 @@ public class NXCInfo {
 		
 		//Tree
 		DirectoryNode tree = null;
-		if(lowtree) tree = xci.getFileTree(NXCartImage.TREEBUILD_COMPLEXITY_ALL);
-		else tree = xci.getFileTree(NXCartImage.TREEBUILD_COMPLEXITY_MERGED);
+		if(lowtree) tree = xci.getFileTree(NXUtils.TREEBUILD_COMPLEXITY_ALL);
+		else tree = xci.getFileTree(NXUtils.TREEBUILD_COMPLEXITY_MERGED);
 		
 		out.write("\n\n ~~~~~~~~ File System Tree ~~~~~~~~");
 		tree.printMeTo(out, 0);
@@ -49,8 +50,8 @@ public class NXCInfo {
 		nca.unlock(crypto);
 		nca.printInfo(out);
 		
-		if(lowtree) nca.buildFileTree(filedat, 0L, NXCartImage.TREEBUILD_COMPLEXITY_ALL);
-		else nca.buildFileTree(filedat, 0L, NXCartImage.TREEBUILD_COMPLEXITY_MERGED);
+		if(lowtree) nca.buildFileTree(filedat, 0L, NXUtils.TREEBUILD_COMPLEXITY_ALL);
+		else nca.buildFileTree(filedat, 0L, NXUtils.TREEBUILD_COMPLEXITY_MERGED);
 		
 		DirectoryNode tree = nca.getFileTree();
 		out.write("\n\n ~~~~~~~~ File System Tree ~~~~~~~~");

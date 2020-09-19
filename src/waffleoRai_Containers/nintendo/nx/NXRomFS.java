@@ -86,6 +86,7 @@ public class NXRomFS{
 		String name = "";
 		if(nlen > 0) name = data.readEncoded_string("UTF8", pos, pos+nlen);
 		rec.dir = new DirectoryNode(parent, name);
+		//System.err.println("Dir Name: " + name);
 		
 		//Handle children
 		while(fch_off != -1){
@@ -103,6 +104,7 @@ public class NXRomFS{
 			FileNode fn = new FileNode(rec.dir, name);
 			fn.setOffset(offset + fdat_off);
 			fn.setLength(size);
+			//System.err.println("File Name: " + name);
 			
 			//Generate a UID
 			/*long fuid = offset + fdat_off;

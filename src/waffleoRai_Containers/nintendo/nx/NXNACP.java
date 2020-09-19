@@ -16,27 +16,6 @@ public class NXNACP {
 	
 	public static final String STR_ENCODING = "UTF8";
 	
-	public static final int LANIDX_AMENG = 0; //American English
-	public static final int LANIDX_BRENG = 1; //British English
-	public static final int LANIDX_JPN = 2; //Japanese
-	public static final int LANIDX_EUFRN = 3; //European French
-	public static final int LANIDX_GMN = 4; //German
-	public static final int LANIDX_AMESP = 5; //Latin American Spanish
-	public static final int LANIDX_EUESP = 6; //European Spanish
-	public static final int LANIDX_ITL = 7; //Italian
-	public static final int LANIDX_DCH = 8; //Dutch
-	public static final int LANIDX_CNFRN = 9; //Canadian French
-	public static final int LANIDX_PRT = 10; //Portugese
-	public static final int LANIDX_RUS = 11; //Russian
-	public static final int LANIDX_KOR = 12; //Korean
-	public static final int LANIDX_TRCHN = 13; //Traditional Chinese
-	public static final int LANIDX_SMCHN = 14; //Simplified Chinese
-	
-	public static final String[] LANNAMES_ENG = {"American English", "British English", "Japanese", "French",
-												 "German", "Latin American Spanish", "Spanish", "Italian",
-												 "Dutch", "Canadian French", "Portugese", "Russian",
-												 "Korean", "Traditional Chinese", "Simplified Chinese", "UNKNOWN"};
-	
 	/*----- Instance Variables -----*/
 	
 	private String[] titles;
@@ -253,7 +232,7 @@ public class NXNACP {
 		out.write("----- BANNERS -----\n");
 		for(int i = 0; i < 15; i++){
 			out.write("\n");
-			out.write("->" + LANNAMES_ENG[i] + "\n");
+			out.write("->" + NXUtils.LANNAMES_ENG[i] + "\n");
 			out.write(titles[i] + "\n");
 			out.write(publishers[i] + "\n");
 		}

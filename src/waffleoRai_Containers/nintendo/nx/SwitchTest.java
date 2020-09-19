@@ -18,6 +18,7 @@ import waffleoRai_fdefs.nintendo.NXSysDefs;
 import waffleoRai_Files.NodeMatchCallback;
 import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Files.tree.FileNode;
+import waffleoRai_Files.tree.FileTreeSaver;
 import waffleoRai_Files.tree.PatchworkFileNode;
 
 public class SwitchTest {
@@ -40,6 +41,7 @@ public class SwitchTest {
 		
 		//Patch test
 		String patchnsp = "E:\\Library\\Games\\Console\\data\\HAC_ADENB_USA\\0100E95004038800.nsp\\00";
+		String dlcnsp = "E:\\Library\\Games\\Console\\data\\HAC_ADENB_USA\\0100E95004039004.nsp\\00";
 		String patchnca = "d55fd2ab47a76211c612729d42e3a5b5.nca"; //Partition 1
 		String mainnca = "6292a2e13c10968ac2b89aeac26d8453.nca"; //Partition 1 (in /secure)
 
@@ -50,8 +52,77 @@ public class SwitchTest {
 			crypto.importCommonKeys(keypath_prod);
 			crypto.importTitleKeys(keypath_title);
 			
+			//Save test dir
+			String stestdir = testdir + "\\savetest";
+			
+			//Try base tree...
+			System.err.println("Reading base FS...");
+			String ctbl_path = stestdir + "\\ctbl.bin";
+			String base_tree_path = stestdir + "\\basetree.bin";
+			NXCartImage xci = NXCartImage.readXCI(xci_path);
+			xci.unlock(crypto);
+			DirectoryNode tree = xci.getFileTree(NXUtils.TREEBUILD_COMPLEXITY_MERGED);
+			int tsize = tree.getAllDescendants(true).size();
+			System.err.println("Saving base tree - Node count: " + tsize);
+			FileTreeSaver.saveTree(tree, base_tree_path, false, false);
+			
 			//Try patch...
+			String patch_tree_path = stestdir + "\\patchtree.bin";
+			System.err.println("Reading patch...");
 			PatchedInfo patched = NXPatcher.patchXCI(xci_path, patchnsp, crypto, true);
+			//patched.newroot.printMeToStdErr(0);
+			tree = patched.newroot;
+			tsize = tree.getAllDescendants(true).size();
+			System.err.println("Saving patched tree - Node count: " + tsize);
+			FileTreeSaver.saveTree(tree, patch_tree_path, false, false);
+			NinCryptTable ctbl = patched.crypt_table;
+			/*NXUtils.setActiveCryptTable(ctbl);
+			String[] test = NXUtils.getControlStrings(tree, NXUtils.LANIDX_AMENG);
+			for(String s : test) System.err.println(s);*/
+			
+			//Try DLC...
+			String dlc_tree_path = stestdir + "\\dlctree.bin";
+			System.err.println("Reading DLC...");
+			NXPatcher.mountDLC(tree, ctbl, dlcnsp, crypto, "dlc4");
+			tsize = tree.getAllDescendants(true).size();
+			System.err.println("Saving patched tree w/ DLC - Node count: " + tsize);
+			FileTreeSaver.saveTree(tree, dlc_tree_path, false, false);
+			
+			//Save Crypt table
+			System.err.println("Saving crypt table...");
+			ctbl.exportToFile(ctbl_path);
+			
+			
+			//Now try loading them back in.
+			ctbl = new NinCryptTable();
+			ctbl.importFromFile(ctbl_path);
+			//Set crypto state
+			NXUtils.setActiveCryptTable(ctbl);
+			
+			//Base tree
+			tree = FileTreeSaver.loadTree(base_tree_path);
+			//tree.printMeToStdErr(0);
+			//Try reading the NACP
+			/*String[] test = NXUtils.getControlStrings(tree, NXUtils.LANIDX_AMENG);
+			for(String s : test) System.err.println(s);*/
+			tsize = tree.getAllDescendants(true).size();
+			System.err.println("Base tree loaded - Node count: " + tsize);
+			
+			//Patch
+			tree = FileTreeSaver.loadTree(patch_tree_path);
+			tsize = tree.getAllDescendants(true).size();
+			System.err.println("Patch tree loaded - Node count: " + tsize);
+			//tree.printMeToStdErr(0);
+			String[] test = NXUtils.getControlStrings(tree, NXUtils.LANIDX_AMENG);
+			for(String s : test) System.err.println(s);
+			
+			//Test RomFS
+			/*String ppath = testdir + "\\patchtest\\ADENB_patched.bin";
+			FileBuffer pdat = FileBuffer.createBuffer(ppath, false);
+			long datoff = 0x1a34000;
+			NXRomFS romfs = NXRomFS.readNXRomFSHeader(pdat, datoff);
+			romfs.readTree(pdat, datoff, 0L);
+			romfs.getFileTree().printMeToStdErr(0);*/
 			
 			//Load cart image & get base NCA
 			/*NXCartImage xci = NXCartImage.readXCI(xci_path);

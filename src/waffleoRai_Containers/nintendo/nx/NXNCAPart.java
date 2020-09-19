@@ -304,6 +304,11 @@ public class NXNCAPart {
 	/*----- Tree -----*/
 	
 	public boolean buildFileTree(FileBuffer src, long offset, boolean includeFSFiles){
+		if(this.getSize() <= 0L){
+			root = new DirectoryNode(null, "");
+			return true;
+		}
+		
 		//Assumes offset is the start of the partition
 		if(key == null && enc_type != SwitchNCA.NCA_CRYPTTYPE_NONE) {
 			System.err.println("NXNCAPart.decryptRegion || No key set for partition!");

@@ -32,6 +32,7 @@ public class SwitchHFS implements NXContainer{
 	
 	public static final String MAGIC = "HFS0";
 	
+	
 	/*----- Structs -----*/
 	
 	protected static class FileEntry{
@@ -173,7 +174,7 @@ public class SwitchHFS implements NXContainer{
 					DirectoryNode croot = contents[i].getFileTree();
 					croot.incrementTreeOffsetsBy(fdat_off + fe.offset);
 					
-					if(complexity_level == NXCartImage.TREEBUILD_COMPLEXITY_MERGED){
+					if(complexity_level == NXUtils.TREEBUILD_COMPLEXITY_MERGED){
 						if(contents[i] instanceof SwitchHFS){
 							//Mount as is
 							croot.setFileName(fe.name);
@@ -332,28 +333,35 @@ public class SwitchHFS implements NXContainer{
 	
 	/*----- Setters -----*/
 	
-	public SwitchNCA removeNCA(String nca_id){
+	public Collection<SwitchNCA> removeNCA(String nca_id){
 		int i = 0;
-		SwitchNCA nca = null;
+		int j = 0;
+		List<SwitchNCA> ncalist = new LinkedList<SwitchNCA>();
 		List<FileEntry> flist2 = new ArrayList<FileEntry>(filelist.size());
+		NXContainer[] contents2 = new NXContainer[contents.length];
 		for(FileEntry fe : filelist){
-			if(nca == null && fe.name.endsWith(".nca") && fe.name.contains(nca_id)){
+			if(fe.name.endsWith(".nca") && fe.name.contains(nca_id)){
+				//System.err.println("Match found: " + fe.name);
 				if(contents[i] != null){
 					//Remove
-					nca = (SwitchNCA)contents[i];
+					ncalist.add((SwitchNCA)contents[i]);
 					contents[i] = null;
 				}
 			}
-			else flist2.add(fe);
-			if(nca == null && contents[i] != null && (contents[i] instanceof SwitchHFS)){
+			else{
+				flist2.add(fe);
+				contents2[j++] = contents[i];
+			}
+			if(contents[i] != null && (contents[i] instanceof SwitchHFS)){
 				//Check the inner HFS
-				nca = ((SwitchHFS)contents[i]).removeNCA(nca_id);
+				//System.err.println("Checking subdir: " + fe.name);
+				ncalist.addAll(((SwitchHFS)contents[i]).removeNCA(nca_id));
 			}
 			i++;
 		}
-		
+		contents = contents2;
 		filelist = flist2;
-		return nca;
+		return ncalist;
 	}
 	
 	/*----- Crypto -----*/

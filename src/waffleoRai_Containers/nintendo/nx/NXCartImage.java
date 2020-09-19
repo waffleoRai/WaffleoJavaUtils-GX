@@ -31,10 +31,6 @@ public class NXCartImage {
 	public static final int CARTSIZE_16GB = 0xE1;
 	public static final int CARTSIZE_32GB = 0xE2;
 	
-	public static final int TREEBUILD_COMPLEXITY_ALL = 0;
-	public static final int TREEBUILD_COMPLEXITY_NORMAL = 1;
-	public static final int TREEBUILD_COMPLEXITY_MERGED = 2;
-	
 	/*----- Instance Variables -----*/
 	
 	private String src_path;
@@ -177,7 +173,7 @@ public class NXCartImage {
 		DirectoryNode hfs = rootHFS.getFileTree();
 		hfs.incrementTreeOffsetsBy(hfs0_off);
 		
-		if(complexity_level == TREEBUILD_COMPLEXITY_ALL){
+		if(complexity_level == NXUtils.TREEBUILD_COMPLEXITY_ALL){
 			//Make this HFS a separate directory and save the cart header
 			hfs.setFileName("XCIROOT");
 			hfs.setParent(root);
@@ -238,12 +234,13 @@ public class NXCartImage {
 		for(FileNode fn : mynodes){
 			//Add offset of rootHFS
 			fn.setOffset(fn.getOffset() + hfs0_off);
+			fn.setSourcePath(src_path);
 		}
 	}
 	
 	/*----- Setters -----*/
 	
-	public SwitchNCA removeNCA(String nca_id){
+	public Collection<SwitchNCA> removeNCA(String nca_id){
 		return rootHFS.removeNCA(nca_id);
 	}
 	
