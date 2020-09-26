@@ -133,7 +133,8 @@ public class NXCrypt {
 		FileBuffer buff = FileBuffer.createBuffer(path, false);
 		
 		long cpos = 0;
-		SwitchNCA.setCommonHeaderKey(buff.getBytes(cpos, cpos+0x10)); cpos += 0x10;
+		SwitchNCA.setCommonHeaderKey(buff.getBytes(cpos, cpos+0x20)); cpos += 0x20;
+		//System.err.println("NCA Common Key Set to: " + NXCrypt.printHash(SwitchNCA.getCommonHeaderKey()));
 		
 		kaek = new byte[3][11][16];
 		for(int i = 0; i < 3; i++){
@@ -141,6 +142,7 @@ public class NXCrypt {
 				for(int k = 0; k < 16; k++){
 					kaek[i][j][k] = buff.getByte(cpos++);
 				}
+				//System.err.println("KAEK " + i + "," + j + " set to:" + NXCrypt.printHash(kaek[i][j]));
 			}
 		}
 		
@@ -149,6 +151,7 @@ public class NXCrypt {
 			for(int j = 0; j < 16; j++){
 				title_KEK[i][j] = buff.getByte(cpos++);
 			}
+			//System.err.println("KEK " + i + " set to:" + NXCrypt.printHash(title_KEK[i]));
 		}
 		
 	}

@@ -218,7 +218,8 @@ public class NXUtils {
 		
 		//Read in (it's a jpeg)
 		for(FileNode n : found){
-			ByteArrayInputStream is = new ByteArrayInputStream(n.loadData().getBytes());
+			FileBuffer dat = n.loadData();
+			ByteArrayInputStream is = new ByteArrayInputStream(dat.getBytes());
 			BufferedImage img = ImageIO.read(is);
 			return img;
 		}
