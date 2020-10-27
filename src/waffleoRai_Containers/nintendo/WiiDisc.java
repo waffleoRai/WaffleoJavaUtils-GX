@@ -10,6 +10,7 @@ import java.util.List;
 import waffleoRai_Containers.nintendo.wiidisc.WiiCryptListener;
 import waffleoRai_Containers.nintendo.wiidisc.WiiPartition;
 import waffleoRai_Containers.nintendo.wiidisc.WiiPartitionGroup;
+import waffleoRai_Encryption.nintendo.NinCryptTable;
 import waffleoRai_Files.FileTypeDefNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -302,6 +303,68 @@ public class WiiDisc{
 		}
 		
 		return list;
+	}
+	
+	/* ----- Encryption ----- */
+	
+	public void unlock() throws UnsupportedFileTypeException{
+		if(oParts == null) return;
+		for(int i = 0; i < oParts.length; i++){
+			if(oParts[i] != null) oParts[i].unlock();
+		}
+	}
+	
+	public NinCryptTable generateCryptTable(){
+		NinCryptTable tbl = new NinCryptTable();
+		if(oParts != null){
+			for(int i = 0; i < oParts.length; i++){
+				if(oParts[i] != null){
+					oParts[i].loadCryptTable(tbl);
+				}
+			}
+		}
+		return tbl;
+	}
+	
+	public DirectoryNode buildDirectTree(String wiiimg_path, boolean low_fs) throws IOException{
+		DirectoryNode root = new DirectoryNode(null, "");
+		
+		if(low_fs){
+			FileNode fn = new FileNode(root, "header.bin");
+			fn.setSourcePath(wiiimg_path); fn.setOffset(0); fn.setLength(0x440);
+			fn.setTypeChainHead(new FileTypeDefNode(PowerGCSysFileDefs.getHeaderDef()));
+			fn = new FileNode(root, "parttable.bin");
+			fn.setSourcePath(wiiimg_path); fn.setOffset(OS_PARTITION_INFO_TBL); fn.setLength(0xE000);
+			fn.setTypeChainHead(new FileTypeDefNode(PowerGCSysFileDefs.getPartTableDef()));
+			fn = new FileNode(root, "region.bin");
+			fn.setSourcePath(wiiimg_path); fn.setOffset(0x4E000); fn.setLength(32);
+			fn.setTypeChainHead(new FileTypeDefNode(PowerGCSysFileDefs.getRegInfoDef()));
+		}
+		
+		if(oParts != null){
+			for(int i = 0; i < oParts.length; i++){
+				if(oParts[i] != null){
+					DirectoryNode groot = oParts[i].buildDirectTree(wiiimg_path, low_fs);
+					if(low_fs){
+						groot.setFileName("partgroup" + i);
+						groot.setParent(root);
+					}
+					else{
+						int n = 0;
+						List<FileNode> children = groot.getChildren();
+						for(FileNode child : children){
+							String cname = child.getFileName();
+							while(root.hasChildNamed(cname)){
+								child.setFileName("part" + n++);
+								cname = child.getFileName();
+							}
+							child.setParent(root);
+						}
+					}
+				}
+			}
+		}
+		return root;
 	}
 	
 	/* ----- Cleanup ----- */

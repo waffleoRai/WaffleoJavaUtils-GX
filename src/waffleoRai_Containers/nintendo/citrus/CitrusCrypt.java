@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.security.MessageDigest;
 
 import waffleoRai_Encryption.AES;
+import waffleoRai_Encryption.DecryptorMethod;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
@@ -112,6 +113,38 @@ public class CitrusCrypt {
 			keyY = new byte[16];
 		}
 		
+	}
+	
+	public static class CitrusCTRDecMethod implements DecryptorMethod{
+
+		private AES aes;
+		private byte[] base_ctr; //For THIS FILE (not container!)
+		
+		public CitrusCTRDecMethod(AES engine, byte[] basectr){
+			aes = engine;
+			aes.setCTR();
+			base_ctr = basectr;
+		}
+		
+		public byte[] decrypt(byte[] input, long offval) {
+
+			//Calculate offset CTR
+			byte[] ctr = adjustCTR(base_ctr, offval);
+			
+			return aes.decrypt(ctr, input);
+		}
+		
+		public void adjustOffsetBy(long value){
+			base_ctr = adjustCTR(base_ctr, value);
+		}
+		
+		public int getInputBlockSize(){return 0x10;}
+		public int getOutputBlockSize(){return 0x10;}
+		public int getPreferredBufferSizeBlocks(){return 0x40;}
+		
+		public long getOutputBlockOffset(long inputBlockOffset){
+			return inputBlockOffset;
+		}
 	}
 	
 	/*----- Construction -----*/
@@ -562,6 +595,29 @@ public class CitrusCrypt {
 		byte[] norm = rotateRight(add, 42);
 		
 		return norm;
+	}
+	
+	public static byte[] adjustCTR(byte[] base_ctr, long offset){
+		long row = offset >>> 4;
+		byte[] add = new byte[16];
+		byte[] out = new byte[16];
+		
+		long shamt = 56;
+		for(int i = 0; i < 8; i++){
+			add[i+8] = (byte)((row >>> shamt) & 0xFF);
+			shamt -= 8;
+		}
+		
+		boolean carry = false;
+		for(int i = 15; i >= 0; i--){
+			int sum = Byte.toUnsignedInt(add[i]) + Byte.toUnsignedInt(base_ctr[i]);
+			if(carry) sum++;
+			if(sum > 0xFF) carry = true;
+			else carry = false;
+			out[i] = (byte)sum;
+		}
+		
+		return out;
 	}
 	
 	/*----- Debug -----*/

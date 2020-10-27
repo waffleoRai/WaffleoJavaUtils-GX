@@ -192,6 +192,8 @@ public class NXSysDefs {
 			return new int[]{16};
 		}
 		
+		public boolean unevenIOBlocks() {return false;}
+		
 	}
 	
 	public static class NXAESXTSDef implements EncryptionDefinition{
@@ -246,6 +248,8 @@ public class NXSysDefs {
 		public int[] getExpectedKeydataSizes() {
 			return new int[]{32, 8};
 		}
+		
+		public boolean unevenIOBlocks() {return false;}
 		
 	}
 	

@@ -12,11 +12,19 @@ import java.util.Random;
 
 import waffleoRai_Containers.nintendo.GCWiiDisc;
 import waffleoRai_Containers.nintendo.WiiDisc;
+import waffleoRai_Containers.nintendo.wiidisc.WiiCrypt.WiiCBCDecMethod;
 import waffleoRai_Encryption.AES;
+import waffleoRai_Encryption.FileCryptRecord;
+import waffleoRai_Encryption.nintendo.NinCBCCryptRecord;
+import waffleoRai_Encryption.nintendo.NinCryptTable;
+import waffleoRai_Encryption.nintendo.NinCrypto;
+import waffleoRai_Files.FileNodeModifierCallback;
 import waffleoRai_Files.FileTypeDefNode;
+import waffleoRai_Utils.EncryptedFileBuffer;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_fdefs.nintendo.PowerGCSysFileDefs;
+import waffleoRai_fdefs.nintendo.WiiAESDef;
 import waffleoRai_Utils.MultiFileBuffer;
 import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Files.tree.FileNode;
@@ -175,6 +183,108 @@ public class WiiPartition {
 	}
 	
 	/* --- Setters --- */
+	
+	/* --- Crypto --- */
+	
+	public void unlock() throws UnsupportedFileTypeException{
+		aTitleKey = oTicket.decryptTitleKey();
+		if(aTitleKey != null) oDecryptor = new AES(aTitleKey);
+	}
+	
+	public long getCryptGroupID(){
+		byte[] somedata = null;
+		if(oTMD != null) somedata = oTMD.getSignature();
+		else somedata = aH3Table[0];
+		
+		long id = 0;
+		for(int i = 0; i < 8; i++){
+			id = id << 8;
+			id |= Byte.toUnsignedLong(somedata[i]);
+		}
+		
+		return id;
+	}
+	
+	public FileCryptRecord loadCryptTable(NinCryptTable tbl){
+		//Add key
+		if(aTitleKey == null) return null;
+		int kidx = tbl.getIndexOfKey(NinCrypto.KEYTYPE_128, aTitleKey);
+		if(kidx == -1) kidx = tbl.addKey(NinCrypto.KEYTYPE_128, aTitleKey);
+		
+		long cid = getCryptGroupID();
+		NinCBCCryptRecord rec = new NinCBCCryptRecord(cid);
+		rec.setKeyType(NinCrypto.KEYTYPE_128);
+		rec.setKeyIndex(kidx);
+		rec.setIV(new byte[16]);
+		rec.setCryptOffset(iAddress + iDataOff);
+		tbl.addRecord(cid, rec);
+		
+		return rec;
+	}
+	
+	public DirectoryNode buildDirectTree(String wiiimg_path, boolean low_fs) throws IOException{
+		
+		String name = "";
+		if(oTMD != null) name = Long.toHexString(oTMD.getTitleID());
+		DirectoryNode partroot = new DirectoryNode(null, name);
+		
+		if(low_fs){
+			FileNode fn = new FileNode(partroot, "cert.bin");
+			fn.setSourcePath(wiiimg_path); fn.setOffset(iAddress+ iCCOff); fn.setLength(iCCSize);
+			fn.setTypeChainHead(new FileTypeDefNode(PowerGCSysFileDefs.getRSADef()));
+			fn = new FileNode(partroot, "h3.bin");
+			fn.setSourcePath(wiiimg_path); fn.setOffset(iAddress+iH3Off); fn.setLength(WiiDisc.H3_TABLE_SIZE);
+			fn.setTypeChainHead(new FileTypeDefNode(PowerGCSysFileDefs.getWiiH3Def()));
+			fn = new FileNode(partroot, "ticket.bin");
+			fn.setSourcePath(wiiimg_path); fn.setOffset(iAddress); fn.setLength(WiiDisc.PART_TICKET_SIZE);
+			fn.setTypeChainHead(new FileTypeDefNode(PowerGCSysFileDefs.getWiiTicketDef()));
+			fn = new FileNode(partroot, "tmd.bin");
+			fn.setSourcePath(wiiimg_path); fn.setOffset(iAddress+iTMDOff); fn.setLength(iTMDSize);
+			fn.setTypeChainHead(new FileTypeDefNode(PowerGCSysFileDefs.getWiiTMDDef()));
+		}
+		
+		FileNode rawdat = new FileNode(null, "data.aes");
+		rawdat.setBlockSize(0x8000);
+		rawdat.setSourcePath(wiiimg_path);
+		rawdat.setOffset(iAddress + iDataOff);
+		rawdat.setLength(iDataSize);
+		if(aTitleKey != null){
+			long cid = this.getCryptGroupID();
+			rawdat.setMetadataValue(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(cid));
+			
+			WiiCBCDecMethod decm = new WiiCBCDecMethod(aTitleKey);
+			FileBuffer rawpart = rawdat.loadData();
+			EncryptedFileBuffer pdat = new EncryptedFileBuffer(rawpart, decm);
+			GCWiiDisc fs = new GCWiiDisc(pdat);
+			DirectoryNode gcroot = fs.getDiscTree();
+			gcroot.doForTree(new FileNodeModifierCallback(){
+
+				@Override
+				public void doToNode(FileNode node) {
+					if(node.isDirectory()) return;
+					node.setSourcePath(wiiimg_path);
+					node.setUseVirtualSource(true);
+					node.setVirtualSourceNode(rawdat);
+				}});
+			
+			if(low_fs){
+				//Mount directly
+				gcroot.setFileName("data");
+				gcroot.setParent(partroot);
+			}
+			else{
+				//Mount children
+				List<FileNode> children = gcroot.getChildren();
+				for(FileNode child : children){
+					child.setParent(partroot);
+				}
+			}
+		}
+		else rawdat.setParent(partroot);
+		rawdat.addEncryption(WiiAESDef.getDefinition());
+		
+		return partroot;
+	}
 	
 	/* --- Extraction --- */
 	

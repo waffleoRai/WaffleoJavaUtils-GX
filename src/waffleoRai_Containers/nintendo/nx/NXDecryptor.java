@@ -156,5 +156,10 @@ public class NXDecryptor implements StaticDecryptor{
 		}
 		temp_paths.clear();
 	}
+	
+	public void dispose(){
+		clearTempFiles();
+		aes_map.clear();
+	}
 
 }

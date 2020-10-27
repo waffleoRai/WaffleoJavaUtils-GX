@@ -9,14 +9,24 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 
+import waffleoRai_Containers.nintendo.citrus.CitrusCrypt.CitrusCTRDecMethod;
 import waffleoRai_Encryption.AES;
+import waffleoRai_Encryption.FileCryptRecord;
+import waffleoRai_Encryption.nintendo.NinCTRCryptRecord;
+import waffleoRai_Encryption.nintendo.NinCryptTable;
+import waffleoRai_Encryption.nintendo.NinCrypto;
+import waffleoRai_Files.FileNodeModifierCallback;
 import waffleoRai_Files.FileTypeDefNode;
 import waffleoRai_Files.GenericSystemDef;
+import waffleoRai_Utils.EncryptedFileBuffer;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+import waffleoRai_fdefs.nintendo.CitrusAESCTRDef;
 import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Files.tree.FileNode;
 
@@ -63,7 +73,7 @@ public class CitrusNCC {
 	private byte[] hash_exHeader;
 	private int exHeader_size;
 	
-	private int crypto_type;
+	private int crypto_type; 
 	private boolean is_new3ds;
 	private int content_type_mask;
 	private int content_unit_size;
@@ -94,6 +104,9 @@ public class CitrusNCC {
 	//private CitrusCrypt crypto;
 	private byte[] secondary_keyY; //Should be set by NCSD or seedDB
 	private FileNode decbuffer;
+	
+	private byte[] key1;
+	private byte[] key2;
 	
 	/*----- Construction/Parsing -----*/
 	
@@ -271,6 +284,82 @@ public class CitrusNCC {
 		romfs = CitrusROMFS.readROMFS(dat, 0);
 	}
 	
+	private boolean readExeFSHeader() throws IOException{
+		if(src == null) return false; 
+		if(!this.isCXI()) return false;
+		//I guess I could make it so it can take any buffer but eh.
+		
+		FileBuffer buff = src.loadData(exefs_offset, 0x400);
+		if(!noCrypto()){
+			byte[] enc = buff.getBytes();
+			
+			AES aes = new AES(key1);
+			aes.setCTR();
+			byte[] dec = aes.decrypt(genIV(IV_TYPE_EXEFS), enc);
+			
+			FileBuffer decbuff = FileBuffer.wrap(dec);
+			exefs = CitrusEXEFS.readExeFSHeader(decbuff, 0L);	
+		}
+		else exefs = CitrusEXEFS.readExeFSHeader(buff, 0L);
+		
+		return true;
+	}
+	
+	private boolean readExHeader() throws IOException, UnsupportedFileTypeException{
+		if(src == null) return false; 
+		if(exHeader_size <= 0L) return false;
+		//I guess I could make it so it can take any buffer but eh.
+		
+		FileBuffer buff = src.loadData(EXHEADER_OFFSET, exHeader_size);
+		if(!noCrypto()){
+			byte[] enc = buff.getBytes();
+			
+			AES aes = new AES(key1);
+			aes.setCTR();
+			byte[] dec = aes.decrypt(genIV(IV_TYPE_EXHEADER), enc);
+			
+			FileBuffer decbuff = FileBuffer.wrap(dec);
+			try{
+				MessageDigest sha = MessageDigest.getInstance("SHA-256");
+				sha.update(dec);
+				byte[] hashbuff = sha.digest();
+				if(!MessageDigest.isEqual(hash_exHeader, hashbuff)) {
+					throw new UnsupportedFileTypeException("Extended header decryption failed (mismatched hash)!");	
+				}
+				
+				//System.err.println("Ref Hash: " + printHash(hash_exHeader));
+				//System.err.println("DecBuffer Hash: " + printHash(hashbuff));
+			}
+			catch(Exception x){
+				x.printStackTrace();
+				throw new UnsupportedFileTypeException("Hash of extended header failed!");
+			}
+			
+			//Wrap and Set
+			exheader = CitrusNCCExHeader.readExtendedHeader(decbuff, 0);	
+		}
+		else exheader = CitrusNCCExHeader.readExtendedHeader(buff, 0);	
+
+		//If exheader size is 0x400, nab the accessdesc separately
+		if(exHeader_size < 0x800){
+			//I do not know if these need to be decrypted separately.
+			//The hash seems to only match what is specified within exHeader_size, so maybe not?
+			FileBuffer exdat = src.loadData(EXHEADER_OFFSET+exHeader_size, 0x400);
+			
+			exdat.setCurrentPosition(0L);
+			byte[] barr = new byte[0x100];
+			for(int i = 0; i < 0x100; i++) barr[i] = exdat.nextByte();
+			exheader.setAccessDescSig(barr);
+			
+			//Copy RSA Key
+			barr = new byte[0x100];
+			for(int i = 0; i < 0x100; i++) barr[i] = exdat.nextByte();		
+			exheader.setPublicRSAKey(barr);
+		}
+		
+		return false;
+	}
+	
 	/*----- Getters -----*/
 	
 	public boolean isCXI(){
@@ -375,6 +464,133 @@ public class CitrusNCC {
 		return root;
 	}
 	
+	public DirectoryNode getDirectTree(boolean lowfs) throws IOException, UnsupportedFileTypeException{
+
+		String rname = Long.toHexString(part_id);
+		boolean cxi = isCXI();
+		if(lowfs){
+			if(cxi) rname += ".cxi";
+			else rname += ".cfa";	
+		}
+		DirectoryNode root = new DirectoryNode(null, rname);
+		
+		//Mmmmm right now high and low fs return the same thing.
+		//I might split it eventually..
+		
+		//Various files
+		FileNode fn = new FileNode(root, "ncch.bin");
+		fn.setOffset(0); fn.setLength(0x200);
+		fn.setMetadataValue(METAKEY_ENC, "true");
+		fn.setTypeChainHead(new FileTypeDefNode(getHeaderDef()));
+		
+		if(cxi){
+			//Header stuff
+			fn = new FileNode(root, "accessdesc.bin");
+			fn.setOffset(0x600); fn.setLength(0x400);
+			fn.setMetadataValue(METAKEY_ENC, "true");
+			fn.setTypeChainHead(new FileTypeDefNode(getAccessDescDef()));
+			
+			fn = new FileNode(root, "exheader.bin");
+			fn.setOffset(0x200); fn.setLength(0x400);
+			fn.setMetadataValue(METAKEY_ENC, "true");
+			fn.setTypeChainHead(new FileTypeDefNode(getExHeaderDef()));
+			long cid = getExHeaderCryptRecordID();
+			fn.setMetadataValue(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(cid));
+			fn.addEncryption(CitrusAESCTRDef.getDefinition());
+			
+			if(plain_len > 0){
+				fn = new FileNode(root, "plaindat.bin");
+				fn.setOffset(plain_offset); fn.setLength(plain_len);
+				fn.setMetadataValue(METAKEY_ENC, "true");
+				fn.setTypeChainHead(new FileTypeDefNode(getPlainRegDef()));
+			}
+			
+			//ExeFS
+			if(exefs != null){
+				DirectoryNode exe_root = exefs.getFileTree();
+				exe_root.setFileName("ExeFS");
+				exe_root.setParent(root);
+				exe_root.incrementTreeOffsetsBy(exefs_offset + 0x200);
+				long exefs_base_id = getExeFSCryptRecordID();
+				exe_root.doForTree(new FileNodeModifierCallback(){
+
+					public void doToNode(FileNode node) {
+						//Note crypt record UID
+						if(node.isDirectory()) return;
+						long cid = exefs_base_id ^ node.getFileName().hashCode();
+						node.setMetadataValue(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(cid));
+						node.addEncryption(CitrusAESCTRDef.getDefinition());
+						//System.err.println("ExeFS File Found: " + node.getFullPath());
+					}
+					
+				});
+			}
+			else{
+				//Not unlocked...
+				if(exefs_len > 0){
+					fn = new FileNode(root, "exefs.aes");
+					fn.setOffset(exefs_offset); fn.setLength(exefs_len);
+					fn.setMetadataValue(METAKEY_ENC, "true");	
+				}
+			}
+		}
+
+		//RomFS
+		if(romfs_len > 0){
+			if(src != null){
+				//Open RomFS in EncryptedFileBuffer
+				String srcpath = src.getSourcePath();
+				long off = src.getOffset();
+				off += romfs_offset;
+				//System.err.println("Loading raw RomFS Data: " + srcpath + " @ 0x" + Long.toHexString(off) + " - 0x" + Long.toHexString(off+romfs_len));
+				FileBuffer romfs_enc = FileBuffer.createBuffer(srcpath, off, off+romfs_len, false);
+				
+				if(!noCrypto()){
+					if(key2 != null){
+						CitrusCTRDecMethod decm = new CitrusCTRDecMethod(new AES(key2), genIV(IV_TYPE_ROMFS));
+						EncryptedFileBuffer decbuff = new EncryptedFileBuffer(romfs_enc, decm);
+						
+						romfs = CitrusROMFS.readROMFS(decbuff, 0L);
+						decbuff.dispose();
+					}
+					else{
+						fn = new FileNode(root, "romfs.aes");
+						fn.setOffset(romfs_offset); fn.setLength(romfs_len);
+						fn.setMetadataValue(METAKEY_ENC, "true");
+						return root;
+					}
+				}
+				else{
+					romfs = CitrusROMFS.readROMFS(romfs_enc, 0L);
+				}
+
+				DirectoryNode rom_root = romfs.getFileTree();
+				rom_root.incrementTreeOffsetsBy(romfs_offset);
+				long cid = getRomFSCryptRecordID();
+				rom_root.doForTree(new FileNodeModifierCallback(){
+
+					public void doToNode(FileNode node) {
+						//Note crypt record UID
+						if(node.isDirectory()) return;
+						node.setMetadataValue(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(cid));
+						node.addEncryption(CitrusAESCTRDef.getDefinition());
+					}
+					
+				});
+				
+				rom_root.setFileName("RomFS");
+				rom_root.setParent(root);
+			}
+			else{
+				fn = new FileNode(root, "romfs.bin");
+				fn.setOffset(romfs_offset); fn.setLength(romfs_len);
+				fn.setMetadataValue(METAKEY_ENC, "true");
+			}	
+		}
+		
+		return root;
+	}
+	
 	/*----- Setters -----*/
 	
 	public void setSource(FileNode node){
@@ -400,6 +616,10 @@ public class CitrusNCC {
 	}
 	
 	/*----- Crypto -----*/
+	
+	public boolean noCrypto(){
+		return (bitmask & 0x4) != 0;
+	}
 	
 	public boolean isDecrypted(){
 		if(decbuffer == null) return false;
@@ -493,9 +713,9 @@ public class CitrusNCC {
 		byte[] iv = genIV(type);
 		long add = offset >>> 4;
 			
-		System.err.println("Input IV: " + printHash(iv));
-		System.err.println("Offset: 0x" + Long.toHexString(offset));
-		System.err.println("Offset Units: 0x" + Long.toHexString(add));
+		//System.err.println("Input IV: " + printHash(iv));
+		//System.err.println("Offset: 0x" + Long.toHexString(offset));
+		//System.err.println("Offset Units: 0x" + Long.toHexString(add));
 		
 		byte[] out = new byte[16];
 		
@@ -515,7 +735,7 @@ public class CitrusNCC {
 			mask = mask << 8;
 		}
 		
-		System.err.println("Output IV: " + printHash(out));
+		//System.err.println("Output IV: " + printHash(out));
 		
 		return out;
 	}
@@ -806,6 +1026,132 @@ public class CitrusNCC {
 		
 		dstr.close();
 		return b;
+	}
+	
+	public long getExHeaderCryptRecordID(){
+		//Just use the hash, I guess
+		if(hash_exHeader == null) return 0;
+		long val = 0L;
+		for(int i = 0; i < 8; i++){
+			long n = Byte.toUnsignedLong(hash_exHeader[i]);
+			val = val << 8;
+			val |= n;
+		}
+		return val;
+	}
+	
+	public long getExeFSCryptRecordID(){
+		//Just use the hash, I guess
+		if(exefs_hash == null) return 0;
+		long val = 0L;
+		for(int i = 0; i < 8; i++){
+			long n = Byte.toUnsignedLong(exefs_hash[i]);
+			val = val << 8;
+			val |= n;
+		}
+		return val;
+	}
+	
+	public long getRomFSCryptRecordID(){
+		//Just use the hash, I guess
+		if(romfs_hash == null) return 0;
+		long val = 0L;
+		for(int i = 0; i < 8; i++){
+			long n = Byte.toUnsignedLong(romfs_hash[i]);
+			val = val << 8;
+			val |= n;
+		}
+		return val;
+	}
+	
+	public void unlock(CitrusCrypt crypto) throws IOException, UnsupportedFileTypeException{
+		if(!noCrypto()){
+			key1 = this.genPrimaryKey(crypto);
+			key2 = this.genSecondaryKey(crypto);	
+		}
+		
+		readExeFSHeader();
+		readExHeader();
+	}
+	
+	public Collection<FileCryptRecord> addToTable(NinCryptTable ctbl){
+		Collection<FileCryptRecord> recs = new LinkedList<FileCryptRecord>();
+		if(noCrypto()) return recs;
+		
+		int k1idx = ctbl.addKey(NinCrypto.KEYTYPE_128, key1);
+		int k2idx = ctbl.addKey(NinCrypto.KEYTYPE_128, key2);
+		if(isCXI()){
+			//ExHeader
+			FileCryptRecord rec = new NinCTRCryptRecord(getExHeaderCryptRecordID());
+			rec.setKeyType(NinCrypto.KEYTYPE_128);
+			
+			byte[] iv = genIV(IV_TYPE_EXHEADER);
+			rec.setKeyIndex(k1idx);
+			rec.setIV(iv);
+			rec.setCryptOffset(EXHEADER_OFFSET);
+			
+			//ExeFS (one for every file in ExeFS...)
+			//Use base ExeFS ID, then xor with hashCode() of file name to get crypt ID
+			//(ExeFS header is encrypted)
+			if(exefs == null){
+				try{
+					if(!readExeFSHeader()){
+						System.err.println("CitrusNCC.addToTable || ExeFS read failed! "
+								+ "Crypt Entries for inner files will not be added to table!");
+					}
+				}
+				catch(IOException x){
+					System.err.println("CitrusNCC.addToTable || ExeFS read failed! "
+							+ "Crypt Entries for inner files will not be added to table!");
+					x.printStackTrace();
+				}
+			}
+			
+			//ExeFS header
+			long base_exefs_id = this.getExeFSCryptRecordID();
+			rec = new NinCTRCryptRecord(base_exefs_id);
+			rec.setKeyType(NinCrypto.KEYTYPE_128);
+			rec.setKeyIndex(k1idx);
+			rec.setIV(genIV(IV_TYPE_EXEFS));
+			rec.setCryptOffset(exefs_offset);
+			recs.add(rec); ctbl.addRecord(rec.getFileUID(), rec);
+			
+			//ExeFS Files
+			if(exefs != null){
+				//Banner and Icon use key2. Others use key1.
+				DirectoryNode exeroot = exefs.getFileTree();
+				if(exeroot != null){
+					Collection<FileNode> exefiles = exeroot.getAllDescendants(false);
+					for(FileNode exef : exefiles){
+						String name = exef.getFileName();
+						long myid = base_exefs_id ^ name.hashCode();
+						
+						rec = new NinCTRCryptRecord(myid);
+						rec.setKeyType(NinCrypto.KEYTYPE_128);
+						
+						if(name.equals("banner") || name.equals("icon")) rec.setKeyIndex(k1idx);
+						else rec.setKeyIndex(k2idx);
+						
+						
+						rec.setIV(genIV(IV_TYPE_EXEFS, exef.getOffset() + 0x200));
+						rec.setCryptOffset(exefs_offset + exef.getOffset() + 0x200);
+						recs.add(rec); ctbl.addRecord(rec.getFileUID(), rec);
+					}
+				}
+			}
+		}
+
+		//RomFS
+		//Mercifully, appears to be the entire RomFS
+		//Entry is relative to IVFC - remember this
+		FileCryptRecord rec = new NinCTRCryptRecord(getRomFSCryptRecordID());
+		rec.setKeyType(NinCrypto.KEYTYPE_128);
+		rec.setKeyIndex(k2idx);
+		rec.setIV(genIV(IV_TYPE_ROMFS));
+		rec.setCryptOffset(romfs_offset);
+		recs.add(rec); ctbl.addRecord(rec.getFileUID(), rec);
+		
+		return recs;
 	}
 	
 	/*----- Definitions -----*/

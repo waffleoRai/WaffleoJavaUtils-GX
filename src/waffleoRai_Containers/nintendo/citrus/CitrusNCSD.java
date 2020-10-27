@@ -2,7 +2,10 @@ package waffleoRai_Containers.nintendo.citrus;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Collection;
 
+import waffleoRai_Encryption.FileCryptRecord;
+import waffleoRai_Encryption.nintendo.NinCryptTable;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_Files.tree.DirectoryNode;
@@ -54,6 +57,8 @@ public class CitrusNCSD {
 	//Partition Locations
 	private CitrusNCC[] partitions;
 	
+	private String src_path;
+	
 	/*----- Construction/Parsing -----*/
 	
 	private CitrusNCSD(){}
@@ -64,6 +69,7 @@ public class CitrusNCSD {
 		
 		//Instantiate
 		CitrusNCSD ncsd = new CitrusNCSD();
+		ncsd.src_path = data.getPath();
 		
 		//Header
 		long cpos = offset;
@@ -107,11 +113,14 @@ public class CitrusNCSD {
 			ncsd.seed_aesmac = data.getBytes(cpos, cpos + 0x10); cpos+=0x10;
 			ncsd.seed_nonce = data.getBytes(cpos, cpos + 0xc); cpos+=0x10;
 		}
+		//System.err.println("NCSD Header Read!");
 		
 		//Partitions
 		ncsd.partitions = new CitrusNCC[8];
 		for(int i = 0; i < 8; i++){
 			if(ncsd.part_locs[i][1] > 0){
+				//System.err.println("Reading partition " + i);
+				
 				FileNode loc = new FileNode(null, "");
 				loc.setSourcePath(data.getPath());
 				loc.setOffset(ncsd.part_locs[i][0]);
@@ -157,6 +166,24 @@ public class CitrusNCSD {
 		return root;
 	}
 	
+	public DirectoryNode getFileTreeDirect(boolean lowfs) throws IOException, UnsupportedFileTypeException{
+
+		DirectoryNode root = new DirectoryNode(null, "");
+		
+		for(int i = 0; i < 8; i++){
+			if(partitions[i] != null){
+				DirectoryNode partroot = partitions[i].getDirectTree(lowfs);
+				partroot.setFileName(Long.toHexString(partitions[i].getPartitionID()));
+				partroot.incrementTreeOffsetsBy(part_locs[i][0]);
+				partroot.setSourcePathForTree(src_path);
+				
+				partroot.setParent(root);
+			}
+		}
+		
+		return root;
+	}
+	
 	/*----- Setters -----*/
 	
 	public void setSourcePath(String path){
@@ -183,6 +210,14 @@ public class CitrusNCSD {
 	
 	/*----- Crypto -----*/
 	
+	public void unlock(CitrusCrypt crypto) throws IOException, UnsupportedFileTypeException{
+		for(int i = 0; i < 8; i++){
+			if(partitions[i] != null){
+				partitions[i].unlock(crypto);
+			}
+		}
+	}
+	
 	public boolean generateDecryptionBuffers(String bufferdir, CitrusCrypt crypto, boolean verbose) throws IOException, UnsupportedFileTypeException{
 		boolean b = true;
 		
@@ -205,6 +240,20 @@ public class CitrusNCSD {
 		}
 		
 		return b;
+	}
+	
+	public NinCryptTable generateCryptTable(){
+
+		NinCryptTable ctbl = new NinCryptTable();
+		for(int i = 0; i < 8; i++){
+			if(partitions[i] != null){
+				Collection<FileCryptRecord> recs = partitions[i].addToTable(ctbl);
+				long poff = part_locs[i][0];
+				for(FileCryptRecord r:recs) r.setCryptOffset(r.getCryptOffset() + poff);
+			}
+		}
+		
+		return ctbl;
 	}
 	
 	/*----- Definition -----*/

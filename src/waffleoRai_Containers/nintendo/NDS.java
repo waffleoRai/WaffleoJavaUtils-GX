@@ -1149,6 +1149,12 @@ public class NDS {
 		public boolean encrypt(StreamWrapper input, OutputStream stream, List<byte[]> keydata) {
 			return decrypt(input, stream, keydata);
 		}
+
+		@Override
+		public boolean unevenIOBlocks() {
+			// TODO Auto-generated method stub
+			return false;
+		}
 		
 	}
 	
@@ -1414,6 +1420,12 @@ public class NDS {
 
 		@Override
 		public boolean encrypt(StreamWrapper input, OutputStream stream, List<byte[]> keydata) {
+			// TODO Auto-generated method stub
+			return false;
+		}
+
+		@Override
+		public boolean unevenIOBlocks() {
 			// TODO Auto-generated method stub
 			return false;
 		}

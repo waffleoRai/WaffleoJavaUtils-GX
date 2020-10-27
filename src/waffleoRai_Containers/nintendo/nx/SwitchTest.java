@@ -87,34 +87,53 @@ public class SwitchTest {
 			tsize = tree.getAllDescendants(true).size();
 			System.err.println("Saving patched tree w/ DLC - Node count: " + tsize);
 			FileTreeSaver.saveTree(tree, dlc_tree_path, false, false);
+			System.err.println("Unmounting DLC nodes...");
+			Collection<FileNode> dnodes = NXUtils.unmountDLCNodes(tree, "dlc4");
+			System.err.println("New tree size: " + tree.getAllDescendants(true).size());
+			System.err.println("DLC nodes: " + dnodes.size());
+			for(FileNode fn : dnodes){
+				//System.err.println("\t" + fn.getFileName());
+				fn.restoreToParent();
+			}
+			
+			//Try saving the DLC only
+			String dlc_nodes_path = stestdir + "\\dlcnodes.bin";
+			FileTreeSaver.saveNodes(dnodes, dlc_nodes_path, false);
+			
+			for(FileNode fn : dnodes) fn.setParent(null);
+			
+			//Try to read back in
+			dnodes = FileTreeSaver.loadNodes(dlc_nodes_path, tree);
+			tsize = tree.getAllDescendants(true).size();
+			System.err.println("DLC Remounted, Tree Size: " + tsize);
 			
 			//Save Crypt table
-			System.err.println("Saving crypt table...");
-			ctbl.exportToFile(ctbl_path);
+			//System.err.println("Saving crypt table...");
+			//ctbl.exportToFile(ctbl_path);
 			
 			
 			//Now try loading them back in.
-			ctbl = new NinCryptTable();
-			ctbl.importFromFile(ctbl_path);
+			//ctbl = new NinCryptTable();
+			//ctbl.importFromFile(ctbl_path);
 			//Set crypto state
-			NXUtils.setActiveCryptTable(ctbl);
+			//NXUtils.setActiveCryptTable(ctbl);
 			
 			//Base tree
-			tree = FileTreeSaver.loadTree(base_tree_path);
+			//tree = FileTreeSaver.loadTree(base_tree_path);
 			//tree.printMeToStdErr(0);
 			//Try reading the NACP
 			/*String[] test = NXUtils.getControlStrings(tree, NXUtils.LANIDX_AMENG);
 			for(String s : test) System.err.println(s);*/
-			tsize = tree.getAllDescendants(true).size();
-			System.err.println("Base tree loaded - Node count: " + tsize);
+			//tsize = tree.getAllDescendants(true).size();
+			//System.err.println("Base tree loaded - Node count: " + tsize);
 			
 			//Patch
-			tree = FileTreeSaver.loadTree(patch_tree_path);
-			tsize = tree.getAllDescendants(true).size();
-			System.err.println("Patch tree loaded - Node count: " + tsize);
+			//tree = FileTreeSaver.loadTree(patch_tree_path);
+			//tsize = tree.getAllDescendants(true).size();
+			//System.err.println("Patch tree loaded - Node count: " + tsize);
 			//tree.printMeToStdErr(0);
-			String[] test = NXUtils.getControlStrings(tree, NXUtils.LANIDX_AMENG);
-			for(String s : test) System.err.println(s);
+			//String[] test = NXUtils.getControlStrings(tree, NXUtils.LANIDX_AMENG);
+			//for(String s : test) System.err.println(s);
 			
 			//Test RomFS
 			/*String ppath = testdir + "\\patchtest\\ADENB_patched.bin";

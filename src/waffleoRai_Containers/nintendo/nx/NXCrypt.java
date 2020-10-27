@@ -81,6 +81,14 @@ public class NXCrypt {
 			base_ctr = adjustCTR(base_ctr, value);
 		}
 		
+		public int getInputBlockSize(){return 0x10;}
+		public int getOutputBlockSize(){return 0x10;}
+		public int getPreferredBufferSizeBlocks(){return 0x40;}
+		
+		public long getOutputBlockOffset(long inputBlockOffset){
+			return inputBlockOffset;
+		}
+		
 	}
 	
 	public static class NXXTSDecMethod implements DecryptorMethod{
@@ -107,6 +115,13 @@ public class NXCrypt {
 			base_sec += secadd;
 		}
 		
+		public int getInputBlockSize(){return 0x200;}
+		public int getOutputBlockSize(){return 0x200;}
+		public int getPreferredBufferSizeBlocks(){return 2;}
+		
+		public long getOutputBlockOffset(long inputBlockOffset){
+			return inputBlockOffset;
+		}
 	}
 	
 	/* ----- Construction ----- */

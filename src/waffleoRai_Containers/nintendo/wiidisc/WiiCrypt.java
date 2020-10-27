@@ -5,12 +5,18 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import waffleoRai_Containers.nintendo.WiiDisc;
 import waffleoRai_Encryption.AES;
+import waffleoRai_Encryption.DecryptorMethod;
+import waffleoRai_Encryption.StaticDecryption;
+import waffleoRai_Encryption.StaticDecryptor;
+import waffleoRai_Encryption.nintendo.NinCryptTable;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.StreamWrapper;
+import waffleoRai_fdefs.nintendo.WiiAESDef;
 
 public class WiiCrypt {
 
@@ -30,6 +36,58 @@ public class WiiCrypt {
 	private volatile int wrt_count;
 	
 	//private volatile boolean failed_hash_flag;
+	
+	public static class WiiCBCDecMethod implements DecryptorMethod{
+
+		private AES aes;
+		
+		public WiiCBCDecMethod(byte[] key){
+			aes = new AES(key);
+		}
+		
+		public WiiCBCDecMethod(AES engine){
+			aes = engine;
+		}
+		
+		public byte[] decrypt(byte[] input, long offval) {
+			int bcount = input.length >>> 15;
+			
+			//First block
+			//Nab IV
+			byte[] iv = new byte[16];
+			for(int i = 0; i < 16; i++) iv[i] = input[WiiDisc.DATACLUSTER_IV_OFFSET+i];
+			
+			byte[] dec = aes.decrypt(iv, Arrays.copyOfRange(input, 0x400, 0x8000));
+			if(bcount == 1) return dec;
+			
+			byte[] out = new byte[bcount << 15];
+			for(int j = 0; j < 0x7c00; j++) out[j] = dec[j];
+			int opos = 0x7c00;
+			
+			for(int i = 1; i < bcount; i++){
+				int inoff = i << 15;
+				for(int j = 0; j < 16; j++) iv[j] = input[inoff+WiiDisc.DATACLUSTER_IV_OFFSET+j];
+				dec = aes.decrypt(iv, Arrays.copyOfRange(input, inoff+0x400, inoff+0x8000));
+				for(int j = 0; j < 0x7c00; j++) out[opos++] = dec[j];
+			}
+			
+			return out;
+		}
+		
+		public void adjustOffsetBy(long value){
+			//CBC isn't offset sensitive like CTR or XTS
+		}
+		
+		public int getInputBlockSize(){return 0x8000;}
+		public int getOutputBlockSize(){return 0x7c00;}
+		public int getPreferredBufferSizeBlocks(){return 1;}
+		
+		public long getOutputBlockOffset(long inputBlockOffset){
+			if(inputBlockOffset < 0x400) return 0;
+			return inputBlockOffset - 0x400;
+		}
+		
+	}
 	
 	public WiiCrypt(byte[] partitionKey){
 		aes = new AES(partitionKey);
@@ -308,6 +366,20 @@ public class WiiCrypt {
 		private static final long serialVersionUID = -2560438678823788304L;
 	}
 	
+	public void initializeDecryptorState(NinCryptTable ctbl) throws IOException{
+		clearDecryptorState();
+		int defid = WiiAESDef.DEF_ID;
+		WiiDecryptor decr = new WiiDecryptor(ctbl, FileBuffer.getTempDir());
+		StaticDecryption.setDecryptorState(defid, decr);
+	}
 	
+	public void clearDecryptorState(){
+		int defid = WiiAESDef.DEF_ID;
+		StaticDecryptor decr = StaticDecryption.getDecryptorState(defid);
+		if(decr != null){
+			decr.dispose();
+		}
+		StaticDecryption.setDecryptorState(defid, null);
+	}
 	
 }

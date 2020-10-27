@@ -58,6 +58,13 @@ public class GCWiiDisc {
 	public GCWiiDisc(String image_path) throws IOException{
 		//System.err.println("GCWiiDisc.<init> || Source path: " + image_path);
 		filePath = image_path;
+		openFile = CacheFileBuffer.getReadOnlyCacheBuffer(filePath, true);
+		readDiskInfo();
+	}
+	
+	public GCWiiDisc(FileBuffer src) throws IOException{
+		filePath = null;
+		openFile = src;
 		readDiskInfo();
 	}
 	
@@ -65,7 +72,7 @@ public class GCWiiDisc {
 	
 	private void readDiskInfo() throws IOException{
 		//Header
-		openFile = CacheFileBuffer.getReadOnlyCacheBuffer(filePath, true);
+		//openFile = CacheFileBuffer.getReadOnlyCacheBuffer(filePath, true);
 		
 		//First thing's first. We need to see if it's a Wii or GC header!
 		int wiiword = openFile.intFromFile(0x18);
@@ -202,6 +209,12 @@ public class GCWiiDisc {
 			}
 		}
 		
+		try {
+			fst.dispose();
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
 		return root;
 	}
 	

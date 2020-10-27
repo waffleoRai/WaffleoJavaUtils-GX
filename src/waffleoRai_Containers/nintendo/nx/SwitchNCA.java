@@ -579,6 +579,14 @@ public class SwitchNCA implements NXContainer{
 	
 	public String getContainerName(){return this.container_name;}
 	
+	public boolean hasBKTRPartition(){
+		if(fs_entries == null) return false;
+		for(NXNCAPart part : fs_entries){
+			if(part.isBKTRPartition()) return true;
+		}
+		return false;
+	}
+	
 	/*----- Setters -----*/
 	
 	public static void setCommonHeaderKey(byte[] key){

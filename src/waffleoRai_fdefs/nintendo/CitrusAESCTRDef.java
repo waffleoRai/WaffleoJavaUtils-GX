@@ -49,4 +49,6 @@ public class CitrusAESCTRDef implements EncryptionDefinition{
 		return static_inst;
 	}
 
+	public boolean unevenIOBlocks() {return false;}
+
 }

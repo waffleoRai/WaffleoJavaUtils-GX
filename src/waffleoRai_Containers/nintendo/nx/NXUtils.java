@@ -3,7 +3,12 @@ package waffleoRai_Containers.nintendo.nx;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collection;
+import java.util.List;
 
 import javax.imageio.ImageIO;
 
@@ -240,13 +245,14 @@ public class NXUtils {
 				
 				//This one we keep
 				//Note the parent before dismounting
-				DirectoryNode p = n.getParent();
+				/*DirectoryNode p = n.getParent();
 				if(p != null){
 					long id = p.getGUID();
 					if(id == -1L) {p.generateGUID(); id = p.getGUID();}
 					n.setMetadataValue(METAKEY_PARENTID, Long.toHexString(id));
 				}
-				n.setParent(null);
+				n.setParent(null);*/
+				n.hideFromParent();
 				
 				return true;
 			}
@@ -265,13 +271,14 @@ public class NXUtils {
 				
 				//This one we keep
 				//Note the parent before dismounting
-				DirectoryNode p = n.getParent();
+				/*DirectoryNode p = n.getParent();
 				if(p != null){
 					long id = p.getGUID();
 					if(id == -1L) {p.generateGUID(); id = p.getGUID();}
 					n.setMetadataValue(METAKEY_PARENTID, Long.toHexString(id));
 				}
-				n.setParent(null);
+				n.setParent(null);*/
+				n.hideFromParent();
 				
 				return true;
 			}
@@ -294,4 +301,41 @@ public class NXUtils {
 		dec_temp_dir = dirpath;
 	}
 
+	public static boolean isNSPPatch(String nsp_dir_path, NXCrypt crypto) throws IOException{
+		//Scans files in an nsp directory for BKTR partitions...
+		if(crypto == null) return false;
+		
+		DirectoryStream<Path> dstr = Files.newDirectoryStream(Paths.get(nsp_dir_path));
+		for(Path p : dstr){
+			//Try to open file as PFS
+			String pstr = p.toAbsolutePath().toString();
+			FileBuffer buff = FileBuffer.createBuffer(pstr, false);
+			try{
+				NXPFS pfs = NXPFS.readPFS(buff, 0L);
+				
+				List<FileNode> flist = pfs.getFileList();
+				for(FileNode f : flist){
+					f.setSourcePath(pstr);
+					if(f.getFileName().endsWith(".nca")){
+						//Parse as NCA and scan
+						SwitchNCA nca = SwitchNCA.readNCA(f.loadData(), 0L);
+						nca.unlock(crypto);
+						
+						if(nca.hasBKTRPartition()){
+							dstr.close();
+							return true;
+						}
+					}
+				}
+				
+			}
+			catch(Exception x){
+				x.printStackTrace();
+				continue;
+			}
+		}
+		dstr.close();
+		return false;
+	}
+	
 }

@@ -42,6 +42,8 @@ public class CitrusROMFS {
 	
 	public static CitrusROMFS readROMFS(FileBuffer data, long stpos) throws UnsupportedFileTypeException, IOException{
 
+		data.setEndian(false);
+		
 		//Look for "IVFC"
 		long mpos = data.findString(stpos, stpos+0x10, MAGIC);
 		if(mpos < 0) throw new FileBuffer.UnsupportedFileTypeException("RomFS magic number (IVFC) not found!"); 
@@ -83,11 +85,11 @@ public class CitrusROMFS {
 		long ftbl_sz = Integer.toUnsignedLong(data.intFromFile(cpos)); cpos+=4;
 		long fdat_off = Integer.toUnsignedLong(data.intFromFile(cpos)); cpos+=4;
 		
-		System.err.println("dtbl_off: 0x" + Long.toHexString(dtbl_off));
-		System.err.println("dtbl_sz: 0x" + Long.toHexString(dtbl_sz));
-		System.err.println("ftbl_off: 0x" + Long.toHexString(ftbl_off));
-		System.err.println("ftbl_sz: 0x" + Long.toHexString(ftbl_sz));
-		System.err.println("fdat_off: 0x" + Long.toHexString(fdat_off));
+		//System.err.println("dtbl_off: 0x" + Long.toHexString(dtbl_off));
+		//System.err.println("dtbl_sz: 0x" + Long.toHexString(dtbl_sz));
+		//System.err.println("ftbl_off: 0x" + Long.toHexString(ftbl_off));
+		//System.err.println("ftbl_sz: 0x" + Long.toHexString(ftbl_sz));
+		//System.err.println("fdat_off: 0x" + Long.toHexString(fdat_off));
 		
 		fdat_off += l3_off; //Offset to file data start from beginning of RomFS
 		dtbl_off += l3_off; ftbl_off += l3_off;
@@ -114,7 +116,7 @@ public class CitrusROMFS {
 		DirectoryNode dir = new DirectoryNode(parent, name);
 		//Mark sib
 		dir.setOffset(Integer.toUnsignedLong(siboff)); //A field to hold it...
-		System.err.println("Directory found: " + dir.getFullPath());
+		//System.err.println("Directory found: " + dir.getFullPath());
 		
 		//Do file children
 		long nextfile = Integer.toUnsignedLong(fchildoff);
@@ -131,7 +133,7 @@ public class CitrusROMFS {
 			fn.setOffset(foff); fn.setLength(flen);
 			
 			//Debug
-			System.err.println("File found: " + fn.getFullPath() + " (" + fn.getLocationString() + ")");
+			//System.err.println("File found: " + fn.getFullPath() + " (" + fn.getLocationString() + ")");
 		}
 		
 		//Do directory children

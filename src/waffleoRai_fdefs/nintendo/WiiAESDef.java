@@ -85,4 +85,6 @@ public class WiiAESDef implements EncryptionDefinition{
 		return static_inst;
 	}
 	
+	public boolean unevenIOBlocks() {return true;}
+	
 }
