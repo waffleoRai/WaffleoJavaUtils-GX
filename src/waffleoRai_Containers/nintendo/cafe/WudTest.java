@@ -1,7 +1,13 @@
 package waffleoRai_Containers.nintendo.cafe;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Random;
 
+import waffleoRai_Encryption.nintendo.NinCryptTable;
+import waffleoRai_Files.NodeMatchCallback;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Utils.FileBuffer;
 
 public class WudTest {
@@ -29,6 +35,30 @@ public class WudTest {
 			
 			WiiUDisc mydisc = WiiUDisc.readWUD(wudpath, gkey);
 			System.err.println("Initial disc read complete.");
+			
+			//Test new tree extraction...
+			NinCryptTable ctbl = mydisc.genCryptTable();
+			//ctbl.printMe();
+			
+			DirectoryNode tree = mydisc.getDirectFileTree(true);
+			//tree.printMeToStdErr(0);
+			tree.setFileName("");
+			
+			//Try to extract TGA icons...
+			CafeCrypt.initCafeCryptState(ctbl);
+			Collection<FileNode> tnodes = tree.getNodesThat(new NodeMatchCallback(){
+
+				@Override
+				public boolean meetsCondition(FileNode n) {
+					if(n.isDirectory()) return false;
+					return n.getFileName().endsWith(".tga") || n.getFileName().endsWith(".tmd");
+				}});
+			
+			for(FileNode n : tnodes){
+				String outpath = outdir + "\\dectest\\" + n.getFullPath().replace("/", "_");
+				n.loadData().writeFile(outpath);
+			}
+		
 			/*WudPartition part3 = mydisc.getPartition(3);
 			WiiTMD tmd3 = part3.getTMD();
 			CafeFST fst3 = part3.getFST();
@@ -36,7 +66,7 @@ public class WudTest {
 			fst3.printClustersToStderr();
 			tmd3.printInfo();*/
 			
-			mydisc.setDecryptionBufferDir(bigbuffdir);
+			/*mydisc.setDecryptionBufferDir(bigbuffdir);
 			mydisc.decryptPartitionsTo(bigbuffdir, new CafeCryptListener(){
 
 				private int pcount = 0;
@@ -73,7 +103,7 @@ public class WudTest {
 
 				
 			});
-			mydisc.getFileTree().printMeToStdErr(0);
+			mydisc.getFileTree().printMeToStdErr(0);*/
 			
 			//Copy all tga files to file...
 			/*Collection<FileNode> fnlist = mydisc.getFileTree().getAllDescendants(false);

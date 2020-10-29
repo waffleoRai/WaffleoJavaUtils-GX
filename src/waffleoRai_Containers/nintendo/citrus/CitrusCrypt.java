@@ -145,6 +145,9 @@ public class CitrusCrypt {
 		public long getOutputBlockOffset(long inputBlockOffset){
 			return inputBlockOffset;
 		}
+		
+		public int backbyteCount(){return 0;}	
+		public void putBackbytes(byte[] dat){}
 	}
 	
 	/*----- Construction -----*/

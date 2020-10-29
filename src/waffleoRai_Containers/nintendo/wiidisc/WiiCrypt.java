@@ -14,6 +14,7 @@ import waffleoRai_Encryption.DecryptorMethod;
 import waffleoRai_Encryption.StaticDecryption;
 import waffleoRai_Encryption.StaticDecryptor;
 import waffleoRai_Encryption.nintendo.NinCryptTable;
+import waffleoRai_Files.EncryptionDefinitions;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.StreamWrapper;
 import waffleoRai_fdefs.nintendo.WiiAESDef;
@@ -86,6 +87,9 @@ public class WiiCrypt {
 			if(inputBlockOffset < 0x400) return 0;
 			return inputBlockOffset - 0x400;
 		}
+		
+		public int backbyteCount(){return 0;}	
+		public void putBackbytes(byte[] dat){}
 		
 	}
 	
@@ -366,14 +370,15 @@ public class WiiCrypt {
 		private static final long serialVersionUID = -2560438678823788304L;
 	}
 	
-	public void initializeDecryptorState(NinCryptTable ctbl) throws IOException{
+	public static void initializeDecryptorState(NinCryptTable ctbl) throws IOException{
 		clearDecryptorState();
 		int defid = WiiAESDef.DEF_ID;
+		if(EncryptionDefinitions.getByID(defid) == null) EncryptionDefinitions.registerDefinition(WiiAESDef.getDefinition());
 		WiiDecryptor decr = new WiiDecryptor(ctbl, FileBuffer.getTempDir());
 		StaticDecryption.setDecryptorState(defid, decr);
 	}
 	
-	public void clearDecryptorState(){
+	public static void clearDecryptorState(){
 		int defid = WiiAESDef.DEF_ID;
 		StaticDecryptor decr = StaticDecryption.getDecryptorState(defid);
 		if(decr != null){

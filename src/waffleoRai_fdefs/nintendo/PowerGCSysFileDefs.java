@@ -6,6 +6,7 @@ import java.util.List;
 
 import waffleoRai_Files.FileClass;
 import waffleoRai_Files.FileTypeDefinition;
+import waffleoRai_Files.GenericSystemDef;
 
 public class PowerGCSysFileDefs {
 	
@@ -16,11 +17,15 @@ public class PowerGCSysFileDefs {
 	
 	private static WiiRSADef rsa_def;
 	private static WiiPartTableDef pt_def;
-	private static WiiUPartTableDef pt_def_u;
 	private static WiiRegInfoDef reg_def;
 	private static WiiTicketDef ticket_def;
 	private static WiiTMDDef tmd_def;
 	private static WiiH3Def h3_def;
+	
+	private static WiiUPartTableDef pt_def_u;
+	private static WiiUPartHeaderDef ph_def_u;
+	private static WiiUPartFSTDef fst_def_u;
+	private static WiiUDiscHeaderDef dh_def_u;
 	
 	public static GCHeaderDef getHeaderDef(){
 		if(header_def == null) header_def = new GCHeaderDef();
@@ -75,6 +80,21 @@ public class PowerGCSysFileDefs {
 	public static WiiH3Def getWiiH3Def(){
 		if(h3_def == null) h3_def = new WiiH3Def();
 		return h3_def;
+	}
+	
+	public static WiiUPartHeaderDef getWiiUPartHeaderDef(){
+		if(ph_def_u == null) ph_def_u = new WiiUPartHeaderDef();
+		return ph_def_u;
+	}
+	
+	public static WiiUPartFSTDef getWiiUFSTDef(){
+		if(fst_def_u == null) fst_def_u = new WiiUPartFSTDef();
+		return fst_def_u;
+	}
+	
+	public static WiiUDiscHeaderDef getWiiUDiscHeaderDef(){
+		if(dh_def_u == null) dh_def_u = new WiiUDiscHeaderDef();
+		return dh_def_u;
 	}
 	
 	public static class GCHeaderDef implements FileTypeDefinition{
@@ -363,4 +383,37 @@ public class PowerGCSysFileDefs {
 		
 	}
 		
+	public static class WiiUPartHeaderDef extends GenericSystemDef{
+		
+		private static String DEFO_ENG_DESC = "Nintendo Wii U Disc Partition Header";
+		public static int TYPE_ID = 0x7c59782d;
+		
+		public WiiUPartHeaderDef(){
+			super(DEFO_ENG_DESC, TYPE_ID);
+		}
+		
+	}
+	
+	public static class WiiUPartFSTDef extends GenericSystemDef{
+		
+		private static String DEFO_ENG_DESC = "Nintendo Wii U Disc Partition File System Table";
+		public static int TYPE_ID = 0x7c59782e;
+		
+		public WiiUPartFSTDef(){
+			super(DEFO_ENG_DESC, TYPE_ID);
+		}
+		
+	}
+	
+	public static class WiiUDiscHeaderDef extends GenericSystemDef{
+		
+		private static String DEFO_ENG_DESC = "Nintendo Wii U Disc Header";
+		public static int TYPE_ID = 0x7c59782f;
+		
+		public WiiUDiscHeaderDef(){
+			super(DEFO_ENG_DESC, TYPE_ID);
+		}
+		
+	}
+	
 }

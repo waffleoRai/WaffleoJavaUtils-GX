@@ -10,6 +10,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 
 import javax.xml.stream.XMLInputFactory;
@@ -20,6 +21,10 @@ import waffleoRai_Containers.nintendo.citrus.CitrusNCC;
 import waffleoRai_Containers.nintendo.wiidisc.WiiTMD;
 import waffleoRai_Containers.nintendo.wiidisc.WiiTicket;
 import waffleoRai_Encryption.AES;
+import waffleoRai_Encryption.FileCryptRecord;
+import waffleoRai_Encryption.nintendo.NinCBCCryptRecord;
+import waffleoRai_Encryption.nintendo.NinCryptTable;
+import waffleoRai_Encryption.nintendo.NinCrypto;
 import waffleoRai_Files.FileTypeDefNode;
 import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Files.tree.FileNode;
@@ -398,6 +403,90 @@ public class WiiUDisc {
 	}
 	
 	/*----- Crypto -----*/
+	
+	public long getPartTableCryptID(){
+		long val = Integer.toUnsignedLong(gamecode_long.hashCode());
+		val = val << 32;
+		val |= Integer.toUnsignedLong(gamecode_long.substring(0, 10).hashCode());
+		return val;
+	}
+	
+	public NinCryptTable genCryptTable(){
+		//Spawn
+		NinCryptTable ctbl = new NinCryptTable();
+		
+		//Partition table on main. Otherwise retrieve from partitions...
+		long cid = getPartTableCryptID();
+		FileCryptRecord r = new NinCBCCryptRecord(cid);
+		r.setCryptOffset(0x18000);
+		r.setIV(new byte[16]);
+		int kidx = ctbl.addKey(NinCrypto.KEYTYPE_128, gamekey);
+		r.setKeyType(NinCrypto.KEYTYPE_128);
+		r.setKeyIndex(kidx);
+		
+		ctbl.addRecord(cid, r);
+		
+		//Partitions
+		int pcount = part_offs.length;
+		for(int i = 0; i < pcount; i++){
+			if(parts[i] == null) continue;
+			System.err.println("WiiUDisc.genCryptTable || Partition Added: " + part_names[i] + " @ 0x" + Long.toHexString(part_offs[i]));
+			List<FileCryptRecord> rlist = parts[i].addToCryptTable(ctbl);
+			for(FileCryptRecord rec : rlist) rec.setCryptOffset(rec.getCryptOffset() + part_offs[i]);
+		}
+		
+		return ctbl;
+	}
+	
+	public DirectoryNode getDirectFileTree(boolean low_fs){
+
+		DirectoryNode root = new DirectoryNode(null, gamecode_long);
+		root.generateGUID();
+		
+		//Header and part table if low_fs
+		if(low_fs){
+			FileNode fn = new FileNode(root, "discheader.bin");
+			fn.setOffset(0x0);
+			fn.setLength(0x200);
+			fn.addTypeChainNode(new FileTypeDefNode(PowerGCSysFileDefs.getWiiUDiscHeaderDef()));
+			
+			fn = new FileNode(root, "ptbl.bin");
+			fn.setOffset(0x18000);
+			fn.setLength(0x8000);
+			fn.addTypeChainNode(new FileTypeDefNode(PowerGCSysFileDefs.getWiiUPartTableDef()));
+			fn.addEncryption(CafeCrypt.getStandardAESDef());
+			fn.setMetadataValue(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(getPartTableCryptID()));
+			
+		}
+		
+		//Add partitions...
+		int pcount = part_offs.length;
+		for(int i = 0; i < pcount; i++){
+			if(parts[i] == null){
+				System.err.println("WiiUDisc.getDirectFileTree || Warning: Partition " + part_names[i] + " @ 0x" + Long.toHexString(part_offs[i]) + " not decrypted!");
+				//Find the size, then mount as a .aes node.
+				try{
+					FileBuffer phdr = FileBuffer.createBuffer(src_path, part_offs[i], part_offs[i] + 0x10, true);	
+					long sz = Integer.toUnsignedLong(phdr.intFromFile(0x08)) << 15;
+					FileNode fn = new FileNode(root, part_names[i] + ".aes");
+					fn.setOffset(part_offs[i]);
+					fn.setLength(sz);
+				}
+				catch(IOException x){x.printStackTrace();}
+				continue;
+			}
+			DirectoryNode proot = parts[i].getDirectFileTree(part_offs[i], low_fs);
+			proot.setFileName(part_names[i]);
+			proot.setParent(root);
+		}
+		
+		//Set tree path
+		root.setSourcePathForTree(src_path);
+		
+		return root;
+	}
+	
+	//----- Old stuff
 	
 	private String getPartblBufferPath(String dir){
 		return dir + File.separator + "partbl_" + gamecode_long.replace("-", "") + ".bin";

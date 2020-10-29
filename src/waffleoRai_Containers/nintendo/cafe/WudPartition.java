@@ -7,15 +7,23 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.security.MessageDigest;
+import java.util.LinkedList;
 import java.util.List;
 
 import waffleoRai_Containers.nintendo.wiidisc.WiiContent;
 import waffleoRai_Containers.nintendo.wiidisc.WiiTMD;
 import waffleoRai_Encryption.AES;
+import waffleoRai_Encryption.FileCryptRecord;
+import waffleoRai_Encryption.nintendo.NinCBCCryptRecord;
+import waffleoRai_Encryption.nintendo.NinCryptTable;
+import waffleoRai_Encryption.nintendo.NinCrypto;
+import waffleoRai_Files.FileNodeModifierCallback;
+import waffleoRai_Files.FileTypeDefNode;
 import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+import waffleoRai_fdefs.nintendo.PowerGCSysFileDefs;
 
 public class WudPartition {
 	
@@ -106,16 +114,25 @@ public class WudPartition {
 		return part;
 	}
 	
-	private FileBuffer loadFST() throws IOException{
-
-		long fst_buff_size = 0x8000;
+	private byte[] getFST_iv(){
 		byte[] fst_iv = new byte[16];
 		if(tmd != null){
 			WiiContent c0 = tmd.getContent(0);
-			fst_buff_size = c0.getSize();
+			//fst_buff_size = c0.getSize();
 			int idx = c0.getIndex();
 			fst_iv[0] = (byte)((idx >>> 8) & 0xFF);
 			fst_iv[1] = (byte)(idx & 0xFF);
+		}
+		return fst_iv;
+	}
+	
+	private FileBuffer loadFST() throws IOException{
+
+		long fst_buff_size = 0x8000;
+		byte[] fst_iv = getFST_iv();
+		if(tmd != null){
+			WiiContent c0 = tmd.getContent(0);
+			fst_buff_size = c0.getSize();
 		}
 		FileBuffer fst_buff = new FileBuffer((int)fst_buff_size, true);
 		int blocks = (int)(fst_buff_size/0x8000);
@@ -177,6 +194,163 @@ public class WudPartition {
 	}
 	
 	/*----- Crypto -----*/
+	
+	public byte[] getClusterIV(int cidx){
+		int content_index = 0;
+		
+		if(tmd != null){
+			content_index = tmd.getContent(cidx).getIndex(); //Used for IV???
+			//size = tmd.getContent(cidx).getSize();
+		}
+		//if (size < 1) return;
+		
+		byte[] iv = new byte[16];
+		iv[0] = (byte)((content_index >>> 8) & 0xFF);
+		iv[1] = (byte)(content_index & 0xFF);
+		return iv;
+	}
+	
+	public long getCryptID_Partition(){
+		long val = 0;
+		val |= (long)name.hashCode();
+		val = val << 32;
+		//val |= 0xFFFFFFFFL;
+		return val;
+	}
+	
+	public long getCryptID_Cluster(int i){
+		long val = 0;
+		val |= (long)name.hashCode();
+		val = val << 32;
+		val |= (long)i;
+		return val;
+	}
+	
+	public List<FileCryptRecord> addToCryptTable(NinCryptTable ctbl){
+
+		List<FileCryptRecord> rlist = new LinkedList<FileCryptRecord>();
+		
+		//System: Header, FST (tbh don't remember if header is encrypted -_-)
+		long base_cid = this.getCryptID_Partition();
+		int kidx = ctbl.getIndexOfKey(NinCrypto.KEYTYPE_128, part_key);
+		if(kidx < 0) kidx = ctbl.addKey(NinCrypto.KEYTYPE_128, part_key);
+		
+		FileCryptRecord r = new NinCBCCryptRecord(base_cid | 0x7FFFFFFFL); //fst
+		r.setIV(getFST_iv());
+		r.setCryptOffset(0x8000);
+		r.setKeyType(NinCrypto.KEYTYPE_128);
+		r.setKeyIndex(kidx);
+		ctbl.addRecord(r.getFileUID(), r);
+		rlist.add(r);
+		
+		//Files. May or may not be sectored, depending on cluster (specified in TMD)
+		int ccount = fst.getClusterCount();
+		for(int c = 0; c < ccount; c++){
+			r = new NinCBCCryptRecord(base_cid | (long)c);
+			r.setIV(getClusterIV(c));
+			r.setCryptOffset(fst.getClusterOffset(c));
+			r.setKeyType(NinCrypto.KEYTYPE_128);
+			r.setKeyIndex(kidx);
+			ctbl.addRecord(r.getFileUID(), r);
+			rlist.add(r);
+		}
+		
+		return rlist;
+	}
+	
+	public DirectoryNode getDirectFileTree(long base_off, boolean low_fs){
+		DirectoryNode root = new DirectoryNode(null, name);
+		long base_cid = this.getCryptID_Partition();
+		
+		//System files
+		if(low_fs){
+			FileNode fn = new FileNode(root, "header.bin");
+			fn.addTypeChainNode(new FileTypeDefNode(PowerGCSysFileDefs.getWiiUPartHeaderDef()));
+			fn.setOffset(base_off);
+			fn.setLength(0x8000);
+			
+			fn = new FileNode(root, "fst.bin");
+			fn.addTypeChainNode(new FileTypeDefNode(PowerGCSysFileDefs.getWiiUFSTDef()));
+			fn.setOffset(base_off+0x8000);
+			fn.setLength(0x8000);
+			if(tmd != null){
+				WiiContent c0 = tmd.getContent(0);
+				fn.setLength(c0.getSize());
+			}
+			fn.addEncryption(CafeCrypt.getStandardAESDef());
+			fn.setMetadataValue(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(base_cid | 0x7FFFFFFFL));	
+		}
+		
+		//Generate virtual file nodes for the clusters (w/ enc info)
+		int ccount = fst.getClusterCount();
+		FileNode[] cluster_nodes = new FileNode[ccount];
+		for(int c = 0; c < ccount; c++){
+			FileNode vsrc = new FileNode(null, name + "_c" + c);
+			vsrc.setSourcePath(src_path);
+			vsrc.setOffset(fst.getClusterOffset(c) + base_off);
+			vsrc.setLength(fst.getClusterSize(c));
+			
+			int flags = 0;
+			
+			if(tmd != null){
+				flags = tmd.getContent(c).getType();
+			}
+			boolean hashflag = (flags & 0x02) != 0;
+			if(hashflag){
+				vsrc.addEncryption(CafeCrypt.getSectoredAESDef());
+				vsrc.setBlockSize(0x10000, 0xfc00);
+			}
+			else {
+				vsrc.addEncryption(CafeCrypt.getStandardAESDef());
+				vsrc.setBlockSize(0x10, 0x10);
+			}
+			
+			vsrc.setMetadataValue(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(base_cid | (long)c));	
+			cluster_nodes[c] = vsrc;
+		}
+		
+		//Get tree and update sources
+		DirectoryNode dir = root;
+		if(low_fs) dir = new DirectoryNode(root, "data");
+		DirectoryNode fsttree = fst.getTree();
+		List<FileNode> children = fsttree.getChildren();
+		for(FileNode child : children) child.setParent(dir); //Move to new directory
+		
+		//Now, set the sources...
+		dir.doForTree(new FileNodeModifierCallback(){
+
+			@Override
+			public void doToNode(FileNode node) {
+				
+				if(node.isDirectory()) return;
+				
+				String craw = node.getSourcePath();
+				int cluster = -1;
+				try{cluster = Integer.parseInt(craw);}
+				catch(NumberFormatException x){x.printStackTrace();}
+				
+				if(cluster == -1) return;
+				
+				FileNode vsrc = cluster_nodes[cluster];
+				if(vsrc == null){
+					System.err.println("WudPartition.getDirectFileTree || ERROR: Cluster source not found for cluster w/ idx " + cluster);
+					return;
+				}
+				
+				node.setUseVirtualSource(true);
+				node.setVirtualSourceNode(vsrc);
+				
+				//System file types...
+				if(node.getFileName().endsWith(".cert")) node.addTypeChainNode(new FileTypeDefNode(PowerGCSysFileDefs.getRSADef()));
+				else if(node.getFileName().endsWith(".tik")) node.addTypeChainNode(new FileTypeDefNode(PowerGCSysFileDefs.getWiiTicketDef()));
+				else if(node.getFileName().endsWith(".tmd")) node.addTypeChainNode(new FileTypeDefNode(PowerGCSysFileDefs.getWiiTMDDef()));
+				
+			}});
+		
+		return root;
+	}
+	
+	//---- Old stuff
 	
 	protected void decryptCluster(int cidx, CafeCryptListener l) throws IOException{
 		if(l != null) l.onClusterStart(cidx);

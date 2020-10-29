@@ -244,7 +244,7 @@ public class WiiPartition {
 		}
 		
 		FileNode rawdat = new FileNode(null, "data.aes");
-		rawdat.setBlockSize(0x8000);
+		rawdat.setBlockSize(0x8000, 0x7c00);
 		rawdat.setSourcePath(wiiimg_path);
 		rawdat.setOffset(iAddress + iDataOff);
 		rawdat.setLength(iDataSize);

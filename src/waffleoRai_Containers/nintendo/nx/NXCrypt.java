@@ -89,6 +89,9 @@ public class NXCrypt {
 			return inputBlockOffset;
 		}
 		
+		public int backbyteCount(){return 0;}	
+		public void putBackbytes(byte[] dat){}
+		
 	}
 	
 	public static class NXXTSDecMethod implements DecryptorMethod{
@@ -122,6 +125,9 @@ public class NXCrypt {
 		public long getOutputBlockOffset(long inputBlockOffset){
 			return inputBlockOffset;
 		}
+		
+		public int backbyteCount(){return 0;}	
+		public void putBackbytes(byte[] dat){}
 	}
 	
 	/* ----- Construction ----- */

@@ -129,6 +129,7 @@ public class GCWiiDisc {
 		
 		//System.err.println("GCWiiDisc.extractFST || -DEBUG- FST Offset: 0x" + Long.toHexString(offset));
 		//System.err.println("GCWiiDisc.extractFST || -DEBUG- FST Size: 0x" + Long.toHexString(size));
+		//System.err.println("GCWiiDisc.extractFST || -DEBUG- Source Size: 0x" + Long.toHexString(openFile.getFileSize()));
 		
 		FileBuffer fst = openFile.createReadOnlyCopy(offset, offset+size);
 		
