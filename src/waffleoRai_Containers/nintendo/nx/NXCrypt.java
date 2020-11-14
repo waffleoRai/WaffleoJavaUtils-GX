@@ -89,8 +89,25 @@ public class NXCrypt {
 			return inputBlockOffset;
 		}
 		
+		public long getInputBlockOffset(long outputBlockOffset){
+			return outputBlockOffset;
+		}
+		
+		public long getOutputCoordinate(long inputCoord){
+			return inputCoord;
+		}
+		
+		public long getInputCoordinate(long outputCoord){
+			return outputCoord;
+		}
+		
 		public int backbyteCount(){return 0;}	
 		public void putBackbytes(byte[] dat){}
+		
+		public DecryptorMethod createCopy(){
+			NXCTRDecMethod copy = new NXCTRDecMethod(aes, base_ctr);
+			return copy;
+		}
 		
 	}
 	
@@ -126,8 +143,26 @@ public class NXCrypt {
 			return inputBlockOffset;
 		}
 		
+		public long getInputBlockOffset(long outputBlockOffset){
+			return outputBlockOffset;
+		}
+		
+		public long getOutputCoordinate(long inputCoord){
+			return inputCoord;
+		}
+		
+		public long getInputCoordinate(long outputCoord){
+			return outputCoord;
+		}
+		
 		public int backbyteCount(){return 0;}	
 		public void putBackbytes(byte[] dat){}
+		
+		public DecryptorMethod createCopy(){
+			NXXTSDecMethod copy = new NXXTSDecMethod(key, base_sec, sec_shamt);
+			return copy;
+		}
+		
 	}
 	
 	/* ----- Construction ----- */

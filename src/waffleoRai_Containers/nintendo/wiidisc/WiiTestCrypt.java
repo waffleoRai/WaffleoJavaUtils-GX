@@ -69,7 +69,7 @@ public class WiiTestCrypt {
 			});
 			FileNode node = tree.getNodeAt(testnodepath);
 			System.err.println(node.getVirtualSource().getLocationString());
-			//node.loadData().writeFile(testfilepath);
+			node.loadData().writeFile(testfilepath);
 			//Maybe it's getByte()?
 			FileBuffer tdat = node.loadData();
 			System.err.print("testing getByte(): ");

@@ -297,16 +297,25 @@ public class WudPartition {
 			}
 			boolean hashflag = (flags & 0x02) != 0;
 			if(hashflag){
-				vsrc.addEncryption(CafeCrypt.getSectoredAESDef());
 				vsrc.setBlockSize(0x10000, 0xfc00);
+				//Snap to sector
+				long clen = vsrc.getLength();
+				long blocks = clen >>> 16;
+				if((clen & 0xFFFF) != 0) blocks++;
+				//System.err.println(vsrc.getFileName() + " blocks: " + blocks);
+				clen = blocks * 0xfc00;
+				vsrc.setLength(clen);
+				vsrc.addEncryption(CafeCrypt.getSectoredAESDef());
 			}
 			else {
 				vsrc.addEncryption(CafeCrypt.getStandardAESDef());
 				vsrc.setBlockSize(0x10, 0x10);
 			}
 			
+			//System.err.println(vsrc.getFileName() + " size: 0x" + Long.toHexString(vsrc.getLength()));
 			vsrc.setMetadataValue(NinCrypto.METAKEY_CRYPTGROUPUID, Long.toHexString(base_cid | (long)c));	
 			cluster_nodes[c] = vsrc;
+			vsrc.generateGUID();
 		}
 		
 		//Get tree and update sources

@@ -145,21 +145,22 @@ public class CafeDecryptor implements StaticDecryptor{
 		
 		//Handle IV
 		long roff = r.getCryptOffset();
-		if(node.getOffset() - roff > 0x10){
+		decm.setZeroIV(r.getIV());
+		
+		//See if it's out of phase with the sector boundaries
+		if(((node.getOffset() - roff) & 0xFFFF) != 0){
 			long ivoff = ((node.getOffset() >>> 4) - 1) << 4;
 			
 			String srcpath = node.getSourcePath();
 			try{
 				byte[] iv = FileBuffer.createBuffer(srcpath, ivoff, ivoff + 0x10).getBytes();
-				decm.setZeroIV(iv);
+				decm.setInitIV(iv);
 			}
 			catch(IOException x){
 				x.printStackTrace();
 			}
 		}
-		else{
-			decm.setZeroIV(r.getIV());
-		}
+		else decm.setInitIV(r.getIV());
 		
 		return decm;
 	}

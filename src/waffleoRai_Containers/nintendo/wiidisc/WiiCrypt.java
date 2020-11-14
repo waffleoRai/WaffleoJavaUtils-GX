@@ -88,8 +88,35 @@ public class WiiCrypt {
 			return inputBlockOffset - 0x400;
 		}
 		
+		public long getInputBlockOffset(long outputBlockOffset){
+			return outputBlockOffset + 0x400;
+		}
+		
+		public long getOutputCoordinate(long inputCoord){
+			long b = inputCoord >>> 15;
+			long off = inputCoord & 0x7FFF;
+			
+			off -= 0x400;
+			if(off < 0) off = 0;
+			return (b * 0x7c00) + off;
+		}
+		
+		public long getInputCoordinate(long outputCoord){
+			long b = outputCoord / 0x7c00;
+			long off = outputCoord % 0x7c00;
+			
+			off += 0x400;
+			return (b << 15) + off;
+		}
+		
+		
 		public int backbyteCount(){return 0;}	
 		public void putBackbytes(byte[] dat){}
+		
+		public DecryptorMethod createCopy(){
+			WiiCBCDecMethod copy = new WiiCBCDecMethod(aes);
+			return copy;
+		}
 		
 	}
 	

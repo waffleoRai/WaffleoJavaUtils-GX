@@ -2,7 +2,9 @@ package waffleoRai_Containers.nintendo.cafe;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.TreeMap;
 
 import waffleoRai_Encryption.nintendo.NinCryptTable;
 import waffleoRai_Files.NodeMatchCallback;
@@ -45,16 +47,32 @@ public class WudTest {
 			tree.setFileName("");
 			
 			//Try to extract TGA icons...
+			Map<Long, FileNode> vnodes = new TreeMap<Long, FileNode>();
 			CafeCrypt.initCafeCryptState(ctbl);
 			Collection<FileNode> tnodes = tree.getNodesThat(new NodeMatchCallback(){
 
 				@Override
 				public boolean meetsCondition(FileNode n) {
 					if(n.isDirectory()) return false;
-					return n.getFileName().endsWith(".tga") || n.getFileName().endsWith(".tmd");
+					return n.getFileName().endsWith(".tga") || n.getFileName().endsWith(".tmd") || n.getFileName().endsWith(".xml");
 				}});
 			
 			for(FileNode n : tnodes){
+				FileNode s = n.getVirtualSource();
+				if(s != null) vnodes.put(s.getGUID(), s);
+			}
+			
+			for(FileNode n : vnodes.values()){
+				System.err.println("Writing " + n.getFileName());
+				//System.err.println("Offset: 0x" + Long.toHexString(n.getOffset()));
+				//System.err.println("Size: 0x" + Long.toHexString(n.getLength()));
+				String outpath = outdir + "\\dectest\\" + n.getFileName() + ".bin";
+				n.loadData().writeFile(outpath);
+			}
+			
+			//System.exit(2);
+			for(FileNode n : tnodes){
+				System.err.println("Writing " + n.getFullPath());
 				String outpath = outdir + "\\dectest\\" + n.getFullPath().replace("/", "_");
 				n.loadData().writeFile(outpath);
 			}

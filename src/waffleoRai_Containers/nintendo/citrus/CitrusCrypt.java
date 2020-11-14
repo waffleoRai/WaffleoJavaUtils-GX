@@ -146,8 +146,25 @@ public class CitrusCrypt {
 			return inputBlockOffset;
 		}
 		
+		public long getInputBlockOffset(long outputBlockOffset){
+			return outputBlockOffset;
+		}
+		
+		public long getOutputCoordinate(long inputCoord){
+			return inputCoord;
+		}
+		
+		public long getInputCoordinate(long outputCoord){
+			return outputCoord;
+		}
+		
 		public int backbyteCount(){return 0;}	
 		public void putBackbytes(byte[] dat){}
+		
+		public DecryptorMethod createCopy(){
+			CitrusCTRDecMethod copy = new CitrusCTRDecMethod(aes, base_ctr);
+			return copy;
+		}
 	}
 	
 	/*----- Construction -----*/

@@ -8,6 +8,7 @@ import java.util.List;
 
 import waffleoRai_Encryption.AES;
 import waffleoRai_Files.GenericSystemDef;
+import waffleoRai_Files.WriterPrintable;
 import waffleoRai_Utils.FileBuffer;
 
 /*
@@ -23,7 +24,7 @@ import waffleoRai_Utils.FileBuffer;
  * 
  */
 
-public class NXContentMeta {
+public class NXContentMeta implements WriterPrintable{
 	
 	/*----- Constants -----*/
 	

@@ -8,9 +8,10 @@ import java.util.List;
 
 import waffleoRai_Encryption.AES;
 import waffleoRai_Files.GenericSystemDef;
+import waffleoRai_Files.WriterPrintable;
 import waffleoRai_Utils.FileBuffer;
 
-public class NXNACP {
+public class NXNACP implements WriterPrintable{
 	
 	/*----- Constants -----*/
 	
