@@ -26,6 +26,8 @@ public class PowerGCSysFileDefs {
 	private static WiiUPartHeaderDef ph_def_u;
 	private static WiiUPartFSTDef fst_def_u;
 	private static WiiUDiscHeaderDef dh_def_u;
+	private static WiiUExeDef rpx_def;
+	private static WiiURPLDef rpl_def;
 	
 	public static GCHeaderDef getHeaderDef(){
 		if(header_def == null) header_def = new GCHeaderDef();
@@ -97,6 +99,16 @@ public class PowerGCSysFileDefs {
 		return dh_def_u;
 	}
 	
+	public static WiiUExeDef getWiiUExeDef(){
+		if(rpx_def == null) rpx_def = new WiiUExeDef();
+		return rpx_def;
+	}
+	
+	public static WiiURPLDef getWiiURPLDef(){
+		if(rpl_def == null) rpl_def = new WiiURPLDef();
+		return rpl_def;
+	}
+	
 	public static class GCHeaderDef implements FileTypeDefinition{
 		
 		private static String DEFO_ENG_DESC = "Nintendo GameCube Family Disk Header";
@@ -120,6 +132,7 @@ public class PowerGCSysFileDefs {
 		public void setDescriptionString(String s) {str = s;}
 		
 		public String getDefaultExtension(){return "bin";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	
@@ -146,6 +159,7 @@ public class PowerGCSysFileDefs {
 		public void setDescriptionString(String s) {str = s;}
 		
 		public String getDefaultExtension(){return "bin";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	
@@ -172,6 +186,7 @@ public class PowerGCSysFileDefs {
 		public void setDescriptionString(String s) {str = s;}
 		
 		public String getDefaultExtension(){return "bin";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	
@@ -198,6 +213,7 @@ public class PowerGCSysFileDefs {
 		public void setDescriptionString(String s) {str = s;}
 		
 		public String getDefaultExtension(){return "img";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	
@@ -214,7 +230,7 @@ public class PowerGCSysFileDefs {
 
 		public Collection<String> getExtensions() {
 			List<String> slist = new LinkedList<String>();
-			slist.add("img");
+			slist.add("bin");
 			return slist;
 		}
 
@@ -223,7 +239,8 @@ public class PowerGCSysFileDefs {
 		public int getTypeID() {return TYPE_ID;}
 		public void setDescriptionString(String s) {str = s;}
 		
-		public String getDefaultExtension(){return "img";}
+		public String getDefaultExtension(){return "bin";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	
@@ -250,6 +267,7 @@ public class PowerGCSysFileDefs {
 		public void setDescriptionString(String s) {str = s;}
 		
 		public String getDefaultExtension(){return "bin";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	
@@ -276,6 +294,7 @@ public class PowerGCSysFileDefs {
 		public void setDescriptionString(String s) {str = s;}
 		
 		public String getDefaultExtension(){return "bin";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	
@@ -302,6 +321,7 @@ public class PowerGCSysFileDefs {
 		public void setDescriptionString(String s) {str = s;}
 		
 		public String getDefaultExtension(){return "bin";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	
@@ -318,6 +338,7 @@ public class PowerGCSysFileDefs {
 
 		public Collection<String> getExtensions() {
 			List<String> slist = new LinkedList<String>();
+			slist.add("tik");
 			slist.add("bin");
 			return slist;
 		}
@@ -327,7 +348,8 @@ public class PowerGCSysFileDefs {
 		public int getTypeID() {return TYPE_ID;}
 		public void setDescriptionString(String s) {str = s;}
 		
-		public String getDefaultExtension(){return "bin";}
+		public String getDefaultExtension(){return "tik";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	
@@ -344,6 +366,7 @@ public class PowerGCSysFileDefs {
 
 		public Collection<String> getExtensions() {
 			List<String> slist = new LinkedList<String>();
+			slist.add("tmd");
 			slist.add("bin");
 			return slist;
 		}
@@ -353,8 +376,8 @@ public class PowerGCSysFileDefs {
 		public int getTypeID() {return TYPE_ID;}
 		public void setDescriptionString(String s) {str = s;}
 		
-		public String getDefaultExtension(){return "bin";}
-		
+		public String getDefaultExtension(){return "tmd";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 	}
 	
 	public static class WiiH3Def implements FileTypeDefinition{
@@ -380,7 +403,7 @@ public class PowerGCSysFileDefs {
 		public void setDescriptionString(String s) {str = s;}
 		
 		public String getDefaultExtension(){return "bin";}
-		
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 	}
 		
 	public static class WiiUPartHeaderDef extends GenericSystemDef{
@@ -413,6 +436,60 @@ public class PowerGCSysFileDefs {
 		public WiiUDiscHeaderDef(){
 			super(DEFO_ENG_DESC, TYPE_ID);
 		}
+		
+	}
+	
+	public static class WiiUExeDef implements FileTypeDefinition{
+		
+		private static String DEFO_ENG_DESC = "Cafe OS ELF - Main Executable";
+		public static int TYPE_ID = 0x7c437699;
+		
+		private String str;
+		
+		public WiiUExeDef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			slist.add("rpx");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.EXECUTABLE;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "rpx";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
+		
+	}
+	
+	public static class WiiURPLDef implements FileTypeDefinition{
+		
+		private static String DEFO_ENG_DESC = "Cafe OS ELF - DLL";
+		public static int TYPE_ID = 0x7c43769a;
+		
+		private String str;
+		
+		public WiiURPLDef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			slist.add("rpl");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.CODELIB;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "rpl";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	

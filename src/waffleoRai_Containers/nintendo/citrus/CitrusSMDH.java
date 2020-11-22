@@ -243,6 +243,7 @@ public class CitrusSMDH {
 		public void setDescriptionString(String s) {str = s;}
 		
 		public String getDefaultExtension(){return "";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 

@@ -1,11 +1,15 @@
 package waffleoRai_fdefs.nintendo;
 
 import java.io.OutputStream;
+import java.util.Collection;
+import java.util.LinkedList;
 import java.util.List;
 
 import waffleoRai_Containers.nintendo.nx.NXCrypt;
 import waffleoRai_Encryption.AES;
 import waffleoRai_Files.EncryptionDefinition;
+import waffleoRai_Files.FileClass;
+import waffleoRai_Files.FileTypeDefinition;
 import waffleoRai_Files.GenericSystemDef;
 import waffleoRai_Utils.StreamWrapper;
 
@@ -21,6 +25,10 @@ public class NXSysDefs {
 	
 	private static NXAESCTRDef aesctr_def;
 	private static NXAESXTSDef aesxts_def;
+	
+	private static NXNSODef nxnso_def;
+	private static NXNRODef nxnro_def;
+	private static NXNRRDef nxnrr_def;
 	
 	public static NXNCAHeaderDef getNCAHeaderDef(){
 		if(ncah_def == null) ncah_def = new NXNCAHeaderDef();
@@ -60,6 +68,21 @@ public class NXSysDefs {
 	public static NXAESXTSDef getXTSCryptoDef(){
 		if(aesxts_def == null) aesxts_def = new NXAESXTSDef();
 		return aesxts_def;
+	}
+	
+	public static NXNSODef getNSODef(){
+		if(nxnso_def == null) nxnso_def = new NXNSODef();
+		return nxnso_def;
+	}
+	
+	public static NXNRODef getNRODef(){
+		if(nxnro_def == null) nxnro_def = new NXNRODef();
+		return nxnro_def;
+	}
+	
+	public static NXNRRDef getNRRDef(){
+		if(nxnrr_def == null) nxnrr_def = new NXNRRDef();
+		return nxnrr_def;
 	}
 
 	public static class NXNCAHeaderDef extends GenericSystemDef{
@@ -251,6 +274,84 @@ public class NXSysDefs {
 		
 		public boolean unevenIOBlocks() {return false;}
 		
+	}
+	
+	public static class NXNSODef implements FileTypeDefinition{
+		
+		private static String DEFO_ENG_DESC = "NX Executable File";
+		public static int TYPE_ID = 0x4e534f30;
+		
+		private String str;
+		
+		public NXNSODef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			slist.add("nso"); //Not actually used - usually just "main"
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.EXECUTABLE;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "nso";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
+	}
+	
+	public static class NXNRODef implements FileTypeDefinition{
+		
+		private static String DEFO_ENG_DESC = "NX Dynamic Link Library";
+		public static int TYPE_ID = 0x4e524f30;
+		
+		private String str;
+		
+		public NXNRODef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			slist.add("nro");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.CODELIB;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "nro";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
+	}
+	
+	public static class NXNRRDef implements FileTypeDefinition{
+		
+		private static String DEFO_ENG_DESC = "NX NRO Certificate File";
+		public static int TYPE_ID = 0x4e525230;
+		
+		private String str;
+		
+		public NXNRRDef(){
+			str = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> slist = new LinkedList<String>();
+			slist.add("nrr");
+			return slist;
+		}
+
+		public String getDescription() {return str;}
+		public FileClass getFileClass() {return FileClass.SYSTEM;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {str = s;}
+		
+		public String getDefaultExtension(){return "nrr";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 	}
 	
 }

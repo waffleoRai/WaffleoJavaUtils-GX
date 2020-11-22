@@ -35,7 +35,7 @@ public class PSXSysDefs {
 
 		public Collection<String> getExtensions() {
 			List<String> slist = new LinkedList<String>();
-			slist.add("cfg");
+			slist.add("cnf");
 			return slist;
 		}
 
@@ -44,7 +44,8 @@ public class PSXSysDefs {
 		public int getTypeID() {return TYPE_ID;}
 		public void setDescriptionString(String s) {str = s;}
 		
-		public String getDefaultExtension(){return "CFG";}
+		public String getDefaultExtension(){return "CNF";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	
@@ -71,6 +72,7 @@ public class PSXSysDefs {
 		public void setDescriptionString(String s) {str = s;}
 		
 		public String getDefaultExtension(){return "psxexe";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
 	

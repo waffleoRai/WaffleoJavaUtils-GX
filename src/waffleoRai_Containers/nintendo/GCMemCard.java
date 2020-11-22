@@ -39,7 +39,7 @@ public class GCMemCard {
 	
 	public static final int BLOCK_SIZE = 0x2000;
 	
-	public static final int ICO_FRAME_MILLIS = 30;
+	public static final int ICO_FRAME_MILLIS = 50;
 	
 	/*----- Instance Variables -----*/
 	
