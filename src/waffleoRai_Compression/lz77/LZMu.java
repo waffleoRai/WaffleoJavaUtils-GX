@@ -1,10 +1,15 @@
 package waffleoRai_Compression.lz77;
 
+import java.io.BufferedOutputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.LinkedList;
 import java.util.Set;
 
 import waffleoRai_Compression.ArrayWindow;
+import waffleoRai_Compression.definitions.AbstractCompDef;
 import waffleoRai_Utils.ByteBufferStreamer;
+import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.StreamWrapper;
 
 public class LZMu {
@@ -432,6 +437,63 @@ public class LZMu {
 		
 		output.rewind();
 		return output;
+	}
+	
+	/*--- Definitions ---*/
+	
+	public static final int DEF_ID = 0xb12c7a90;
+	public static final String DEFO_ENG_STR = "Lempel-Ziv 77 Compression - PS1 Variant Mu";
+	
+	private static LZMuDef stat_def;
+	
+	public static class LZMuDef extends AbstractCompDef{
+
+		protected LZMuDef() {
+			super(DEFO_ENG_STR);
+			super.extensions.add("lz");
+		}
+
+		public StreamWrapper decompress(StreamWrapper input) {
+			//Assumes this is a full file, so checks for size in first word
+			int dec_sz = -1;
+			for(int i = 0; i < 4; i++){
+				int shamt = i << 3;
+				int b = input.getFull();
+				b = (b & 0xFF) << shamt;
+				dec_sz |= b;
+			}
+			
+			LZMu decer = new LZMu();
+			return decer.decode(input, dec_sz);
+		}
+
+		public String decompressToDiskBuffer(StreamWrapper input) {
+			//Because this is a PS1 compression routine, assumes output is small enough to hold in mem...
+			
+			StreamWrapper out = decompress(input);
+			
+			//Write to a temp file.
+			try {
+				String tpath = FileBuffer.generateTemporaryPath("lzmu_def_autodecomp");
+				BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(tpath));
+				while(!out.isEmpty()) bos.write(out.getFull());
+				bos.close();
+				return tpath;
+			} 
+			catch (IOException e) {
+				e.printStackTrace();
+			}
+			
+			return null;
+		}
+
+		public int getDefinitionID() {return DEF_ID;}
+		
+	}
+	
+	public static LZMuDef getDefinition(){
+		if(stat_def == null) stat_def = new LZMuDef();
+		return stat_def;
 	}
 	
 }

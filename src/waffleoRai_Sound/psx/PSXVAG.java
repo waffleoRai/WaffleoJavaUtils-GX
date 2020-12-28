@@ -1,13 +1,21 @@
 package waffleoRai_Sound.psx;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.Random;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 
+import waffleoRai_Files.Converter;
+import waffleoRai_Files.FileClass;
+import waffleoRai_Files.FileTypeDefinition;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Sound.BitDepth;
 import waffleoRai_Sound.Sound;
+import waffleoRai_Sound.SoundFileDefinition;
 import waffleoRai_Sound.WAV;
 import waffleoRai_SoundSynth.AudioSampleStream;
 import waffleoRai_SoundSynth.soundformats.game.PSXVAGSampleStream;
@@ -619,5 +627,90 @@ public class PSXVAG implements Sound{
 	
 	public void setActiveTrack(int tidx){}
 	public int countTracks(){return 1;}
+	
+	/*--- Definition ---*/
+	
+	public static final int DEF_ID = 0x70474156;
+	private static final String DEFO_ENG_STR = "PlayStation 1 Audio Sample";
+	
+	private static VAGPDef stat_def;
+	private static VAGP2WAVConv stat_conv;
+	
+	public static class VAGPDef extends SoundFileDefinition{
+		
+		private String desc = DEFO_ENG_STR;
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(2);
+			list.add("vag");
+			list.add("vagp");
+			return list;
+		}
+
+		public String getDescription() {return desc;}
+		public FileClass getFileClass() {return FileClass.SOUND_WAVE;}
+
+		public int getTypeID() {return DEF_ID;}
+		public void setDescriptionString(String s) {desc = s;}
+		public String getDefaultExtension() {return "vag";}
+
+		public Sound readSound(FileNode file) {
+			try{
+				FileBuffer dat = file.loadDecompressedData();
+				return new PSXVAG(dat);
+			}
+			catch(Exception x){
+				x.printStackTrace();
+				return null;
+			}
+		}
+		
+		public String toString(){return FileTypeDefinition.stringMe(this);}
+		
+	}
+	
+	public static VAGPDef getDefinition(){
+		if(stat_def == null) stat_def = new VAGPDef();
+		return stat_def;
+	}
+	
+	public static class VAGP2WAVConv implements Converter{
+		
+		private String desc_from = DEFO_ENG_STR;
+		private String desc_to = "RIFF Waveform Audio File (WAV)";
+
+		public String getFromFormatDescription() {return desc_from;}
+		public String getToFormatDescription() {return desc_to;}
+		public void setFromFormatDescription(String s) {desc_from = s;}
+		public void setToFormatDescription(String s) {desc_to = s;}
+
+		public void writeAsTargetFormat(String inpath, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			FileBuffer dat = FileBuffer.createBuffer(inpath, false);
+			writeAsTargetFormat(dat, outpath);
+		}
+
+		public void writeAsTargetFormat(FileBuffer input, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			//Use this one.
+			PSXVAG sound = new PSXVAG(input);
+			WAV wav = sound.convertToWAV();
+			wav.writeFile(outpath);
+		}
+
+		public void writeAsTargetFormat(FileNode node, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			FileBuffer dat = node.loadDecompressedData();
+			writeAsTargetFormat(dat, outpath);	
+		}
+
+		public String changeExtension(String path) {return path.replace(".vag", ".wav");}
+		
+	}
+	
+	public static VAGP2WAVConv getConverter(){
+		if(stat_conv == null) stat_conv = new VAGP2WAVConv();
+		return stat_conv;
+	}
 	
 }

@@ -26,6 +26,7 @@ public class GCMemCardFile {
 	
 	private String filePath;
 	private int[] blocks;
+	private boolean from_gci;
 	
 	/*----- Construction -----*/
 	
@@ -100,11 +101,20 @@ public class GCMemCardFile {
 	public void setComment1(String cmt){comment_1 = cmt;}
 	public void setComment2(String cmt){comment_2 = cmt;}
 	
+	protected void setGCI(boolean b){from_gci = b;}
+	
 	/*----- File Handling -----*/
 	
 	public FileBuffer loadFile() throws IOException{
+		
+		FileBuffer file = null;
+		if(from_gci){
+			long ed = FileBuffer.fileSize(filePath);
+			file = FileBuffer.createBuffer(filePath, 0x40, ed, true);
+			return file;
+		}
 
-		FileBuffer file = new MultiFileBuffer(blocks.length);
+		file = new MultiFileBuffer(blocks.length);
 		
 		for(int i = 0; i < blocks.length; i++){
 			long offset = blocks[i] << 13;

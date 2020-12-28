@@ -6,18 +6,26 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import javax.imageio.ImageIO;
 
+import waffleoRai_Files.Converter;
+import waffleoRai_Files.FileClass;
+import waffleoRai_Files.FileTypeDefinition;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Image.nintendo.NDSGraphics;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 public class QXImage {
 	
 	/*----- Constants -----*/
 	
 	public static final int TILE_DIM = 32;
+	
+	public static final String FNMETAKEY_TILED = "PS1WSQX_TILED";
 	
 	/*----- Instance Variables -----*/
 	
@@ -194,10 +202,13 @@ public class QXImage {
 		}
 	}
 	
-	public static QXImage readImageData(String path, boolean tiled) throws IOException
-	{
+	public static QXImage readImageData(String path, boolean tiled) throws IOException{
 		FileBuffer file = FileBuffer.createBuffer(path, false);
-		
+		return readImageData(file, tiled);
+	}
+	
+	public static QXImage readImageData(FileBuffer file, boolean tiled) throws IOException
+	{
 		long cpos = 0;
 		//I think the first two bytes are flags maybe????
 		//Or just version info???
@@ -379,9 +390,111 @@ public class QXImage {
 		//TODO
 	}
 	
+	/*----- Definitions -----*/
+	
+	public static final int DEF_ID = 0x02185158;
+	public static final String DEFO_ENG_STR = "PlayStation 1 GPU Sprite/Image Set";
+	
+	private static QXSpriteDef stat_def;
+	private static QX2PNGConv conv_def;
+	
+	public static class QXSpriteDef implements FileTypeDefinition{
+
+		private String desc = DEFO_ENG_STR;
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(2);
+			list.add("qx");
+			list.add("*");
+			return list;
+		}
+
+		public String getDescription() {return desc;}
+		public FileClass getFileClass() {return FileClass.IMG_SPRITE_SHEET;}
+		public int getTypeID() {return DEF_ID;}
+		public void setDescriptionString(String s) {desc = s;}
+		public String getDefaultExtension() {return "qx";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
+		
+	}
+	
+	public static class QX2PNGConv implements Converter{
+		
+		private String desc_from = DEFO_ENG_STR;
+		private String desc_to = "Portable Network Graphics Image (.png)";
+
+		public String getFromFormatDescription() {return desc_from;}
+		public String getToFormatDescription() {return desc_to;}
+		public void setFromFormatDescription(String s) {desc_from = s;}
+		public void setToFormatDescription(String s) {desc_to = s;}
+
+		public void writeAsTargetFormat(String inpath, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			FileBuffer dat = FileBuffer.createBuffer(inpath, false);
+			writeAsTargetFormat(dat, outpath);
+		}
+
+		public void writeAsTargetFormat(FileBuffer input, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			QXImage img = QXImage.readImageData(input, false);
+			writeOut(img, outpath);
+		}
+
+		public void writeAsTargetFormat(FileNode node, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			//This one is ideal as it can check meta to see if tiled
+			if(node == null) return;
+			
+			boolean tiled = false;
+			String tmeta = node.getMetadataValue(FNMETAKEY_TILED);
+			if(tmeta != null && tmeta.equalsIgnoreCase("true")) tiled = true;
+			
+			QXImage img = QXImage.readImageData(node.loadDecompressedData(), tiled);
+			writeOut(img, outpath);
+		}
+		
+		private void writeOut(QXImage img, String outpath) throws IOException{
+			//If there are multiple images, then write to a directory
+			int fcount = img.getFrameCount();
+			if(fcount > 1){
+				//Derive prefix
+				String prefix = outpath;
+				int lastdot = outpath.lastIndexOf('.');
+				if(lastdot >= 0) prefix = prefix.substring(0, lastdot);
+				img.writeToMultiPNG(prefix, false);
+			}
+			else{
+				//Just write as PNG
+				img.writeToPNG(outpath, false);
+			}
+			
+		}
+
+		public String changeExtension(String path) {
+			
+			if(path == null) return null;
+			int lastdot = path.lastIndexOf('.');
+			if(lastdot >= 0){
+				return path.substring(0, lastdot) + ".png";
+			}
+			else return path + ".png";
+		}
+		
+	}
+	
+	public static QXSpriteDef getDefinition(){
+		if(stat_def == null) stat_def = new QXSpriteDef();
+		return stat_def;
+	}
+	
+	public static QX2PNGConv getConverter(){
+		if(conv_def == null) conv_def = new QX2PNGConv();
+		return conv_def;
+	}
+	
 	/*----- Test -----*/
 	
-	public static void main(String[] args) 
+ 	public static void main(String[] args) 
 	{
 		try
 		{

@@ -6,20 +6,34 @@ import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import waffleoRai_Files.Converter;
+import waffleoRai_Files.FileClass;
+import waffleoRai_Files.FileDefinitions;
+import waffleoRai_Files.FileTypeDefinition;
+import waffleoRai_Files.NodeMatchCallback;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
+import waffleoRai_Sound.WAV;
 import waffleoRai_Sound.psx.PSXVAG;
+import waffleoRai_Sound.psx.PSXVAG.VAGP2WAVConv;
 import waffleoRai_SoundSynth.SynthBank;
 import waffleoRai_SoundSynth.SynthProgram;
 import waffleoRai_Utils.CompositeBuffer;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+import waffleoRai_Utils.FileUtils;
 import waffleoRai_soundbank.SimpleBank;
 import waffleoRai_soundbank.SimpleInstrument;
 import waffleoRai_soundbank.SimplePreset;
 import waffleoRai_soundbank.SingleBank;
+import waffleoRai_soundbank.SoundbankDef;
 import waffleoRai_soundbank.SoundbankNode;
 import waffleoRai_soundbank.SimpleInstrument.InstRegion;
 import waffleoRai_soundbank.SimplePreset.PresetRegion;
@@ -49,6 +63,11 @@ public class PSXVAB implements SynthBank{
 	public static final int SPT_SIZE = 512;
 	
 	public static final int REVERB_AMOUNT = 1000; //Reverb send in 1/100 of a percent
+	
+	public static final String FNMETAKEY_BANKUID = "VABP_UID";
+	public static final String FNMETAKEY_WARUID = "VB_UID";
+	public static final String FNMETAKEY_BODY_PATH = "VABP_BODY_PATH";
+	public static final String FNMETAKEY_BODY_ID = "VABP_BODY_ID";
 	
 	public static final String[] NOTES = {"C", "C#", "D", "Eb", 
 										  "E", "F", "F#", "G",
@@ -1264,6 +1283,8 @@ public class PSXVAB implements SynthBank{
 			cPos++;
 			b = mybank.getByte(cPos);
 		}*/
+		if(vab_body == null) return; //Might want something safer...
+		
 		vab_body.setEndian(false);
 		long spos = 0;
 		for (int i = 0; i < sCount; i++)
@@ -1513,6 +1534,25 @@ public class PSXVAB implements SynthBank{
 		return playables[programIndex];
 	}
 	
+	public Collection<Integer> getUsableBanks(){
+		List<Integer> list = new ArrayList<Integer>(2);
+		if(samples != null && !samples.isEmpty()) list.add(0);
+		return list;
+	}
+	
+	public Collection<Integer> getUsablePrograms(){
+		if(samples == null && samples.isEmpty()){
+			return new LinkedList<Integer>();
+		}
+		
+		List<Integer> list = new ArrayList<Integer>(128);
+		for(int i = 0; i < 128; i++){
+			if(programs[i] != null) list.add(i);
+		}
+		
+		return list;
+	}
+	
 	/* ----- Conversion ----- */
 	
 	public static int scaleVibratoWidth(int vibWidth)
@@ -1685,6 +1725,350 @@ public class PSXVAB implements SynthBank{
 			}
 			bw.write("\n");
 		}
+	}
+	
+	/* ----- VH/VB Node Linking ----- */
+	
+	public static boolean linkVABNodes(FileNode vh, FileNode vb){
+		if(vh == null) return false;
+		if(vb == null) return false;
+		
+		//See if vb has an ID already
+		String vbid = vb.getMetadataValue(FNMETAKEY_BODY_ID);
+		if(vbid == null){
+			//Generate one.
+			String vbpath = vb.getFullPath();
+			//Hash.
+			byte[] phash = FileUtils.getSHA256Hash(vbpath.getBytes());
+			//Take the first 8 bytes.
+			StringBuilder sb = new StringBuilder(16);
+			for(int i = 0; i < 8; i++) sb.append(String.format("%02x", phash[i]));
+			vbid = sb.toString();
+			vb.setMetadataValue(FNMETAKEY_BODY_ID, vbid);
+		}
+		
+		//Get relative path of vb
+		DirectoryNode parent = vh.getParent();
+		String rpath = vb.getFullPath();
+		if(parent != null){
+			rpath = parent.findNodeThat(new NodeMatchCallback(){
+
+				public boolean meetsCondition(FileNode n) {
+					return n == vb;
+				}
+				
+			});
+			if(rpath == null || rpath.isEmpty()) rpath = vb.getFullPath();
+		}
+		
+		//Set meta values
+		vh.setMetadataValue(FNMETAKEY_BODY_ID, vbid);
+		vh.setMetadataValue(FNMETAKEY_BODY_PATH, rpath);
+		
+		return true;
+	}
+	
+	public static FileNode findVABBody(FileNode vh){
+		if(vh == null) return null;
+		
+		//Find one already linked...
+		FileNode vb = null;
+		vb = FileUtils.findPartnerNode(vh, FNMETAKEY_BODY_PATH, FNMETAKEY_BODY_ID);
+		
+		if(vb != null) return vb;
+		
+		//vb not linked. Look for a good candidate.
+		DirectoryNode parent = vh.getParent();
+		if(parent == null) return null;
+		
+		//Look for one with same name.
+		String name = vh.getFileName();
+		name.replace(".vh", ".vb");
+		String vbpath = vh.findNodeThat(new NodeMatchCallback(){
+
+			public boolean meetsCondition(FileNode n) {
+				return n.getFileName().equalsIgnoreCase(name);
+			}
+			
+		});
+		if(vbpath != null && !vbpath.isEmpty()){
+			vb = parent.getNodeAt(vbpath);
+			if(vb != null){
+				linkVABNodes(vh, vb);
+				return vb;
+			}
+		}
+		
+		//If none, look for closest vh in same dir
+		List<FileNode> sibs = parent.getChildren();
+		Collections.sort(sibs);
+		FileNode[] sibs_arr = new FileNode[sibs.size()];
+		int i = 0;
+		for(FileNode c : sibs) sibs_arr[i++] = c;
+		
+		//Look for vh
+		int myidx = -1;
+		for(i = 0; i < sibs_arr.length; i++){
+			if(vh == sibs_arr[i]){
+				myidx = i;
+				break;
+			}
+		}
+		
+		//Search up and down for first node ending in .vb
+		i = 1;
+		boolean min = false;
+		boolean max = false;
+		while(!min || !max){
+			
+			int idx = myidx - i;
+			if(idx >= 0){
+				FileNode upnode = sibs_arr[idx];
+				if(!upnode.isDirectory() && upnode.getFileName().endsWith(".vb")){
+					vb = upnode;
+					break;
+				}
+			}
+			else min = true;
+			
+			idx = myidx + i;
+			if(idx < sibs_arr.length){
+				FileNode downnode = sibs_arr[idx];
+				if(!downnode.isDirectory() && downnode.getFileName().endsWith(".vb")){
+					vb = downnode;
+					break;
+				}
+			}
+			else max = true;
+			
+			i++;
+		}
+		
+		if(vb != null){
+			//Link and return
+			linkVABNodes(vh, vb);
+			return vb;
+		}
+		
+		//No easy match found
+		return null;
+	}
+	
+	/* ----- Definitions ----- */
+	
+	public static final int DEF_ID = 0x70424156;
+	private static final String DEFO_ENG_STR = "PlayStation 1 VAB Soundbank";
+	
+	public static final int DEF_ID_HEAD = 0x68424156;
+	private static final String DEFO_ENG_STR_HEAD = "PlayStation 1 VAB Articulation Data";
+	
+	public static final int DEF_ID_BODY = 0x62424156;
+	private static final String DEFO_ENG_STR_BODY = "PlayStation 1 VAB Wave Archive";
+	
+	private static VABPDef stat_def;
+	private static VABPHeadDef stat_def_h;
+	private static VABPBodyDef stat_def_b;
+	private static VABP2SF2Conv stat_conv;
+	
+	public static class VABPDef extends SoundbankDef{
+		
+		private String desc = DEFO_ENG_STR;
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(2);
+			list.add("vab");
+			list.add("vabp");
+			return list;
+		}
+
+		public String getDescription() {return desc;}
+
+		public int getTypeID() {return DEF_ID;}
+		public void setDescriptionString(String s) {desc = s;}
+		public String getDefaultExtension() {return "vab";}
+
+		public SynthBank getPlayableBank(FileNode file) {
+			
+			try {
+				FileBuffer dat = file.loadDecompressedData();
+				PSXVAB vab = new PSXVAB(dat);
+				return vab;
+			} 
+			catch (IOException e) {
+				e.printStackTrace();
+				return null;
+			} 
+			catch (UnsupportedFileTypeException e) {
+				e.printStackTrace();
+				return null;
+			}
+
+		}
+
+		public String getBankIDKey(FileNode file) {
+			if(file == null) return null;
+			return file.getMetadataValue(FNMETAKEY_BANKUID);
+		}
+
+		public String toString(){return FileTypeDefinition.stringMe(this);}
+		
+	}
+	
+	public static class VABPHeadDef extends SoundbankDef{
+		
+		private String desc = DEFO_ENG_STR_HEAD;
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(2);
+			list.add("vh");
+			list.add("vab");
+			return list;
+		}
+
+		public String getDescription() {return desc;}
+
+		public int getTypeID() {return DEF_ID_HEAD;}
+		public void setDescriptionString(String s) {desc = s;}
+		public String getDefaultExtension() {return "vh";}
+
+		public SynthBank getPlayableBank(FileNode file) {
+			
+			try {
+				//Look for matching VB
+				FileNode vb = findVABBody(file);
+				
+				FileBuffer h_dat = file.loadDecompressedData();
+				FileBuffer b_dat = vb.loadDecompressedData();
+				PSXVAB vab = new PSXVAB(h_dat, b_dat);
+				return vab;
+			} 
+			catch (IOException e) {
+				e.printStackTrace();
+				return null;
+			} 
+			catch (UnsupportedFileTypeException e) {
+				e.printStackTrace();
+				return null;
+			}
+
+		}
+
+		public String getBankIDKey(FileNode file) {
+			if(file == null) return null;
+			return file.getMetadataValue(FNMETAKEY_BANKUID);
+		}
+
+		public String toString(){return FileTypeDefinition.stringMe(this);}
+		
+	}
+	
+	public static class VABPBodyDef implements FileTypeDefinition{
+		
+		private String desc = DEFO_ENG_STR_BODY;
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(2);
+			list.add("vb");
+			return list;
+		}
+
+		public String getDescription() {return desc;}
+
+		public int getTypeID() {return DEF_ID_BODY;}
+		public void setDescriptionString(String s) {desc = s;}
+		public String getDefaultExtension() {return "vb";}
+
+		public FileClass getFileClass() {return FileClass.SOUND_WAVEARC;}
+
+		public String toString(){return FileTypeDefinition.stringMe(this);}
+		
+	}
+	
+	
+	public static VABPDef getDefinition(){
+		if(stat_def == null) stat_def = new VABPDef();
+		return stat_def;
+	}
+	
+	public static VABPHeadDef getHeadDefinition(){
+		if(stat_def_h == null) stat_def_h = new VABPHeadDef();
+		return stat_def_h;
+	}
+	
+	public static VABPBodyDef getBodyDefinition(){
+		if(stat_def_b == null) stat_def_b = new VABPBodyDef();
+		return stat_def_b;
+	}
+	
+	public static class VABP2SF2Conv implements Converter{
+		
+		private String desc_from = DEFO_ENG_STR;
+		private String desc_to = "SoundFont 2 Bank (.sf2)";
+
+		public String getFromFormatDescription() {return desc_from;}
+		public String getToFormatDescription() {return desc_to;}
+		public void setFromFormatDescription(String s) {desc_from = s;}
+		public void setToFormatDescription(String s) {desc_to = s;}
+
+		public void writeAsTargetFormat(String inpath, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			FileBuffer dat = FileBuffer.createBuffer(inpath, false);
+			writeAsTargetFormat(dat, outpath);
+		}
+
+		public void writeAsTargetFormat(FileBuffer input, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			//Assumes full VAB
+			PSXVAB vab = new PSXVAB(input);
+			String rpath = generateReportPath(outpath);
+			vab.writeSoundFont2(outpath, rpath, "WaffleoUtilsGX");
+		}
+
+		public void writeAsTargetFormat(FileNode node, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			
+			//Main one (can link to vb if needed)
+			if(node == null) return;
+			PSXVAB vab = null;
+			
+			String name = node.getFileName();
+			if(name.endsWith(".vh")){
+				//Header only. Load body.
+				FileNode vb = PSXVAB.findVABBody(node);
+				FileBuffer vhdat = node.loadDecompressedData();
+				FileBuffer vbdat = null;
+				if(vb != null) vbdat = vb.loadDecompressedData();
+				
+				vab = new PSXVAB(vhdat, vbdat);
+			}
+			else{
+				//Full VAB
+				vab = new PSXVAB(node.loadDecompressedData());
+			}
+			
+			String rpath = generateReportPath(outpath);
+			vab.writeSoundFont2(outpath, rpath, "WaffleoUtilsGX");
+		}
+		
+		public String generateReportPath(String outpath){
+			if(outpath == null) return null;
+			int lastdot = outpath.lastIndexOf('.');
+			if(lastdot >= 0){
+				return outpath.substring(0, lastdot) + "_report.txt";
+			}
+			else return outpath + "_report.txt";
+		}
+
+		public String changeExtension(String path) {
+			if(path.endsWith(".vh")) return path.replace(".vh", ".sf2");
+			return path.replace(".vab", ".sf2");
+		}
+		
+	}
+	
+	public static VABP2SF2Conv getConverter(){
+		if(stat_conv == null) stat_conv = new VABP2SF2Conv();
+		return stat_conv;
 	}
 	
 }

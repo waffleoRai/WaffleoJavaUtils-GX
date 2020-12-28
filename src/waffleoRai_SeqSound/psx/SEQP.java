@@ -4,6 +4,8 @@ import java.io.BufferedOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -16,8 +18,12 @@ import javax.sound.midi.Sequence;
 import javax.sound.midi.ShortMessage;
 import javax.sound.midi.Track;
 
+import waffleoRai_Files.Converter;
+import waffleoRai_Files.FileTypeDefinition;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_SeqSound.MIDI;
 import waffleoRai_SeqSound.SortableMidiEvent;
+import waffleoRai_SeqSound.SoundSeqDef;
 import waffleoRai_SeqSound.MIDI.MessageType;
 import waffleoRai_Utils.BitStreamer;
 import waffleoRai_Utils.FileBuffer;
@@ -33,6 +39,9 @@ public class SEQP {
 	//Note: the 0x00 is the delta time, you dolt
 	public static final byte[] INFINITE_LOOP_ST = {(byte)0xB0, 0x63, 0x14, 0x00, 0x06, 0x7F};
 	public static final byte[] INFINITE_LOOP_ED = {(byte)0xB0, 0x63, 0x1E};
+	
+	public static final String FNMETAKEY_BANKUID = "PSX_BNK_ID";
+	public static final String FNMETAKEY_BANKPATH = "PSX_BNK_PATH";
 	
 	/*--- Instance Variables ---*/
 	
@@ -671,6 +680,85 @@ public class SEQP {
 		midi.writeMIDI(path);
 	}
 
+	private static SEQ2MidiConv stat_conv;
+	
+	public static class SEQ2MidiConv implements Converter{
+		
+		private String desc_from = DEFO_ENG_STR;
+		private String desc_to = "MIDI Music Sequence (.mid)";
+
+		public String getFromFormatDescription() {return desc_from;}
+		public String getToFormatDescription() {return desc_to;}
+		public void setFromFormatDescription(String s) {desc_from = s;}
+		public void setToFormatDescription(String s) {desc_to = s;}
+
+		public void writeAsTargetFormat(String inpath, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			FileBuffer dat = FileBuffer.createBuffer(inpath, false);
+			writeAsTargetFormat(dat, outpath);
+		}
+
+		public void writeAsTargetFormat(FileBuffer input, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			//Use this one.
+			try {
+				SEQP seq = new SEQP(input, 0L);
+				seq.writeMIDI(outpath);
+			} 
+			catch (InvalidMidiDataException e) {
+				e.printStackTrace();
+				throw new UnsupportedFileTypeException(e.getMessage());
+			}
+			
+		}
+
+		public void writeAsTargetFormat(FileNode node, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			FileBuffer dat = node.loadDecompressedData();
+			writeAsTargetFormat(dat, outpath);	
+		}
+
+		public String changeExtension(String path) {
+			if (path.endsWith(".seq")) return path.replace(".seq", ".mid");
+			else return path.replace(".seqp", ".mid");
+		}
+		
+	}
+	
+	public static SEQ2MidiConv getConverter(){
+		if(stat_conv == null) stat_conv = new SEQ2MidiConv();
+		return stat_conv;
+	}
+	
+	/*--- Definition ---*/
+	
+	public static final int DEF_ID = 0x70514553;
+	private static final String DEFO_ENG_STR = "PlayStation 1 Sound SEQuence";
+	
+	private static SEQpDef stat_def;
+	
+	public static SEQpDef getDefinition(){
+		if(stat_def == null) stat_def = new SEQpDef();
+		return stat_def;
+	}
+	
+	public static class SEQpDef extends SoundSeqDef{
+
+		private String desc = DEFO_ENG_STR;
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(2);
+			list.add("seq"); list.add("seqp");
+			return list;
+		}
+
+		public String getDescription() {return desc;}
+		public int getTypeID() {return DEF_ID;}
+		public void setDescriptionString(String s) {desc = s;}
+		public String getDefaultExtension() {return "seq";}
+		public String toString(){return FileTypeDefinition.stringMe(this);}
+	}
+	
 	/*--- Test ---*/
 	
 	public static void main(String[] args) 
