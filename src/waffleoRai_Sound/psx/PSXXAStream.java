@@ -105,8 +105,12 @@ public class PSXXAStream {
 	public static final int DEF_ID_V = 0x11584162;
 	private static final String DEFO_ENG_STR_V = "eXtended Architecture Video Stream";
 	
+	public static final int DEF_ID_AV = 0x11584163;
+	private static final String DEFO_ENG_STR_AV = "eXtended Architecture Multimedia Stream";
+	
 	private static PSXXAAudioDef stat_def;
 	private static PSXXAVideoDef stat_def_v;
+	private static PSXXAMultimediaDef stat_def_av;
 	
 	public static class PSXXAAudioDef extends SoundFileDefinition{
 		
@@ -155,6 +159,28 @@ public class PSXXAStream {
 		
 	}
 	
+	public static class PSXXAMultimediaDef implements FileTypeDefinition{
+		
+		private String desc = DEFO_ENG_STR_AV;
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(2);
+			list.add("str");
+			list.add("xa");
+			return list;
+		}
+		
+		public String getDescription() {return desc;}
+		public FileClass getFileClass() {return FileClass.MOV_MOVIE;}
+
+		public int getTypeID() {return DEF_ID_AV;}
+		public void setDescriptionString(String s) {desc = s;}
+		public String getDefaultExtension() {return "str";}
+		
+		public String toString(){return FileTypeDefinition.stringMe(this);}
+		
+	}
+	
 	public static PSXXAAudioDef getAudioDefinition(){
 		if(stat_def == null) stat_def = new PSXXAAudioDef();
 		return stat_def;
@@ -163,6 +189,11 @@ public class PSXXAStream {
 	public static PSXXAVideoDef getVideoDefinition(){
 		if(stat_def_v == null) stat_def_v = new PSXXAVideoDef();
 		return stat_def_v;
+	}
+	
+	public static PSXXAMultimediaDef getMultimediaDefinition(){
+		if(stat_def_av == null) stat_def_av = new PSXXAMultimediaDef();
+		return stat_def_av;
 	}
 
 }

@@ -41,7 +41,7 @@ public class XADataStream {
 		flen = src.getFileSize();
 		source.setEndian(false);
 		
-		//System.err.println("Start: 0x" + Long.toHexString(stpos));
+		//System.err.println("XADataStream.<init> || Start: 0x" + Long.toHexString(stpos));
 		//sec = (int)(stpos/SEC_SIZE);
 	}
 	
@@ -120,8 +120,11 @@ public class XADataStream {
 		if(!nextSector()) return null;
 		
 		try {
-			if(copy) return src.createCopy(cpos, cpos+SEC_SIZE);
-			else return src.createReadOnlyCopy(cpos, cpos+SEC_SIZE);
+			FileBuffer sec = null;
+			if(copy){sec = src.createCopy(cpos, cpos+SEC_SIZE);}
+			else{sec = src.createReadOnlyCopy(cpos, cpos+SEC_SIZE);}
+			cpos += SEC_SIZE;
+			return sec;
 		} 
 		catch (IOException e) {
 				e.printStackTrace();
@@ -163,9 +166,17 @@ public class XADataStream {
 		for(int s = 0; s < secCount; s++){	
 			if(!nextSector()) return ct;
 			ct++;
+			cpos += SEC_SIZE;
 		}
 		
 		return ct;
+	}
+	
+	public boolean skipSector(){
+		if(done) return false;
+		if(!nextSector()) return false;
+		cpos += SEC_SIZE;
+		return true;
 	}
 	
 	public void dispose(){

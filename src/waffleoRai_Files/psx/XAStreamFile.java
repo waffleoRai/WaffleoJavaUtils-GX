@@ -145,6 +145,7 @@ public class XAStreamFile {
 		case PSXXAStream.STYPE_AUDIO: 
 			sec = a_channels[channel];
 			if(sec < 0) return null;
+			//System.err.println("XAStreamFile.openStream || Start Sector: " + sec);
 			start = (long)sec * (long)PSXXAStream.SEC_SIZE;
 			return new XADataStream(src.loadData(), start, type, channel);
 		case PSXXAStream.STYPE_DATA: 
@@ -157,5 +158,20 @@ public class XAStreamFile {
 		return null;
 	}
 	
+	public int streamSectorCount(int type, int channel){
+
+		try {
+			XADataStream str = openStream(type, channel);
+			if(str == null) return -1;
+			int ct = 0;
+			while(str.skipSector()) ct++;
+			return ct;
+		} 
+		catch (IOException e) {
+			e.printStackTrace();
+			return -1;
+		}
+		
+	}
 	
 }
