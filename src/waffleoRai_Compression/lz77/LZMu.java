@@ -455,12 +455,14 @@ public class LZMu {
 
 		public StreamWrapper decompress(StreamWrapper input) {
 			//Assumes this is a full file, so checks for size in first word
-			int dec_sz = -1;
+			int dec_sz = 0;
 			for(int i = 0; i < 4; i++){
 				int shamt = i << 3;
 				int b = input.getFull();
 				b = (b & 0xFF) << shamt;
 				dec_sz |= b;
+				//System.err.println("Dec Size: 0x" + Integer.toHexString(dec_sz));
+				//System.err.println("b: 0x" + Integer.toHexString(b));
 			}
 			
 			LZMu decer = new LZMu();

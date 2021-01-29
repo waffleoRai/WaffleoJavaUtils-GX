@@ -209,6 +209,7 @@ public class QXImage {
 	
 	public static QXImage readImageData(FileBuffer file, boolean tiled) throws IOException
 	{
+		file.setEndian(false);
 		long cpos = 0;
 		//I think the first two bytes are flags maybe????
 		//Or just version info???

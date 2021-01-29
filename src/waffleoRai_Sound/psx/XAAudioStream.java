@@ -8,13 +8,17 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioFormat.Encoding;
 import javax.sound.sampled.AudioInputStream;
 
+import waffleoRai_Files.Converter;
 import waffleoRai_Files.psx.XADataStream;
 import waffleoRai_Files.psx.XAStreamFile;
+import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Sound.BitDepth;
 import waffleoRai_Sound.Sound;
 import waffleoRai_SoundSynth.AudioSampleStream;
+import waffleoRai_SoundSynth.soundformats.WAVWriter;
 import waffleoRai_SoundSynth.soundformats.game.XAAudioSampleStream;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 public class XAAudioStream implements Sound{
 	
@@ -27,6 +31,7 @@ public class XAAudioStream implements Sound{
 	private boolean isStereo;
 	private int sampleRate;
 	private int total_frames;
+	private boolean bit8;
 	
 	private XAStreamFile src;
 	
@@ -87,6 +92,7 @@ public class XAAudioStream implements Sound{
 		boolean srflag = (flags & 0x4) != 0;
 		boolean stereoflag = (flags & 0x1) != 0;
 		boolean bit8flag = (flags & 0x10) != 0;
+		bit8 = bit8flag;
 		
 		if(srflag) sampleRate = 18900;
 		else sampleRate = 37800;
@@ -154,6 +160,8 @@ public class XAAudioStream implements Sound{
 	
 	public BitDepth getBitDepth() {return BitDepth.SIXTEEN_BIT_SIGNED;}
 
+	public int getSourceBitDepth(){return bit8?8:4;}
+	
 	public int getSampleRate() {return sampleRate;}
 
 	public boolean loops() {return false;}
@@ -295,6 +303,77 @@ public class XAAudioStream implements Sound{
 		return out;
 	}
 
+	/*--- Converters ---*/
 	
+	private static XAAudio2WAVConverter wavconv;
+	
+	public static Converter getWavConv(){
+		if(wavconv == null) wavconv = new XAAudio2WAVConverter();
+		return wavconv;
+	}
+	
+	public static class XAAudio2WAVConverter implements Converter{
+
+		private String from_desc = "eXtended Architecture Audio Stream";
+		private String to_desc = "RIFF Waveform File";
+		
+		public String getFromFormatDescription() {return from_desc;}
+		public String getToFormatDescription() {return to_desc;}
+
+		public void setFromFormatDescription(String s) {from_desc = s;}
+		public void setToFormatDescription(String s) {to_desc = s;}
+
+		public void writeAsTargetFormat(String inpath, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			FileNode dummy = new FileNode(null, inpath);
+			dummy.setSourcePath(inpath);
+			dummy.setLength(FileBuffer.fileSize(inpath));
+			writeAsTargetFormat(dummy, outpath);
+		}
+
+		public void writeAsTargetFormat(FileBuffer input, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			//Does nothing at the moment.
+			throw new UnsupportedFileTypeException("XAAudioStream.XAAudio2WAVConverter.writeAsTargetFormat "
+					+ "|| FileBuffer not read by XA Stream parser at this time.");
+		}
+
+		public void writeAsTargetFormat(FileNode node, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			PSXXAStream str = PSXXAStream.readStream(node);
+			
+			//Outpath is the prefix...
+			int fcount = str.countFiles();
+			for(int f = 0; f < fcount; f++){
+				XAStreamFile sfile = str.getFile(f);
+				if(!sfile.hasAudio()) continue;
+				int ach = sfile.countAudioChannels();
+				int ch = 0;
+				for(int j = 0; j < ach; j++){
+					while(!sfile.streamExists(PSXXAStream.STYPE_AUDIO, ch)) ch++;
+					String fulloutpath = outpath + "f" + String.format("%02d", f) + "_ch" + String.format("%02d", ch) + ".wav";
+					XAAudioStream astr = new XAAudioStream(sfile, ch);
+					AudioSampleStream sstr = astr.createSampleStream(false);
+					WAVWriter writer = new WAVWriter(sstr, fulloutpath);
+					try {
+						writer.write(astr.totalFrames());
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+					writer.complete();
+				}
+			}
+			
+		}
+
+		public String changeExtension(String path) {
+			if(path == null) return null;
+			int lastdot = path.lastIndexOf('.');
+			if(lastdot >= 0) path = path.substring(0, lastdot);
+			
+			return path + "_";
+		}
+		
+	}
 
 }

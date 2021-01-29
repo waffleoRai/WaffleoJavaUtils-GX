@@ -67,6 +67,20 @@ public class XAStreamFile {
 		
 	}
 	
+	public int getStartSector(){return st_sec;}
+	public int getEndSector(){return ed_sec;}
+	
+	public FileNode getAsFileNode(String name){
+		long stoff = (long)st_sec * (long)XADataStream.SEC_SIZE;
+		long edoff = (long)ed_sec * (long)XADataStream.SEC_SIZE;
+		
+		FileNode fn = src.getSubFile(stoff, edoff-stoff);
+		fn.setFileName(name);
+		fn.generateGUID();
+		
+		return fn;
+	}
+	
 	public boolean hasVideo(){
 		for(int i = 0; i < v_channels.length; i++){
 			if(v_channels[i] >= 0) return true;

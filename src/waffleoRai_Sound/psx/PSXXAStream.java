@@ -9,6 +9,7 @@ import java.util.List;
 import waffleoRai_Files.FileClass;
 import waffleoRai_Files.FileTypeDefinition;
 import waffleoRai_Files.psx.XAStreamFile;
+import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Sound.Sound;
 import waffleoRai_Sound.SoundFileDefinition;
@@ -93,6 +94,22 @@ public class PSXXAStream {
 	
 	public XAStreamFile getFile(int idx){return files.get(idx);}
 	
+	public DirectoryNode toDirectory(String name){
+		DirectoryNode dir = new DirectoryNode(null, name);
+		dir.generateGUID();
+		dir.setFileClass(FileClass.MOV_MULTIMEDIA_STR);
+		if(files == null || files.isEmpty()) return dir;
+		
+		int i = 0;
+		for(XAStreamFile sf : files){
+			String fname = name + "_" + String.format("%03d", i++) + ".str";
+			FileNode fn = sf.getAsFileNode(fname);
+			fn.setParent(dir);
+		}
+		
+		return dir;
+	}
+	
 	/*----- Setters -----*/
 	
 	/*----- Debug -----*/
@@ -108,9 +125,13 @@ public class PSXXAStream {
 	public static final int DEF_ID_AV = 0x11584163;
 	private static final String DEFO_ENG_STR_AV = "eXtended Architecture Multimedia Stream";
 	
+	public static final int DEF_ID_ARC = 0x11584164;
+	private static final String DEFO_ENG_STR_ARC = "eXtended Architecture Multimedia Stream";
+	
 	private static PSXXAAudioDef stat_def;
 	private static PSXXAVideoDef stat_def_v;
 	private static PSXXAMultimediaDef stat_def_av;
+	private static PSXXAMultiStreamDef stat_def_arc;
 	
 	public static class PSXXAAudioDef extends SoundFileDefinition{
 		
@@ -181,6 +202,28 @@ public class PSXXAStream {
 		
 	}
 	
+	public static class PSXXAMultiStreamDef implements FileTypeDefinition{
+		
+		private String desc = DEFO_ENG_STR_ARC;
+		
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(2);
+			list.add("str");
+			list.add("xa");
+			return list;
+		}
+		
+		public String getDescription() {return desc;}
+		public FileClass getFileClass() {return FileClass.MOV_MULTIMEDIA_STR;}
+
+		public int getTypeID() {return DEF_ID_ARC;}
+		public void setDescriptionString(String s) {desc = s;}
+		public String getDefaultExtension() {return "str";}
+		
+		public String toString(){return FileTypeDefinition.stringMe(this);}
+		
+	}
+	
 	public static PSXXAAudioDef getAudioDefinition(){
 		if(stat_def == null) stat_def = new PSXXAAudioDef();
 		return stat_def;
@@ -196,4 +239,10 @@ public class PSXXAStream {
 		return stat_def_av;
 	}
 
+	public static PSXXAMultiStreamDef getMultiStreamDefinition(){
+		if(stat_def_arc == null) stat_def_arc = new PSXXAMultiStreamDef();
+		return stat_def_arc;
+	}
+
+	
 }

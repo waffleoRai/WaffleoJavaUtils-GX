@@ -920,7 +920,7 @@ public class PSXVAB implements SynthBank{
 			Sustain sus = getSustain();
 			node.addMetadataEntry("Attack Time", getAttack().getTime() + " ms");
 			node.addMetadataEntry("Decay Time", getDecay().getTime() + " ms");
-			node.addMetadataEntry("Sustain Time", sus + " ms");
+			node.addMetadataEntry("Sustain Time", sus.getTime() + " ms");
 			node.addMetadataEntry("Release Time", getRelease().getTime() + " ms");
 			
 			if(Am) node.addMetadataEntry("Attack Mode", "Pseudo-Exponential");
@@ -1774,8 +1774,11 @@ public class PSXVAB implements SynthBank{
 		//Find one already linked...
 		FileNode vb = null;
 		vb = FileUtils.findPartnerNode(vh, FNMETAKEY_BODY_PATH, FNMETAKEY_BODY_ID);
-		
-		if(vb != null) return vb;
+
+		if(vb != null){
+			//System.err.println("VB node: " + vb.getFullPath());
+			return vb;
+		}
 		
 		//vb not linked. Look for a good candidate.
 		DirectoryNode parent = vh.getParent();
