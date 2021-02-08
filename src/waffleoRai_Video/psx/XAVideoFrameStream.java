@@ -73,7 +73,7 @@ public class XAVideoFrameStream implements VideoFrameStream{
 	public int getFrameCount() {return framecount;}
 	
 	public boolean done() {
-		return src.isDone();
+		return (nowsec == null && src.isDone());
 	}
 
 	public boolean rewindEnabled() {return true;}
@@ -137,19 +137,11 @@ public class XAVideoFrameStream implements VideoFrameStream{
 		return head;
 	}
 	
-	public BufferedImage getNextFrame() {
-		if(nowsec == null && src.isDone()) return null;
-		
-		//Get header info on frame
-		SectorHeader shead = readCurrentSectorHeader();
-		BufferedImage img = new BufferedImage(shead.fwidth, shead.fheight, BufferedImage.TYPE_INT_ARGB);
-		//System.err.println("XAVideoFrameStream.getNextFrame || --DEBUG-- CHECK 1");
-		
+	private void nextSecToTranslator(SectorHeader shead){
 		//Ready translator
 		translator.setFrameQuantScale(shead.quant_scale);
 		int remaining = shead.frame_bytes - 8; //Skip first two words.
 		long spos = 0x40;
-		//System.err.println("XAVideoFrameStream.getNextFrame || --DEBUG-- CHECK 2");
 		
 		while(remaining > 0){
 			if(spos >= SECDATA_END){
@@ -157,44 +149,53 @@ public class XAVideoFrameStream implements VideoFrameStream{
 				try {nowsec.dispose();} 
 				catch (IOException e) {e.printStackTrace();}
 				
-				if(src.isDone()) break;
+				if(src.isDone()){
+					System.err.println("XAVideoFrameStream.getNextFrame || --DEBUG-- Stream end reached - no new sectors");
+					nowsec = null;
+					break;
+				}
 				nowsec = src.nextSectorBuffer(false);
-				//shead = readCurrentSectorHeader();
 				spos = 0x38;
 			}
 			
 			int hw = Short.toUnsignedInt(nowsec.shortFromFile(spos)); 
 			spos += 2; remaining -= 2;
 			translator.feedHalfword(hw);
-			
-			//DEBUG
-			/*try {
-				if(os1 != null){
-					os1.write(hw & 0xFF);
-					os1.write((hw >>> 8) & 0xFF);
-				}
-			} 
-			catch (IOException e) {e.printStackTrace();}*/
 		}
-		//System.err.println("XAVideoFrameStream.getNextFrame || --DEBUG-- CHECK 3");
+	}
+	
+	private void forwardStream(SectorHeader shead){
+		int fno = shead.frame_no;
+		if(framecount < fno) framecount = fno;
+		while(shead.frame_no == fno){
+			try {nowsec.dispose();} 
+			catch (IOException e) {e.printStackTrace();}
+			
+			if(src.isDone()){
+				System.err.println("XAVideoFrameStream.getNextFrame || --DEBUG-- Stream end reached - no new frames/sectors");
+				nowsec = null;
+				break;
+			}
+			nowsec = src.nextSectorBuffer(false);
+			shead = readCurrentSectorHeader();
+		}
+	}
+	
+	public BufferedImage getNextFrame() {
+		if(nowsec == null && src.isDone()){
+			System.err.println("XAVideoFrameStream.getNextFrame || --DEBUG-- Stream end reached - no more frames to return");
+			return null;
+		}
+		
+		//Get header info on frame
+		SectorHeader shead = readCurrentSectorHeader();
+		BufferedImage img = new BufferedImage(shead.fwidth, shead.fheight, BufferedImage.TYPE_INT_ARGB);
+		nextSecToTranslator(shead);
 		
 		//Translate to MDEC codes
 		int codes = translator.processInputBuffer();
 		//System.err.println("XAVideoFrameStream.getNextFrame || --DEBUG-- MDEC Codes Generated: " + codes + "(0x" + Integer.toHexString(codes) + ")");
 		translator.flushInput();
-		
-		/*if(os2 != null){
-			try {
-				while(translator.outputWordsAvailable() > 0){
-					int w = translator.nextOutputWord();
-					os2.write(w & 0xFF);
-					os2.write((w >>> 8) & 0xFF);
-					//os2.write((w >>> 16) & 0xFF);
-					//os2.write((w >>> 24) & 0xFF);
-				}
-			} 
-			catch (IOException e) {e.printStackTrace();}
-		}*/
 		
 		//Decode
 		mdec.sendMacroblockInstruction(codes);
@@ -227,20 +228,120 @@ public class XAVideoFrameStream implements VideoFrameStream{
 		}
 		
 		//forward the stream to next frame
-		int fno = shead.frame_no;
-		if(framecount < fno) framecount = fno;
-		while(shead.frame_no == fno){
-			try {nowsec.dispose();} 
-			catch (IOException e) {e.printStackTrace();}
-			
-			if(src.isDone()) break;
-			nowsec = src.nextSectorBuffer(false);
-			shead = readCurrentSectorHeader();
-		}
+		forwardStream(shead);
 		
 		return img;
 	}
 
+	public byte[] getNextFrameData(){
+		//TODO
+		//Need to modify MDEC to output the raw YCbCr data
+		if(nowsec == null && src.isDone()){
+			System.err.println("XAVideoFrameStream.getNextFrameData || --DEBUG-- Stream end reached - no more frames to return");
+			return null;
+		}
+		
+		//Get header info on frame
+		SectorHeader shead = readCurrentSectorHeader();
+		nextSecToTranslator(shead);
+		
+		//Translate to MDEC codes
+		int codes = translator.processInputBuffer();
+		translator.flushInput();
+		
+		//Decode
+		mdec.setYUVOutput(true);
+		mdec.sendMacroblockInstruction(codes);
+		while(translator.outputWordsAvailable() > 0){
+			mdec.feedDataHalfword(translator.nextOutputWord());
+		}
+		mdec.executeNextInstruction();
+		
+		//Rearrange data for output
+		final int BYTES_PER_MB = 384;
+		int mb_rows = shead.fheight >>> 4;
+		int mb_cols = shead.fwidth >>> 4;
+		if(shead.fheight%16 != 0) mb_rows++;
+		if(shead.fwidth%16 != 0) mb_cols++;
+		int mbcount = mb_rows * mb_cols;
+		int total_bytes = mbcount * BYTES_PER_MB;
+		byte[] dest = new byte[total_bytes];
+		int y_plane_sz = mbcount << 8; //* 256
+		int c_plane_sz = y_plane_sz >>> 2; // /4
+		
+		int cb_off = y_plane_sz;
+		int cr_off = cb_off + c_plane_sz;
+		int w = mb_cols << 4;
+		int wc = mb_cols << 3;
+		
+		int xy = 0; int xc = 0; int yy = 0; int yc = 0;
+		for(int l = 0; l < mb_cols; l++){
+			for(int r = 0; r < mb_rows; r++){
+				//Per mb
+				int yoff = (yy * w) + xy; //Offsets in dest array relative to plane
+				int coff = (yc * wc) + xc;
+				int x = 0; int y = 0;
+				
+				//Cr (16 words, 64 pixels)
+				int base = cr_off + coff;
+				for(int i = 0; i < 16; i++){
+					int word = mdec.nextOutputWord();
+					int idx = base + (y*wc) + x + 3;
+					for(int xx = 3; xx >= 0; xx--){
+						byte b = (byte)(word & 0xff);
+						word = word >>> 8;
+						dest[idx--] = b;
+					}
+					x += 4;
+					if(x >= 8){y++; x = 0;}
+				}
+				
+				//Cb (16 words, 64 pixels)
+				x = 0; y = 0;
+				base = cb_off + coff;
+				for(int i = 0; i < 16; i++){
+					int word = mdec.nextOutputWord();
+					int idx = base + (y*wc) + x + 3;
+					for(int xx = 3; xx >= 0; xx--){
+						byte b = (byte)(word & 0xff);
+						word = word >>> 8;
+						dest[idx--] = b;
+					}
+					x += 4;
+					if(x >= 8){y++; x = 0;}
+				}
+				
+				//Y
+				base = yoff;
+				int yfact = w << 3;
+				int[] boffs = {0, 8, yfact, yfact + 8};
+				for(int j = 0; j < 4; j++){
+					x = 0; y = 0;
+					for(int i = 0; i < 16; i++){
+						int word = mdec.nextOutputWord();
+						int idx = base + boffs[j] + (y*w) + x + 3;
+						for(int xx = 3; xx >= 0; xx--){
+							byte b = (byte)(word & 0xff);
+							word = word >>> 8;
+							dest[idx--] = b;
+						}
+						x += 4;
+						if(x >= 8){y++; x = 0;}
+					}	
+				}
+				
+				
+				yy+=16; yc+=8;
+			}
+			xy+=16; xc+=8;
+			yy = 0; yc=0;
+		}
+		
+		mdec.setYUVOutput(false);
+		forwardStream(shead);
+		return dest;
+	}
+	
 	/*--- Debug ---*/
 	
 	//private static OutputStream os1;

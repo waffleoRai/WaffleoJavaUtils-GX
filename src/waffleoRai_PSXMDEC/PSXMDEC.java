@@ -43,6 +43,9 @@ public class PSXMDEC {
 	/*
 	 * Output from methods is 0BGR, buuuuttt each byte may be signed, so might need to be rescaled.
 	 */
+	private boolean output_yuv; //Outputs YUV data instead of RGB.
+	//As 4-byte BE words (MSB is first byte, LSB is fourth in cluster)
+	//Outputs blocks in MDEC order - 16 Cr words, 16 Cb, 16 Y1, 16 Y2, 16 Y3, 16 Y4
 	
 	private QuantMatrix qt_y;
 	private QuantMatrix qt_c;
@@ -86,7 +89,11 @@ public class PSXMDEC {
 		output_bitscale = !b;
 	}
 	
-	public boolean outputRGB(){return !output_bitscale;}
+	public boolean outputRGB(){return !output_bitscale && !output_yuv;}
+	
+	public void setYUVOutput(boolean b){output_yuv = b;}
+	
+	public boolean outputYUV(){return output_yuv;}
 	
 	/* ----- Execution ----- */
 	
@@ -313,6 +320,12 @@ public class PSXMDEC {
 		
 		//This has to neatly convert the data if <24 bits too.
 		mdecIO.signalMacroblockOutputQueueStart(outputDepthEnum, outputSigned, setBit15);
+		if(output_yuv){
+			//Just copy to output as is
+			for (int i = 0; i < block.length; i++) mdecIO.queueWordForOutput(block[i]);
+			mdecIO.signalMacroblockOutputQueueEnd();
+			return;
+		}
 		if(!output_bitscale){
 			//Rescale to Java friendly ARGB
 			//System.err.println("PSXMDEC.outputBlock || Java output");
@@ -516,6 +529,25 @@ public class PSXMDEC {
 		return Yblk;
 	}
 	
+	private int[] yuv_to_export(int[][] blocks){
+
+		int[] dest = new int[96];
+		int d = 0;
+		for(int b = 0; b < 6; b++){
+			int e = 0;
+			for(int i = 0; i < 16; i++){
+				int word = 0;
+				for(int j = 0; j < 4; j++){
+					word = word << 8;
+					word |= blocks[b][e++] & 0xff;
+				}
+				dest[d++] = word;
+			}
+		}
+		
+		return dest;
+	}
+	
 	public int[] decode_colored_macroblock(HalfwordStream src, boolean unsigned) throws InterruptedException, CommandEndException
 	{
 		//System.err.println("PSXMDEC.decode_colored_macroblock || Called!");
@@ -555,6 +587,11 @@ public class PSXMDEC {
 		printBlock(Y3, 8);
 		System.err.println("Y4");
 		printBlock(Y4, 8);*/
+		
+		if(output_yuv){
+			dest = yuv_to_export(new int[][]{Crblk, Cbblk, Y1, Y2, Y3, Y4});
+			return dest;
+		}
 		
 		//Combine Y pieces
 		//Convert to RGB

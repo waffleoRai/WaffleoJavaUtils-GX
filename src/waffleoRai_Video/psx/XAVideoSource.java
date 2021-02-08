@@ -8,6 +8,7 @@ import waffleoRai_Files.psx.XAStreamFile;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Video.IVideoSource;
 import waffleoRai_Video.VideoFrameStream;
+import waffleoRai_Video.VideoIO;
 
 public class XAVideoSource implements IVideoSource{
 	
@@ -107,6 +108,7 @@ public class XAVideoSource implements IVideoSource{
 
 	public double getFrameRate() {return 15.0;}
 	public int millisPerFrame() {return 67;}
+	public int getRawDataFormat(){return VideoIO.CLRFMT_YUV420;}
 	
 	/*--- Setters ---*/
 

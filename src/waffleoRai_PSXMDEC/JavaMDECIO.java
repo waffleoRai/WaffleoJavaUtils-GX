@@ -90,6 +90,8 @@ public class JavaMDECIO implements IMDECIO{
 	public void setDataOutputSigned(boolean b) {}
 	public void setDataOutputSet15(boolean b) {}
 	
+	public void setYUVOutput(boolean b){mdec.setYUVOutput(b);}
+	
 	/* ----- MDEC Control ----- */
 	
 	public void signalMacroblockOutputQueueStart(int bdEnum, boolean isSigned, boolean set15) {}
