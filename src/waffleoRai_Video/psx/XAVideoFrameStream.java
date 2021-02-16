@@ -1,7 +1,9 @@
 package waffleoRai_Video.psx;
 
 import java.awt.image.BufferedImage;
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 
 import javax.imageio.ImageIO;
@@ -37,10 +39,17 @@ public class XAVideoFrameStream implements VideoFrameStream{
 	private XA2MDECTranslator translator;
 	private JavaMDECIO mdec;
 	
+	private boolean dataout_16 = true; //Output data at 16 bits/pix, or saturate to 8
+	
 	/*--- Initialization ---*/
 	
 	public XAVideoFrameStream(XADataStream source){
+		this(source, true);
+	}
+	
+	public XAVideoFrameStream(XADataStream source, boolean data16){
 		//System.err.println("XAVideoFrameStream.<init> || Called!");
+		dataout_16 = data16;
 		src = source;
 		nowsec = src.nextSectorBuffer(false);
 		
@@ -79,6 +88,8 @@ public class XAVideoFrameStream implements VideoFrameStream{
 	public boolean rewindEnabled() {return true;}
 	
 	/*--- Setters ---*/
+	
+	public void setDataOutput(boolean bit16){dataout_16 = bit16;}
 	
 	public void setFrameCount(int count){
 		//fc_set = true;
@@ -233,8 +244,135 @@ public class XAVideoFrameStream implements VideoFrameStream{
 		return img;
 	}
 
+	private void readCData(byte[] dest, int poff, int mboff, int wc){
+		int x = 0; int y = 0;
+		
+		int base = poff + mboff;
+		//1 byte/pix
+		/*for(int i = 0; i < 16; i++){
+			int word = mdec.nextOutputWord();
+			int idx = base + (y*wc) + x + 3;
+			for(int xx = 3; xx >= 0; xx--){
+				byte b = (byte)(word & 0xff);
+				word = word >>> 8;
+				dest[idx--] = (byte)((int)b + 128);
+			}
+			x += 4;
+			if(x >= 8){y++; x = 0;}
+		}*/
+		
+		if(dataout_16){
+			//2 byte (signed)/pix
+			//Output is LE!
+			for(int i = 0; i < 32; i++){
+				int word = mdec.nextOutputWord();
+				//(y*wc) + x is the plane relative pixel index of this word.
+				int idx = ((y*wc) + x) << 1; //Bytes from plane start
+				idx += base + 3;
+				for(int xx = 1; xx >= 0; xx--){
+					int hw = word & 0xffff;
+					word = word >>> 16;
+					dest[idx--] = (byte)((hw >>> 8) & 0xff);
+					dest[idx--] = (byte)(hw & 0xff);
+				}
+				x += 2;
+				if(x >= 8){y++; x = 0;}
+			}
+		}
+		else{
+			//2 byte signed in/ 1 byte unsigned out
+			for(int i = 0; i < 32; i++){
+				int word = mdec.nextOutputWord();
+				//(y*wc) + x is the plane relative pixel index of this word.
+				int idx = base + (y*wc) + x + 1; //Bytes from plane start
+				for(int xx = 1; xx >= 0; xx--){
+					int hw = word & 0xffff;
+					word = word >>> 16;
+					
+					hw = hw << 16 >> 16; //Sign extend
+					hw += 128; //Unsign
+					hw = hw<0?0:hw; //Saturate
+					hw = hw>255?255:hw;
+					
+					dest[idx--] = (byte)(hw);
+				}
+				x += 2;
+				if(x >= 8){y++; x = 0;}
+			}
+		}
+
+	}
+	
+	private void readYData(byte[] dest, int mboff, int w){
+		int x = 0; int y = 0;
+				
+		int base = mboff;
+		int yfact = w << 3;
+		int[] boffs = {0, 8, yfact, yfact + 8};
+		
+		//1 byte/pix
+		/*for(int j = 0; j < 4; j++){
+			x = 0; y = 0;
+			for(int i = 0; i < 16; i++){
+				int word = mdec.nextOutputWord();
+				int idx = base + boffs[j] + (y*w) + x + 3;
+				for(int xx = 3; xx >= 0; xx--){
+					byte b = (byte)(word & 0xff);
+					word = word >>> 8;
+					dest[idx--] = b;
+					//dest[idx--] = (byte)((int)b + 128);
+				}
+				x += 4;
+				if(x >= 8){y++; x = 0;}
+			}	
+		}*/
+		
+		if(dataout_16){
+			//2 byte/pix (LE)
+			for(int j = 0; j < 4; j++){
+				x = 0; y = 0;
+				for(int i = 0; i < 32; i++){
+					int word = mdec.nextOutputWord();
+					int idx = (boffs[j] + (y*w) + x) << 1;
+					idx += base + 3;
+					for(int xx = 1; xx >= 0; xx--){
+						int hw = word & 0xffff;
+						word = word >>> 16;
+						dest[idx--] = (byte)((hw >>> 8) & 0xff);
+						dest[idx--] = (byte)(hw & 0xff);
+					}
+					x += 2;
+					if(x >= 8){y++; x = 0;}
+				}	
+			}	
+		}
+		else{
+			//2 byte signed in/ 1 byte unsigned out
+			for(int j = 0; j < 4; j++){
+				x = 0; y = 0;
+				for(int i = 0; i < 32; i++){
+					int word = mdec.nextOutputWord();
+					int idx = base + boffs[j] + (y*w) + x + 1;
+					for(int xx = 1; xx >= 0; xx--){
+						int hw = word & 0xffff;
+						word = word >>> 16;
+						
+						hw = hw << 16 >> 16; //Sign extend
+						hw += 128; //Unsign
+						hw = hw<0?0:hw; //Saturate
+						hw = hw>255?255:hw;
+						
+						dest[idx--] = (byte)(hw);
+					}
+					x += 2;
+					if(x >= 8){y++; x = 0;}
+				}	
+			}
+		}
+
+	}
+	
 	public byte[] getNextFrameData(){
-		//TODO
 		//Need to modify MDEC to output the raw YCbCr data
 		if(nowsec == null && src.isDone()){
 			System.err.println("XAVideoFrameStream.getNextFrameData || --DEBUG-- Stream end reached - no more frames to return");
@@ -258,7 +396,7 @@ public class XAVideoFrameStream implements VideoFrameStream{
 		mdec.executeNextInstruction();
 		
 		//Rearrange data for output
-		final int BYTES_PER_MB = 384;
+		final int BYTES_PER_MB = dataout_16?768:384;
 		int mb_rows = shead.fheight >>> 4;
 		int mb_cols = shead.fwidth >>> 4;
 		if(shead.fheight%16 != 0) mb_rows++;
@@ -269,8 +407,9 @@ public class XAVideoFrameStream implements VideoFrameStream{
 		int y_plane_sz = mbcount << 8; //* 256
 		int c_plane_sz = y_plane_sz >>> 2; // /4
 		
-		int cb_off = y_plane_sz;
-		int cr_off = cb_off + c_plane_sz;
+		int cb_off = dataout_16?(y_plane_sz << 1):y_plane_sz;
+		int cr_off = dataout_16?(c_plane_sz << 1):c_plane_sz;
+		cr_off += cb_off;
 		int w = mb_cols << 4;
 		int wc = mb_cols << 3;
 		
@@ -280,56 +419,16 @@ public class XAVideoFrameStream implements VideoFrameStream{
 				//Per mb
 				int yoff = (yy * w) + xy; //Offsets in dest array relative to plane
 				int coff = (yc * wc) + xc;
-				int x = 0; int y = 0;
+				if(dataout_16){yoff <<= 1; coff <<= 1;}
 				
-				//Cr (16 words, 64 pixels)
-				int base = cr_off + coff;
-				for(int i = 0; i < 16; i++){
-					int word = mdec.nextOutputWord();
-					int idx = base + (y*wc) + x + 3;
-					for(int xx = 3; xx >= 0; xx--){
-						byte b = (byte)(word & 0xff);
-						word = word >>> 8;
-						dest[idx--] = b;
-					}
-					x += 4;
-					if(x >= 8){y++; x = 0;}
-				}
+				//Cr (16(32) words, 64 pixels)
+				readCData(dest, cr_off, coff, wc);
 				
-				//Cb (16 words, 64 pixels)
-				x = 0; y = 0;
-				base = cb_off + coff;
-				for(int i = 0; i < 16; i++){
-					int word = mdec.nextOutputWord();
-					int idx = base + (y*wc) + x + 3;
-					for(int xx = 3; xx >= 0; xx--){
-						byte b = (byte)(word & 0xff);
-						word = word >>> 8;
-						dest[idx--] = b;
-					}
-					x += 4;
-					if(x >= 8){y++; x = 0;}
-				}
+				//Cb (16(32) words, 64 pixels)
+				readCData(dest, cb_off, coff, wc);
 				
 				//Y
-				base = yoff;
-				int yfact = w << 3;
-				int[] boffs = {0, 8, yfact, yfact + 8};
-				for(int j = 0; j < 4; j++){
-					x = 0; y = 0;
-					for(int i = 0; i < 16; i++){
-						int word = mdec.nextOutputWord();
-						int idx = base + boffs[j] + (y*w) + x + 3;
-						for(int xx = 3; xx >= 0; xx--){
-							byte b = (byte)(word & 0xff);
-							word = word >>> 8;
-							dest[idx--] = b;
-						}
-						x += 4;
-						if(x >= 8){y++; x = 0;}
-					}	
-				}
-				
+				readYData(dest, yoff, w);
 				
 				yy+=16; yc+=8;
 			}
@@ -350,6 +449,7 @@ public class XAVideoFrameStream implements VideoFrameStream{
 	public static void main(String[] args){
 		String infile = "C:\\Users\\Blythe\\Documents\\Game Stuff\\PSX\\GameData\\MewMew\\MOVIE.BIN";
 		String debug_dir = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\psxtest";
+		String yuvout = debug_dir + "\\yuv_test.bin";
 		//String file1 = debug_dir + "\\xa_in.bin"; //For translator input
 		//String file2 = debug_dir + "\\xa_out.bin"; //For translator output
 		
@@ -361,28 +461,94 @@ public class XAVideoFrameStream implements VideoFrameStream{
 
 			//XADataStream datstr = strfile.openStream(PSXXAStream.STYPE_DATA, 1);
 			XAVideoSource vidsrc = new XAVideoSource(strfile, 1);
+			vidsrc.setDataOutput(false);
 			XADataStream datstr = vidsrc.openDataStream();
 			
-			XAVideoFrameStream vstr = new XAVideoFrameStream(datstr);
+			XAVideoFrameStream vstr = new XAVideoFrameStream(datstr, false);
 			//os1 = new BufferedOutputStream(new FileOutputStream(file1));
 			//os2 = new BufferedOutputStream(new FileOutputStream(file2));
 			
-			//int frames = 15*60; //1 minute
-			int frames = 520; //Good sampling
+			int frames = 15*30; 
+			//int frames = 520; //Good sampling
 			String picdir = debug_dir + "\\video";
 			
-			for(int i = 0; i < frames; i++){
-				//os1 = new BufferedOutputStream(new FileOutputStream(picdir + "\\in\\f_" + String.format("%03d", i) + ".bin"));
-				//os2 = new BufferedOutputStream(new FileOutputStream(picdir + "\\out\\f_" + String.format("%03d", i) + ".bin"));
-				
-				String outpath = picdir + "\\f_" + String.format("%03d", i) + ".png";
-				BufferedImage f = vstr.getNextFrame();
-				ImageIO.write(f, "png", new File(outpath));
-				//break;
-				
-				//os1.close();
-				//os2.close();
+			int f = 0;
+			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(yuvout));
+			while(f < frames){
+				byte[] dat = vstr.getNextFrameData();
+				bos.write(dat);
+				if (f >= 0 && f <= 300){
+					int w = vstr.getFrameWidth();
+					int h = vstr.getFrameHeight();
+					int i = 0;
+					
+					String outpath = picdir + "\\Y\\f_" + String.format("%03d", f) + ".png";
+					BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+					for(int y = 0; y < h; y++){
+						for(int x = 0; x < w; x++){
+							int yval = Byte.toUnsignedInt(dat[i++]);
+							/*yval |= Byte.toUnsignedInt(dat[i++]) << 8;
+							yval = yval << 16 >> 16; //sign extend
+							yval += 128;
+							yval = yval<0?0:yval;
+							yval = yval>255?255:yval;*/
+							yval &= 0xff;
+							int argb = 0xff000000;
+							argb |= yval; yval <<= 8;
+							argb |= yval; yval <<= 8;
+							argb |= yval;
+							img.setRGB(x, y, argb);
+						}
+					}
+					ImageIO.write(img, "png", new File(outpath));
+					
+					outpath = picdir + "\\Cb\\f_" + String.format("%03d", f) + ".png";
+					img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+					for(int y = 0; y < h; y+=2){
+						for(int x = 0; x < w; x+=2){
+							int val = Byte.toUnsignedInt(dat[i++]);
+							/*val |= Byte.toUnsignedInt(dat[i++]) << 8;
+							val = val << 16 >> 16;
+							val += 128;
+							val = val<0?0:val;
+							val = val>255?255:val;*/
+							val &= 0xff;
+							int argb = 0xff000000;
+							argb |= val;
+							img.setRGB(x, y, argb);
+							img.setRGB(x+1, y, argb);
+							img.setRGB(x, y+1, argb);
+							img.setRGB(x+1, y+1, argb);
+						}
+					}
+					ImageIO.write(img, "png", new File(outpath));
+					
+					outpath = picdir + "\\Cr\\f_" + String.format("%03d", f) + ".png";
+					img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+					for(int y = 0; y < h; y+=2){
+						for(int x = 0; x < w; x+=2){
+							int val = Byte.toUnsignedInt(dat[i++]);
+							/*val |= Byte.toUnsignedInt(dat[i++]) << 8;
+							val = val << 16 >> 16;
+							val += 128;
+							val = val<0?0:val;
+							val = val>255?255:val;*/
+							val &= 0xff;
+							int argb = 0xff000000;
+							argb |= val << 16;
+							img.setRGB(x, y, argb);
+							img.setRGB(x+1, y, argb);
+							img.setRGB(x, y+1, argb);
+							img.setRGB(x+1, y+1, argb);
+						}
+					}
+					ImageIO.write(img, "png", new File(outpath));
+					
+				}
+				f++;
 			}
+			bos.close();
+			
 			
 			//os1.close();
 			//os2.close();

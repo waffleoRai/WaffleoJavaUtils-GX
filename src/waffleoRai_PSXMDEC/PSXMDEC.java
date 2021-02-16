@@ -531,15 +531,32 @@ public class PSXMDEC {
 	
 	private int[] yuv_to_export(int[][] blocks){
 
-		int[] dest = new int[96];
+		//Let's try 16-bits...
+		
+		//int[] dest = new int[96];
+		//int words_per_block = 16;
+		//int pix_per_word = 4;
+		
+		int[] dest = new int[192];
+		int words_per_block = 32;
+		int pix_per_word = 2;
+		
 		int d = 0;
 		for(int b = 0; b < 6; b++){
 			int e = 0;
-			for(int i = 0; i < 16; i++){
+			for(int i = 0; i < words_per_block; i++){
 				int word = 0;
-				for(int j = 0; j < 4; j++){
-					word = word << 8;
-					word |= blocks[b][e++] & 0xff;
+				for(int j = 0; j < pix_per_word; j++){
+					//Let's check for truncation...
+					//int m = blocks[b][e];
+					//int n = ((m & 0xff) << 24) >> 24;
+					//if(m != n) System.err.println("PSXMDEC.yuv_to_export || Truncation warning: value 0x" + Integer.toHexString(m));
+					
+					//word = word << 8;
+					//word |= (blocks[b][e++]) & 0xff;
+					
+					word = word << 16;
+					word |= (blocks[b][e++]) & 0xffff;
 				}
 				dest[d++] = word;
 			}

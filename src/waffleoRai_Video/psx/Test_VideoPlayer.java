@@ -58,7 +58,7 @@ public class Test_VideoPlayer {
         });*/
 		
 		//With audio
-		SwingUtilities.invokeLater(new Runnable() {
+		/*SwingUtilities.invokeLater(new Runnable() {
             public void run() {
             	
             	try{
@@ -92,7 +92,7 @@ public class Test_VideoPlayer {
         			System.exit(1);
         		}
             }
-        });
+        });*/
 
 	}
 

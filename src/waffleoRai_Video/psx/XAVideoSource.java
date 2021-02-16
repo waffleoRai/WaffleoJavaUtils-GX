@@ -30,6 +30,8 @@ public class XAVideoSource implements IVideoSource{
 	//Index for seek. Every 15 frames (1 sec)
 	private int[] index; //Sector of first frame of each second.
 	
+	private boolean dataout_16 = true;
+	
 	/*--- Initialization ---*/
 	
 	public XAVideoSource(XAStreamFile src, int src_channel) throws IOException{
@@ -108,10 +110,16 @@ public class XAVideoSource implements IVideoSource{
 
 	public double getFrameRate() {return 15.0;}
 	public int millisPerFrame() {return 67;}
-	public int getRawDataFormat(){return VideoIO.CLRFMT_YUV420;}
 	public int getRawDataColorspace(){return VideoIO.CLRSPACE_YUV_SD;}
 	
+	public int getRawDataFormat(){
+		if(dataout_16) return VideoIO.CLRFMT_YUV420_16LE;
+		return VideoIO.CLRFMT_YUV420;
+	}
+	
 	/*--- Setters ---*/
+	
+	public void setDataOutput(boolean bit16){dataout_16 = bit16;}
 
 	/*--- Stream ---*/
 	
@@ -128,7 +136,7 @@ public class XAVideoSource implements IVideoSource{
 
 	public VideoFrameStream openStream() throws IOException {
 		XADataStream datstr = openDataStream();
-		return new XAVideoFrameStream(datstr);
+		return new XAVideoFrameStream(datstr, dataout_16);
 	}
 
 	public VideoFrameStream openStreamAt(int min, int sec, int frame) throws IOException{
@@ -161,7 +169,7 @@ public class XAVideoSource implements IVideoSource{
 			f = fno;
 		}
 		
-		return new XAVideoFrameStream(datstr);
+		return new XAVideoFrameStream(datstr, dataout_16);
 	}
 
 	public VideoFrameStream openStreamAt(int frame) throws IOException{
