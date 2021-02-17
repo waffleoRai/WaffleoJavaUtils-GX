@@ -111,6 +111,7 @@ public class XAVideoSource implements IVideoSource{
 	public double getFrameRate() {return 15.0;}
 	public int millisPerFrame() {return 67;}
 	public int getRawDataColorspace(){return VideoIO.CLRSPACE_YUV_SD;}
+	public boolean rawOutputAnalogColor(){return false;}
 	
 	public int getRawDataFormat(){
 		if(dataout_16) return VideoIO.CLRFMT_YUV420_16LE;
