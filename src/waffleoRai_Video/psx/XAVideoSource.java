@@ -113,6 +113,13 @@ public class XAVideoSource implements IVideoSource{
 	public int getRawDataColorspace(){return VideoIO.CLRSPACE_YUV_SD;}
 	public boolean rawOutputAnalogColor(){return false;}
 	
+	public VideoIO.Rational getFrameRateRational(){
+		VideoIO.Rational fr = new VideoIO.Rational();
+		fr.numerator = 1;
+		fr.denominator = 15;
+		return fr;
+	}
+	
 	public int getRawDataFormat(){
 		if(dataout_16) return VideoIO.CLRFMT_YUV420_16LE;
 		return VideoIO.CLRFMT_YUV420;
