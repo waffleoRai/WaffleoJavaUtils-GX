@@ -14,6 +14,9 @@ import waffleoRai_Files.tree.FileNode;
 import waffleoRai_PSXMDEC.JavaMDECIO;
 import waffleoRai_PSXMDEC.PSXMDEC;
 import waffleoRai_Sound.psx.PSXXAStream;
+import waffleoRai_Sound.psx.XAAudioStream;
+import waffleoRai_SoundSynth.AudioSampleStream;
+import waffleoRai_SoundSynth.soundformats.WAVWriter;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Video.VideoFrameStream;
 
@@ -450,14 +453,26 @@ public class XAVideoFrameStream implements VideoFrameStream{
 		String infile = "C:\\Users\\Blythe\\Documents\\Game Stuff\\PSX\\GameData\\MewMew\\MOVIE.BIN";
 		String debug_dir = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\psxtest";
 		String yuvout = debug_dir + "\\yuv_test.bin";
+		String audout = debug_dir + "\\vid_test_aud.wav";
 		//String file1 = debug_dir + "\\xa_in.bin"; //For translator input
 		//String file2 = debug_dir + "\\xa_out.bin"; //For translator output
 		
 		try{
+			int seconds =30;
 			
 			//PSXXAStream fullstr = PSXXAStream.readStream(FileBuffer.createBuffer(infile, false));
 			PSXXAStream fullstr = PSXXAStream.readStream(FileNode.createFileNodeOf(infile));
 			XAStreamFile strfile = fullstr.getFile(0); //Should only be one.
+			
+			/*XAAudioStream audstr = new XAAudioStream(strfile, 1);
+			AudioSampleStream sstr = audstr.createSampleStream(false);
+			int aframes = seconds * (int)sstr.getSampleRate();
+			System.err.println("Audio sample rate: " + sstr.getSampleRate());
+			WAVWriter writer = new WAVWriter(sstr, audout);
+			writer.write(aframes);
+			writer.complete();*/
+			
+			//System.exit(2);
 
 			//XADataStream datstr = strfile.openStream(PSXXAStream.STYPE_DATA, 1);
 			XAVideoSource vidsrc = new XAVideoSource(strfile, 1);
@@ -468,9 +483,14 @@ public class XAVideoFrameStream implements VideoFrameStream{
 			//os1 = new BufferedOutputStream(new FileOutputStream(file1));
 			//os2 = new BufferedOutputStream(new FileOutputStream(file2));
 			
-			int frames = 15*30; 
+			int frames = 15*seconds; 
 			//int frames = 520; //Good sampling
 			String picdir = debug_dir + "\\video";
+			System.err.println("Width: " + vstr.getFrameWidth());
+			System.err.println("Height: "+ vstr.getFrameHeight());
+			System.err.println("Frame count: "+ frames);
+			
+			System.exit(2);
 			
 			int f = 0;
 			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(yuvout));
