@@ -166,4 +166,8 @@ public class SMDPlayer extends SequencePlayer{
 		super.sendNoteOffToListeners(ch_idx, note);
 	}
 
+	public void setChannelProgram(int ch_idx, int bank, int program){
+		programChange(ch_idx, program);
+	}
+	
 }

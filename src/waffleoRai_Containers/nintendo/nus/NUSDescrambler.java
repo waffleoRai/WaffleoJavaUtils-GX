@@ -127,6 +127,60 @@ public class NUSDescrambler {
 		}
 		
 	}
+	
+	public static class NUS_N64_2BE_ByteswapMethod implements DecryptorMethod{
+
+		@Override
+		public byte[] decrypt(byte[] input, long offval) {
+			//I think I'll just assume it's word-aligned eh.
+			//Only need to switch every other byte.
+			if(input == null) return null;
+			int hwords = input.length >>> 1;
+			byte[] out = new byte[hwords << 1];
+			int pos = 0;
+			for(int hw = 0; hw < hwords; hw++){
+				out[pos + 0] = input[pos + 1];
+				out[pos + 1] = input[pos + 0];
+				pos += 2;
+			}
+			
+			return out;
+		}
+
+		public void adjustOffsetBy(long value) {}
+		public int getInputBlockSize() {return 2;}
+		public int getOutputBlockSize() {return 2;}
+		public int getPreferredBufferSizeBlocks() {return 0x100;}
+
+		@Override
+		public long getOutputBlockOffset(long inputBlockOffset) {
+			return inputBlockOffset;
+		}
+
+		@Override
+		public long getInputBlockOffset(long outputBlockOffset) {
+			return outputBlockOffset;
+		}
+
+		@Override
+		public long getOutputCoordinate(long inputCoord) {
+			return inputCoord;
+		}
+
+		@Override
+		public long getInputCoordinate(long outputCoord) {
+			return outputCoord;
+		}
+
+		public int backbyteCount() {return 0;}
+		public void putBackbytes(byte[] dat) {}
+
+		@Override
+		public DecryptorMethod createCopy() {
+			return new NUS_N64_2BE_ByteswapMethod();
+		}
+		
+	}
 
 	public static class NUS_Z64_Byteswapper implements StaticDecryptor{
 
@@ -257,10 +311,73 @@ public class NUSDescrambler {
 		
 	}
 	
+	public static class NUS_N64_2BE_Byteswapper implements StaticDecryptor{
+
+		private List<String> tempfiles;
+		
+		@Override
+		public FileNode decrypt(FileNode node) {
+			if(node == null) return null;
+			if(tempfiles == null) tempfiles = new LinkedList<String>();
+			
+			try{
+				String tpath = FileBuffer.generateTemporaryPath("NUS_N64BE_Byteswapper");
+				FileBuffer dat = node.loadData();
+				FileNode outnode = new FileNode(null, node.getFileName() + "_z64");
+				outnode.setSourcePath(tpath); outnode.setOffset(0);
+				long len = dat.getFileSize();
+				outnode.setLength(len);
+				
+				int hwords = (int)(len >>> 1);
+				if((len % 2) != 0) hwords++;
+				
+				tempfiles.add(tpath);
+				BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(tpath));
+				byte[] buff = new byte[2];
+				dat.setCurrentPosition(0);
+				for(int w = 0; w < hwords; w++){
+					for(int j = 0; j < 2; j++){
+						if(dat.hasRemaining()) buff[j] = dat.nextByte();
+						else buff[j] = (byte)0;
+					}
+					bos.write(Byte.toUnsignedInt(buff[1]));
+					bos.write(Byte.toUnsignedInt(buff[0]));
+				}
+				bos.close();
+				return outnode;
+			}
+			catch(Exception e){
+				e.printStackTrace();
+				return null;
+			}
+		}
+
+		@Override
+		public DecryptorMethod generateDecryptor(FileNode node) {
+			return new NUS_N64_2BE_ByteswapMethod();
+		}
+
+		@Override
+		public void dispose() {
+			if(tempfiles != null){
+				try{
+					for(String s : tempfiles){
+						Files.deleteIfExists(Paths.get(s));
+					}	
+				}
+				catch(Exception ex){
+					ex.printStackTrace();
+				}
+			}
+			tempfiles = null;
+		}
+		
+	}
+	
 	public static class NUS_Z64_ByteswapDef implements EncryptionDefinition{
 
 		public static final int DEF_ID = 0xe4123782;
-		public static final String DEFO_ENG_DESC = "Nintendo 64 z64 Byte Swapper";
+		public static final String DEFO_ENG_DESC = "Nintendo 64 Word Byte Swapper";
 		
 		private String desc = DEFO_ENG_DESC;
 		
@@ -319,12 +436,46 @@ public class NUSDescrambler {
 		
 	}
 	
+	public static class NUS_N64_2BE_ByteswapDef implements EncryptionDefinition{
+
+		public static final int DEF_ID = 0xe4123784;
+		public static final String DEFO_ENG_DESC = "Nintendo 64 n64 Byte Swapper (BE Variant)";
+		
+		private String desc = DEFO_ENG_DESC;
+		
+		public int getID() {return DEF_ID;}
+		public String getDescription() {return desc;}
+		public void setDescription(String s) {desc = s;}
+
+		public void setStateValue(int key, int value) {}
+		public int getStateValue(int key) {return 0;}
+
+		@Override
+		public boolean decrypt(StreamWrapper input, OutputStream output, List<byte[]> keydata) {
+			// TODO Auto-generated method stub
+			return false;
+		}
+
+		@Override
+		public boolean encrypt(StreamWrapper input, OutputStream stream, List<byte[]> keydata) {
+			// TODO Auto-generated method stub
+			return false;
+		}
+
+		public int[] getExpectedKeydataSizes() {return null;}
+		public boolean unevenIOBlocks() {return false;}
+		
+	}
+	
 	public static void registerByteswapMethods(){
 		if(StaticDecryption.getDecryptorState(NUS_Z64_ByteswapDef.DEF_ID) == null){
 			StaticDecryption.setDecryptorState(NUS_Z64_ByteswapDef.DEF_ID, new NUS_Z64_Byteswapper());
 		}
 		if(StaticDecryption.getDecryptorState(NUS_N64_ByteswapDef.DEF_ID) == null){
 			StaticDecryption.setDecryptorState(NUS_N64_ByteswapDef.DEF_ID, new NUS_N64_Byteswapper());
+		}
+		if(StaticDecryption.getDecryptorState(NUS_N64_2BE_ByteswapDef.DEF_ID) == null){
+			StaticDecryption.setDecryptorState(NUS_N64_2BE_ByteswapDef.DEF_ID, new NUS_N64_2BE_Byteswapper());
 		}
 	}
 	

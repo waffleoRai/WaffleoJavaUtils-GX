@@ -190,6 +190,10 @@ public class NinSeqSynthPlayer extends SequencePlayer implements NinSeqPlayer{
 		super.channels[idx].tagMe(b, idx);
 	}
 	
+	public void setChannelProgram(int ch_idx, int bank, int program){
+		//TODO
+	}
+	
 	/*--- NinSeq Control ---*/
 	
 	//-- Play

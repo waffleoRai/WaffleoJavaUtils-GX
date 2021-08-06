@@ -59,6 +59,10 @@ public class ADPCMTable
 	
 	/*--- Setters ---*/
 	
+	public void reallocCoefficientTable(int alloc){
+		coeff = new int[alloc];
+	}
+	
 	public void setCoefficient(int index, int value){coeff[index] = value;}
 	public void setGain(int value){gain = value;}
 	public void setPS(int value){ps = value;}

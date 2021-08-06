@@ -1,5 +1,7 @@
 package waffleoRai_Compression.nintendo;
 
+import java.io.BufferedOutputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -9,6 +11,7 @@ import java.nio.file.Paths;
 import java.util.LinkedList;
 
 import waffleoRai_Compression.ArrayWindow;
+import waffleoRai_Compression.definitions.AbstractCompDef;
 import waffleoRai_Utils.ByteBufferStreamer;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileInputStreamer;
@@ -18,6 +21,8 @@ import waffleoRai_Utils.StreamWrapper;
 public class Yaz {
 	
 	/*--- Constants ---*/
+	
+	public static final int COMPDEF_ID = 0xb812dba0;
 	
 	public static final int MAGIC = 0x59617A30;
 	public static final String MAGIC_STR = "Yaz0";
@@ -457,6 +462,56 @@ public class Yaz {
 			Files.deleteIfExists(Paths.get(p));
 		}
 		tempfiles.clear();
+	}
+	
+	/*--- Definition ---*/
+	
+	private static CompDef_YazStd static_def;
+	
+	public static CompDef_YazStd getDefinition()
+	{
+		if(static_def != null) return static_def;
+		static_def = new CompDef_YazStd();
+		return static_def;
+	}
+	
+	public static class CompDef_YazStd extends AbstractCompDef{
+		
+		public static final String DEFO_ENG_STR = "Nintendo Yaz0/LZ77 Compression";
+		public static final String[] EXT_LIST = {"szs", "lz", "yaz"};
+
+		protected CompDef_YazStd() {
+			super(DEFO_ENG_STR);
+			for(String e : EXT_LIST) super.extensions.add(e);
+		}
+
+		@Override
+		public StreamWrapper decompress(StreamWrapper input) {
+			YazDecodeStream decstr = YazDecodeStream.getDecoderStream(input);
+			return new FileInputStreamer(decstr);
+		}
+
+		@Override
+		public String decompressToDiskBuffer(StreamWrapper input) {
+			try{
+				YazDecodeStream decstr = YazDecodeStream.getDecoderStream(input);
+				String tpath = FileBuffer.generateTemporaryPath("yaz_Decoder");
+				
+				BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(tpath));
+				
+				int b = 0;
+				while((b = decstr.read()) >= 0) bos.write(b);
+				bos.close();
+				return tpath;
+			}
+			catch(IOException ex){
+				ex.printStackTrace();
+				return null;
+			}
+		}
+
+		public int getDefinitionID() {return COMPDEF_ID;}
+		
 	}
 	
 }

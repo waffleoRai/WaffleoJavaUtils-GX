@@ -363,4 +363,8 @@ public class SeqpPlayer extends SequencePlayer{
 	public void setBankName(String s){bankName = s;}
 	public void setSequenceName(String s){seqName = s;}
 	
+	public void setChannelProgram(int ch_idx, int bank, int program){
+		//TODO
+	}
+	
 }

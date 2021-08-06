@@ -8,6 +8,7 @@ public class NUSSysDefs {
 	private static NUSHeaderDef hdr_def;
 	private static NUSBootCodeDef bootcode_def;
 	private static NUSGameDataDef gamedat_def;
+	private static NUSMIPSCodeDef gamecode_def;
 	
 	public static NUSHeaderDef getNUSHeaderDef(){
 		if(hdr_def == null) hdr_def = new NUSHeaderDef();
@@ -22,6 +23,11 @@ public class NUSSysDefs {
 	public static NUSGameDataDef getGameROMDef(){
 		if(gamedat_def == null) gamedat_def = new NUSGameDataDef();
 		return gamedat_def;
+	}
+	
+	public static NUSMIPSCodeDef getGameCodeDef(){
+		if(gamecode_def == null) gamecode_def = new NUSMIPSCodeDef();
+		return gamecode_def;
 	}
 	
 	public static class NUSHeaderDef extends GenericSystemDef{
@@ -57,6 +63,21 @@ public class NUSSysDefs {
 	
 		public NUSGameDataDef(){
 			super(DEFO_ENG_DESC, TYPE_ID);
+		}
+	
+	}
+	
+	public static class NUSMIPSCodeDef extends GenericSystemDef{
+		
+		private static String DEFO_ENG_DESC = "Nintendo 64 MIPS Code";
+		public static int TYPE_ID = 0x6448c572;
+	
+		public NUSMIPSCodeDef(){
+			super(DEFO_ENG_DESC, TYPE_ID);
+		}
+		
+		public FileClass getFileClass(){
+			return FileClass.CODELIB;
 		}
 	
 	}

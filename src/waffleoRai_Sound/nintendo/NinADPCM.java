@@ -2,7 +2,7 @@ package waffleoRai_Sound.nintendo;
 
 public class NinADPCM {
 	
-private ADPCMTable init_table;
+	private ADPCMTable init_table;
 	
 	private int nowps;
 	private int olderSample;

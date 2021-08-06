@@ -66,6 +66,14 @@ public class YazDecodeStream extends InputStream{
 		return str;
 	}
 	
+	public static YazDecodeStream getDecoderStream(StreamWrapper source)
+	{
+		YazDecodeStream str = new YazDecodeStream();
+		str.src = source;
+		
+		return str;
+	}
+	
 	/*--- Yaz File Format ---*/
 	
 	public void setHeaderCheck(boolean b)
@@ -239,8 +247,7 @@ public class YazDecodeStream extends InputStream{
 	}
 	
 	@Override
-	public int available() 
-	{
+	public int available() {
 		return buffer.size();
 	}
 	
