@@ -80,6 +80,12 @@ public enum NUSALSeqCmdType {
 	CH_UNK_DA(0xda, 1),
 	CH_UNK_E0(0xe0, 1),
 	
+	//Conversion Only
+	PSEUDO_MIDILIKE_NOTE(0x00, 4) //Holds all NTVG. 
+	/*These are used initially for conversion TO an AL seq then during additional optimization
+	 * converted to the actualy AL seq commands (with transposition if needed)
+	*/
+	
 	;
 	
 	private byte base_cmd;
