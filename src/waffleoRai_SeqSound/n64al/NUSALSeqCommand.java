@@ -27,6 +27,8 @@ public abstract class NUSALSeqCommand {
 	
 	public NUSALSeqCmdType getCommand(){return command;}
 	public byte getCommandByte(){return cmdbyte;}
+	protected void setCommand(NUSALSeqCmdType cmd){command = cmd;}
+	protected void setCommandByte(byte b){cmdbyte = b;}
 	
 	public boolean seqUsed(){return seq_ctx;}
 	public void flagSeqUsed(){seq_ctx = true;}

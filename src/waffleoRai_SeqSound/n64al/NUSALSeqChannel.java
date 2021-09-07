@@ -145,7 +145,8 @@ public class NUSALSeqChannel {
 		eff = val;
 		if(target != null){
 			//NRPN
-			target.addNRPNEvent(ch_idx, NUSALSeq.EFFECT_ID_REVERB, (int)val, true);
+			//target.addNRPNEvent(ch_idx, NUSALSeq.EFFECT_ID_REVERB, (int)val, true);
+			target.setEffect1(ch_idx, val);
 		}
 	}
 	

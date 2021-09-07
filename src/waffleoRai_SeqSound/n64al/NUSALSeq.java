@@ -33,6 +33,8 @@ public class NUSALSeq implements WriterPrintable{
 	public static final int EFFECT_ID_VIBRATO = 2;
 	
 	public static final int MIDI_NRPN_ID_REVERB = 0x06d4;
+	public static final int MIDI_NRPN_ID_VIBRATO = 0x06d8;
+	public static final int MIDI_NRPN_ID_PRIORITY = 0x06e9;
 	public static final int MIDI_NRPN_ID_LOOPSTART = 0x06f8;
 	public static final int MIDI_NRPN_ID_LOOPEND = 0x06f7;
 	//Write vibrato to the mod wheel
@@ -428,6 +430,16 @@ public class NUSALSeq implements WriterPrintable{
 		MIDI mid = new MIDI(seq);
 		
 		return mid;
+	}
+	
+	/*----- Exceptions -----*/
+	
+	public static class TooManyVoicesException extends RuntimeException{
+		private static final long serialVersionUID = 4940386212055346600L;
+		
+		public TooManyVoicesException(String msg){
+			super(msg);
+		}
 	}
 	
 	/*--- Type Definition ---*/
