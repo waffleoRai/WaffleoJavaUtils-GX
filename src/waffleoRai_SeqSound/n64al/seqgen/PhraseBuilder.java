@@ -1,5 +1,15 @@
 package waffleoRai_SeqSound.n64al.seqgen;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -25,15 +35,21 @@ public class PhraseBuilder {
 	
 	private int min_time; //Min ticks to create phrase
 	private int min_events; //Min events to create phrase
+	private int max_rest;
 	
 	//Phrases cannot straddle these!
-	private int loop_start;
-	private int loop_end;
+	private Set<Integer> seg_times;
+	private boolean seg_remove_all; 
+	//If a phrase sits on a segment border, remove the phrase altogether. 
+	// Otherwise, only remove instances of the phrase where it bridges a border
+	
+	private Writer log_stream;
 	
 	//Temporary
 	private NoteMap chdat;
 	private Map<Integer, NUSALSeqBuilderNote[]> nowmap;
-	private int[][] event_tbl; //[n][0] is tick value, [n][1] is active voices, [n][2] is event count
+	private int[][] event_tbl; 
+	//[n][0] is tick value, [n][1] is active voices, [n][2] is event count
 	
 	/*----- Inner Classes -----*/
 	
@@ -125,6 +141,7 @@ public class PhraseBuilder {
 	/*----- Init -----*/
 	
  	public PhraseBuilder(){
+ 		seg_times = new TreeSet<Integer>();
 		resetDefaults();
 	}
 	
@@ -135,6 +152,9 @@ public class PhraseBuilder {
 		min_time = 48;
 		min_events = 4;
 		optimization = OPT_LEVEL_1;
+		seg_times.clear();
+		seg_remove_all = false;
+		max_rest = 127;
 	}
 	
 	/*----- Getters -----*/
@@ -145,6 +165,14 @@ public class PhraseBuilder {
 	public int getOptimizationLevel(){return optimization;}
 	public int getPhraseMinTime(){return min_time;}
 	public int getPhraseMinEvents(){return min_events;}
+	public int getMaxRestTime(){return max_rest;}
+	
+	public List<Integer> getBoundaryTimes(){
+		List<Integer> list = new ArrayList<Integer>(seg_times.size()+1);
+		list.addAll(seg_times);
+		Collections.sort(list);
+		return list;
+	}
 	
 	/*----- Setters -----*/
 	
@@ -153,8 +181,12 @@ public class PhraseBuilder {
 	public void setVoiceMatchMode(boolean onevoice){one_voice_match = onevoice;}
 	public void setPhraseMinTime(int ticks){min_time = ticks;}
 	public void setPhraseMinEvents(int events){min_events = events;}
-	public void setLoopStart(int ticks){loop_start = ticks;}
-	public void setLoopEnd(int ticks){loop_end = ticks;}
+	//public void setLoopStart(int ticks){loop_start = ticks;}
+	//public void setLoopEnd(int ticks){loop_end = ticks;}
+	public void addSegmentBorder(int tick){seg_times.add(tick);}
+	public void clearSegmentBorders(){seg_times.clear();}
+	public void setIgnoreAllPhraseInstancesOnBorders(boolean on){seg_remove_all = on;}
+	public void setMaxRestTime(int ticks){max_rest = ticks;}
 	
 	public void setOptimizationLevel(int lvl){
 		if(lvl < 0) lvl = 0;
@@ -162,9 +194,77 @@ public class PhraseBuilder {
 		optimization = lvl;
 	}
 	
+	/*----- Logging -----*/
+	
+	public Writer getLogWriter(){return log_stream;}
+	public void setLogWriter(Writer writer){log_stream = writer;}
+	
+	public void setLogStream(OutputStream stream){
+		log_stream = new BufferedWriter(new OutputStreamWriter(stream));
+	}
+	
+	public void openLogWriter(String path) throws IOException{
+		log_stream = new BufferedWriter(new FileWriter(path));
+	}
+	
+	public void closeLogWriter() throws IOException {
+		if(log_stream != null) log_stream.close(); 
+		log_stream = null;
+	}
+	
+	protected void writeLogLine(String message){
+		writeLogLine(null, message, false);
+	}
+	
+	protected void writeLogLine(String method_name, String message, boolean timestamp){
+		if(log_stream == null) return;
+		try{
+			if(timestamp){
+				ZonedDateTime time = ZonedDateTime.now();
+				log_stream.write("[");
+				log_stream.write(time.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME).replace("T", " "));
+				log_stream.write("] ");
+			}
+			if(method_name != null){
+				log_stream.write(this.getClass().getName());
+				log_stream.write(".");
+				log_stream.write(method_name);
+				log_stream.write(" || ");
+			}
+		
+			log_stream.write(message);
+			log_stream.write("\n");
+		}
+		catch(IOException ex){
+			System.err.println("Log write failed. Message: " + message);
+			ex.printStackTrace();
+		}
+	}
+	
+	public void writeSettingsToLog(){
+		if(log_stream == null) return;
+		writeLogLine(null, "Settings for PhraseBuilder " + this.toString(), true);
+		writeLogLine("\tOptimization Level: " + this.optimization);
+		writeLogLine("\tNote Match Time Leeway: " + this.time_leeway + " ticks");
+		writeLogLine("\tNote Match Velocity Leeway: " + this.vel_leeway);
+		if(one_voice_match) writeLogLine("\tVoice Match Mode: OR");
+		else writeLogLine("\tVoice Match Mode: AND");
+		writeLogLine("\tPhrase Minimum Time: " + this.min_time + " ticks");
+		writeLogLine("\tPhrase Minimum Size: " + this.min_events + " events");
+		writeLogLine("\tPhrase Maximum Rest: " + this.max_rest + " ticks");
+		writeLogLine("\tConsider Phrases w/ Boundary-Cross Instance: " + !this.seg_remove_all);
+		writeLogLine("\tSegment Boundary Times:");
+		for(Integer n : seg_times) writeLogLine("\t\t" + n);
+	}
+	
 	/*----- Compression Functions -----*/
 	
+	//	--> State Setting
+	
 	private void buildEventTable(NoteMap notemap){
+		final String method_name = "buildEventTable";
+		writeLogLine(method_name, "Analyzing input events...", true);
+		
 		chdat = notemap;
 		nowmap = new TreeMap<Integer, NUSALSeqBuilderNote[]>();
 		int[] times = notemap.getTimeCoords();
@@ -173,6 +273,7 @@ public class PhraseBuilder {
 		event_tbl = new int[ecount][3];
 		for(int i = 0; i < ecount; i++) event_tbl[i][0] = times[i];
 		
+		int ch_end = 0;
 		for(int i = 0; i < ecount; i++){
 			int tick = event_tbl[i][0];
 			
@@ -183,12 +284,31 @@ public class PhraseBuilder {
 			for(NUSALSeqBuilderNote n : arr){
 				//Add this voice to all subsequent note on ticks it covers
 				int end_tick = n.getLengthInTicks() + tick;
+				if(end_tick > ch_end) ch_end = end_tick;
 				for(int j = i; j < ecount; j++){
 					if(event_tbl[j][0] >= end_tick) break;
 					event_tbl[j][1]++;
 				}
 			}
 		}
+		
+		if(log_stream != null){
+			try{
+				int evs = 0;
+				int maxvox = 0;
+				int timecount = event_tbl.length;
+				for(int i = 0; i < timecount; i++){
+					evs += event_tbl[i][2];
+					if(event_tbl[i][1] > maxvox) maxvox = event_tbl[i][1];
+				}
+				
+				log_stream.write("Found " + evs + " note events called from " + timecount + " time points\n");
+				log_stream.write("Total time: " + ch_end + " ticks\n");
+				log_stream.write("Max Simultaneous Voices: " + maxvox + "\n");
+			}
+			catch(IOException ex){ex.printStackTrace();}
+		}
+		
 	}
 	
 	private void clearBuilderTables(){
@@ -197,6 +317,8 @@ public class PhraseBuilder {
 		if(chdat != null) chdat.clearPhraseAnnotations();
 		chdat = null;
 	}
+	
+	//	--> Common Utility
 	
 	private int findScanStartIndex(int idx){
 		int mintick = event_tbl[idx][0] + min_time;
@@ -210,62 +332,70 @@ public class PhraseBuilder {
 		return -1;
 	}
 	
-	protected boolean groupsMatch(NUSALSeqBuilderNote[] group1, NUSALSeqBuilderNote[] group2){
-		if(group1 == null || group2 == null) return false;
-		if(!one_voice_match){
-			if(group1.length != group2.length) return false;
-			for(int j = 0; j < group1.length; j++){
-				if(!group1[j].equals(group2[j])){
-					//Check if close.
-					//If not, return false
-					if(group1[j].getNote() != group2[j].getNote()) return false;
-					byte v1 = group1[j].getVelocity();
+	private boolean groupsMatch_voxAND(NUSALSeqBuilderNote[] group1, NUSALSeqBuilderNote[] group2){
+		if(group1.length != group2.length) return false;
+		for(int j = 0; j < group1.length; j++){
+			if(!group1[j].equals(group2[j])){
+				//Check if close.
+				//If not, return false
+				if(group1[j].getNote() != group2[j].getNote()) return false;
+				byte v1 = group1[j].getVelocity();
+				byte v2 = group2[j].getVelocity();
+				if(v1 > v2){
+					byte temp = v1;
+					v1 = v2; v2 = temp;
+				}
+				if(v2 > (v1 + vel_leeway)) return false;
+				int t1 = group1[j].getLengthInTicks();
+				int t2 = group2[j].getLengthInTicks();
+				if(t1 > t2){
+					int temp = t1;
+					t1 = t2; t2 = temp;
+				}
+				if(t2 > (t1 + time_leeway)) return false;
+			}
+		}
+		return false;
+	}
+	
+	private boolean groupsMatch_voxOR(NUSALSeqBuilderNote[] group1, NUSALSeqBuilderNote[] group2){
+		for(int i = 0; i < group1.length; i++){
+			//Look for a common note in group 2
+			for(int j = 0; j < group2.length; j++){
+				if(group1[i].equals(group2[j])) return true;
+				//See if similar enough
+				if(group1[i].getNote() == group2[j].getNote()){
+					byte v1 = group1[i].getVelocity();
 					byte v2 = group2[j].getVelocity();
 					if(v1 > v2){
 						byte temp = v1;
 						v1 = v2; v2 = temp;
 					}
-					if(v2 > (v1 + vel_leeway)) return false;
-					int t1 = group1[j].getLengthInTicks();
+					if(v2 > (v1 + vel_leeway)) continue; //Try next note.
+					
+					int t1 = group1[i].getLengthInTicks();
 					int t2 = group2[j].getLengthInTicks();
 					if(t1 > t2){
 						int temp = t1;
 						t1 = t2; t2 = temp;
 					}
-					if(t2 > (t1 + time_leeway)) return false;
-				}
-			}
-			return true;
-		}
-		else{
-			//Only one voice needs to be in common.
-			for(int i = 0; i < group1.length; i++){
-				//Look for a common note in group 2
-				for(int j = 0; j < group2.length; j++){
-					if(group1[i].equals(group2[j])) return true;
-					//See if similar enough
-					if(group1[i].getNote() == group2[j].getNote()){
-						byte v1 = group1[i].getVelocity();
-						byte v2 = group2[j].getVelocity();
-						if(v1 > v2){
-							byte temp = v1;
-							v1 = v2; v2 = temp;
-						}
-						if(v2 > (v1 + vel_leeway)) continue; //Try next note.
-						
-						int t1 = group1[i].getLengthInTicks();
-						int t2 = group2[j].getLengthInTicks();
-						if(t1 > t2){
-							int temp = t1;
-							t1 = t2; t2 = temp;
-						}
-						if(t2 > (t1 + time_leeway)) continue;
-						return true;
-					}
+					if(t2 > (t1 + time_leeway)) continue;
+					return true;
 				}
 			}
 		}
 		return false;
+	}
+	
+	protected boolean groupsMatch(NUSALSeqBuilderNote[] group1, NUSALSeqBuilderNote[] group2){
+		if(group1 == null || group2 == null) return false;
+		if(!one_voice_match){
+			return groupsMatch_voxAND(group1, group2);
+		}
+		else{
+			//Only one voice needs to be in common.
+			return groupsMatch_voxOR(group1, group2);
+		}
 	}
 	
 	protected void addCommonToPhrase(int coord, NUSALSeqBuilderNote[] group1, NUSALSeqBuilderNote[] group2, NUSALSeqBuilderPhrase phrase){
@@ -297,138 +427,236 @@ public class PhraseBuilder {
 		
 	}
 	
-	protected void findPhrase(NUSALSeqBuilderPhrase phrase, boolean flagNotes){
-		//Finds the phrase in the channel and annotates it with start points
-		int[] no_coords = phrase.getNoteonCoords();
-		if(no_coords == null) return;
-		if(!one_voice_match){
-			//Perfect matches
-			for(int i = 0; i < event_tbl.length; i++){
-				int sttick = event_tbl[i][0];
-				boolean match = true;
-				for(int j = 0; j < no_coords.length; j++){
-					if(i+j >= event_tbl.length){match = false; break;}
-					
-					int t1 = event_tbl[i+j][0];
-					
-					int d1 = t1 - sttick;
-					int d2 = no_coords[j];
-					int dd = Math.abs(d1 - d2);
-					if(dd > time_leeway){match = false; break;}
-					
-					NUSALSeqBuilderNote[] group1 = nowmap.get(t1);
-					NUSALSeqBuilderNote[] group2 = phrase.getNotesAt(d2);
-					
-					if(!groupsMatch(group1, group2)){match = false; break;}
-					else{
-						//Mark!
-						if(flagNotes){
-							for(NUSALSeqBuilderNote n : group1) n.linkPhrase(phrase, false);
-							if(j == 0){
-								group1[0].flagFirstInPhrase(true);
-							}
-						}
-					}
-				}
-				if(match){
-					phrase.addStartCoord(sttick);
-				}
-			}
-		}
-		else{
-			for(int e = 0; e < event_tbl.length; e++){
-				int sttick = event_tbl[e][0];
-				
-				//Check 0-0 match
-				NUSALSeqBuilderNote[] group1 = nowmap.get(sttick);
-				NUSALSeqBuilderNote[] group2 = phrase.getNotesAt(0);
-				if(!groupsMatch(group1, group2)) continue;
-				if(flagNotes){
-					boolean first = true;
-					for(NUSALSeqBuilderNote n : group1){
-						for(NUSALSeqBuilderNote ref : group2){
-							if(ref.equals(n)){
-								n.linkPhrase(phrase, first);
-								first = false;
-								break;
-							}
-						}
-					}
-				}
-				
-				int i = 1; int j = 1;
-				int mcount = 0;
-				while(j < no_coords.length){
-					if(e+i >= event_tbl.length) break;
-					//Check times at i and j
-					//Try to line up start times by tweaking i and j.
-					int ti = event_tbl[e+i][0];
-					int tj = no_coords[j];
-					
-					int di = ti - sttick;
-					int dj = tj;
-					int dd = Math.abs(di - dj);
-					if(dd > time_leeway){
-						//These events are too far apart.
-						//Move up i or j (whichever is behind in time)
-						if(di < dj) i++;
-						else if(dj < di) j++;
-						continue;
-					}
-					
-					//Try to compare these groups.
-					group1 = nowmap.get(ti);
-					group2 = phrase.getNotesAt(tj);
-					
-					if(groupsMatch(group1, group2)){
-						mcount++;
-						i++; j++;
-						
-						if(flagNotes){
-							//Mark common notes.
-							for(NUSALSeqBuilderNote n : group1){
-								for(NUSALSeqBuilderNote ref : group2){
-									if(ref.equals(n)){
-										n.linkPhrase(phrase, false);
-										break;
-									}
-								}
-							}
-						}
-					}
-					else{
-						//Increment only the lagging one.
-						if(di < dj) i++;
-						else if(dj < di) j++;
-					}
-					
-				}
-				
-				if(mcount == no_coords.length){
-					//Match.
-					phrase.addStartCoord(sttick);
-				}
-			}
-		}
-	}
-
-	protected boolean phraseClearsLoop(NUSALSeqBuilderPhrase phrase){
-		if(loop_start < 0 && loop_end < 0) return true;
-		findPhrase(phrase, false);
+	protected boolean phraseClearsBorders(NUSALSeqBuilderPhrase phrase){
+		if(seg_times.isEmpty()) return true;
+		if(!phrase.hasAnnotatedCoordinates()) findPhrase(phrase, false, false);
 		int[] starts = phrase.getPhraseCoords();
 		if(starts == null) return true;
 		int plen = phrase.getLengthInTicks();
 		for(int i = 0; i < starts.length; i++){
 			int st = starts[i];
 			int ed = st + plen;
-			if(loop_start > st && loop_start < ed) return false;
-			if(loop_end > st && loop_end < ed) return false;
+			for(Integer border : seg_times){
+				if(border > st && border < ed) return false;
+			}
 		}
 		return true;
 	}
 	
-	protected List<NUSALSeqBuilderPhrase> getPhrasesAt(int ontick_idx, boolean breakAtOne){
-		if(ontick_idx < 0 || ontick_idx > event_tbl.length) return null;
+	//	--> Find Phrase Instances
+	
+	private void findPhrase_voxAND(NUSALSeqBuilderPhrase phrase, boolean flagNotes, boolean removeBoundaryConflicts){
+		
+		//Get the phrase-relative note group coordinates
+		int[] no_coords = phrase.getNoteonCoords();
+		if(no_coords == null) return;
+		
+		//If we need to flag the notes, we have to re-find them anyway.
+		if(flagNotes) phrase.clearStartCoords();
+		
+		//Allocate some variables for use in loop
+		NUSALSeqBuilderNote first_note = null;
+		List<NUSALSeqBuilderNote> flag_notes = new LinkedList<NUSALSeqBuilderNote>();
+		
+		//There's an extra check for this, but no point in going past the point where there isn't enough room left for phrase
+		int max_start_idx = event_tbl.length - no_coords.length + 1;
+		for(int i = 0; i < max_start_idx; i++){
+			//For each event group in examining channel
+			
+			int sttick = event_tbl[i][0];
+			boolean match = true;
+			
+			//Refresh flag queue
+			if(flagNotes){
+				first_note = null;
+				flag_notes.clear();
+			}
+			
+			//Scan j event groups forward from i up to length of phrase or end of channel
+			for(int j = 0; j < no_coords.length; j++){
+				int e = i+j;
+				if(e >= event_tbl.length){match = false; break;} //No match if hit end of channel before match full phrase
+				
+				int t1 = event_tbl[e][0];
+				
+				//Check that starting points of notes relative to phrase start are close enough
+				int d1 = t1 - sttick;
+				int d2 = no_coords[j];
+				int dd = Math.abs(d1 - d2);
+				if(dd > time_leeway){match = false; break;}
+				
+				//Compare groups
+				NUSALSeqBuilderNote[] group1 = nowmap.get(t1);
+				NUSALSeqBuilderNote[] group2 = phrase.getNotesAt(d2);
+				
+				if(!groupsMatch(group1, group2)){match = false; break;}
+				else{
+					//Check for borders...
+					if(removeBoundaryConflicts){
+						for(Integer border : seg_times){
+							if(border <= sttick) continue;
+							if(border >= t1){match = false; break;}
+						}
+						if(!match)break;	
+					}
+					
+					//Queue for flagging if phrase match occurs.
+					if(flagNotes){
+						for(NUSALSeqBuilderNote n : group1) flag_notes.add(n);
+						if(j == 0) first_note = group1[0];
+					}
+				}
+			}
+			
+			//It's passed. There is a valid phrase instance here.
+			if(match){
+				phrase.addStartCoord(sttick);
+				
+				//Properly flag the notes
+				if(flagNotes){
+					for(NUSALSeqBuilderNote note: flag_notes) note.linkPhrase(phrase, false);
+					first_note.flagFirstInPhrase(true);
+				}
+			}
+		}
+	}
+	
+	private void findPhrase_voxOR(NUSALSeqBuilderPhrase phrase, boolean flagNotes, boolean removeBoundaryConflicts){
+		
+		//Get the phrase-relative note group coordinates
+		int[] no_coords = phrase.getNoteonCoords();
+		if(no_coords == null) return;
+		
+		//If we need to flag the notes, we have to re-find them anyway.
+		if(flagNotes) phrase.clearStartCoords();
+		
+		//Allocate some variables for use in loop
+		NUSALSeqBuilderNote first_note = null;
+		List<NUSALSeqBuilderNote> flag_notes = new LinkedList<NUSALSeqBuilderNote>();
+		
+		//There's an extra check for this, but no point in going past the point where there isn't enough room left for phrase
+		int max_start_idx = event_tbl.length - no_coords.length;
+		for(int e = 0; e < max_start_idx; e++){
+			
+			int sttick = event_tbl[e][0];
+			
+			//Refresh flag queue
+			if(flagNotes){
+				first_note = null;
+				flag_notes.clear();
+			}
+
+			//Check 0-0 match
+			//If these do not match, no point in continuing with this test start
+			NUSALSeqBuilderNote[] group1 = nowmap.get(sttick);
+			NUSALSeqBuilderNote[] group2 = phrase.getNotesAt(0);
+			if(!groupsMatch(group1, group2)) continue;
+			if(flagNotes){
+				boolean first = true;
+				for(NUSALSeqBuilderNote n : group1){
+					for(NUSALSeqBuilderNote ref : group2){
+						if(ref.equals(n)){
+							//n.linkPhrase(phrase, first);
+							if(first) first_note = n;
+							flag_notes.add(n);
+							first = false;
+							break;
+						}
+					}
+				}
+			}
+			
+			int i = e+1; //Groups from test start
+			int j = 1; //Groups from phrase start
+			int mcount = 0; //Matching groups. Must be equal to #groups in phrase at end to be full match.
+			int emax = event_tbl.length - no_coords.length + 1;
+			while(j < no_coords.length && i < emax){
+				
+				//Check times at i and j
+				//Try to line up start times by tweaking i and j.
+				int ti = event_tbl[i][0];
+				int tj = no_coords[j];
+				
+				int di = ti - sttick;
+				int dj = tj;
+				int dd = Math.abs(di - dj);
+				if(dd > time_leeway){
+					//These events are too far apart.
+					//Move up i or j (whichever is behind in time)
+					if(di < dj) i++;
+					else if(dj < di) j++;
+					continue;
+				}
+				
+				//Try to compare these groups.
+				group1 = nowmap.get(ti);
+				group2 = phrase.getNotesAt(tj);
+				
+				if(groupsMatch(group1, group2)){
+					mcount++;
+					i++; j++;
+					
+					//Check if this potential phrase instance straddles any hard boundaries
+					if(removeBoundaryConflicts){
+						boolean match = true;
+						for(Integer border : seg_times){
+							if(border <= sttick) continue;
+							if(border >= ti){match = false; break;}
+						}
+						if(!match)break;
+					}
+					
+					if(flagNotes){
+						//Set aside notes for flagging if phrase match is successful.
+						for(NUSALSeqBuilderNote n : group1){
+							for(NUSALSeqBuilderNote ref : group2){
+								if(ref.equals(n)){
+									//n.linkPhrase(phrase, false);
+									flag_notes.add(n);
+									break;
+								}
+							}
+						}
+					}
+				}
+				else{
+					//Increment only the lagging one.
+					if(di < dj) i++;
+					else if(dj < di) j++;
+				}
+				
+			}
+			
+			if(mcount == no_coords.length){
+				//Match.
+				phrase.addStartCoord(sttick);
+				
+				//Properly flag the notes
+				if(flagNotes){
+					for(NUSALSeqBuilderNote note: flag_notes) note.linkPhrase(phrase, false);
+					first_note.flagFirstInPhrase(true);
+				}
+			}
+		}
+	}
+	
+	protected void findPhrase(NUSALSeqBuilderPhrase phrase, boolean flagNotes, boolean removeBoundaryConflicts){
+		//Finds the phrase in the channel and annotates it with start points
+		int[] no_coords = phrase.getNoteonCoords();
+		if(no_coords == null) return;
+		if(!one_voice_match){
+			//Perfect matches
+			findPhrase_voxAND(phrase, flagNotes, removeBoundaryConflicts);
+		}
+		else{
+			findPhrase_voxOR(phrase, flagNotes, removeBoundaryConflicts);
+		}
+	}
+
+	//	--> Build Phrases
+	
+	private List<NUSALSeqBuilderPhrase> getPhrasesAt_voxAND(int ontick_idx, boolean breakAtOne){
+		//Construct output container
 		List<NUSALSeqBuilderPhrase> list = new LinkedList<NUSALSeqBuilderPhrase>();
 		
 		int mytick = event_tbl[ontick_idx][0];
@@ -436,96 +664,171 @@ public class PhraseBuilder {
 		int next_idx = findScanStartIndex(ontick_idx);
 		
 		while(next_idx < event_tbl.length){
-			//See if there's a common music phrase starting at this idx and that idx
-			int elen = Math.min(next_idx - ontick_idx, event_tbl.length - next_idx); //Max phrase size in note-on groups
+			//Is there a common phrase starting at mytick and this tick? If so, how long is it in common?
+			int elen = Math.min(next_idx - ontick_idx, event_tbl.length - next_idx); 
+			//Max phrase size in note-on groups. End of phrase cannot go beyond length of this later instance or end of seq.
+			
 			int nexttick = event_tbl[next_idx][0];
-			if(!one_voice_match){
-				//Must be perfect match
-				NUSALSeqBuilderPhrase phrase = null;
-				for(int i = 0; i < elen; i++){
-					int t1 = event_tbl[ontick_idx+i][0];
-					int t2 = event_tbl[next_idx+i][0];
-					
-					//Are start times relative to putative phrase start close enough?
-					int d1 = mytick - t1;
-					int d2 = nexttick - t2;
-					int dd = Math.abs(d2 - d1);
-					if(dd > time_leeway) break;
-					
-					NUSALSeqBuilderNote[] group1 = nowmap.get(t1);
-					NUSALSeqBuilderNote[] group2 = nowmap.get(t2);
-					if(groupsMatch(group1, group2)){
-						//Add to phrase (or create if not instantiated)
-						if(phrase == null) phrase = new NUSALSeqBuilderPhrase();
-						for(int j = 0; j < group1.length; j++){
-							phrase.addNote(d1, group1[j]);
-						}
-					}
-					else break;
-				}
-				//Add to list if long enough. And see where else it occurs.
-				if(phrase != null){
-					if(phrase.getLengthInEvents() >= min_events && phrase.getLengthInTicks() >= min_time){
-						//findPhrase(phrase);
-						if(phraseClearsLoop(phrase)){
-							list.add(phrase);
-							if(breakAtOne) return list;	
-						}
-					}
-				}
-			}
-			else{
-				//Ughhhhhhhhhhhhhhhh
-				//First events must match for this combo. If not, continue.
-				int t1 = event_tbl[ontick_idx][0];
-				int t2 = event_tbl[next_idx][0];
+			
+			NUSALSeqBuilderPhrase phrase = null;
+			int p_end = 0;
+			for(int i = 0; i < elen; i++){
+				//Compare event groups i ticks from start.
+				int t1 = event_tbl[ontick_idx+i][0];
+				int t2 = event_tbl[next_idx+i][0];
+				
+				//Are start times relative to putative phrase start close enough?
+				int d1 = mytick - t1;
+				int d2 = nexttick - t2;
+				int dd = Math.abs(d2 - d1);
+				if(dd > time_leeway) break;
+				
+				//Check the rest time.
+				//How long has it been since last note off?
+				//If above max rest time, end the phrase.
+				if((t1 - p_end) > max_rest) break;
+				
+				//Compare the actual groups
 				NUSALSeqBuilderNote[] group1 = nowmap.get(t1);
 				NUSALSeqBuilderNote[] group2 = nowmap.get(t2);
-				if(!groupsMatch(group1, group2)) {next_idx++; continue;}
-				
-				NUSALSeqBuilderPhrase phrase = new NUSALSeqBuilderPhrase();
-				//Put common notes from first event in phrase.
-				addCommonToPhrase(0, group1, group2, phrase);
-				
-				int i = 1;
-				int j = 1;
-				while(j < elen){
-					if((ontick_idx + i) >= next_idx) break;
-					if((next_idx + j) >= event_tbl.length) break;
-					t1 = event_tbl[ontick_idx+i][0];
-					t2 = event_tbl[next_idx+j][0];
-					
-					int d1 = mytick - t1;
-					int d2 = nexttick - t2;
-					int dd = Math.abs(d2 - d1);
-					if(dd > time_leeway){
-						if(d2 > d1) i++;
-						else if (d1 > d2) j++;
-						continue;
-					}
-					
-					group1 = nowmap.get(t1);
-					group2 = nowmap.get(t2);
-					if(!groupsMatch(group1, group2)){
-						if(d2 > d1) i++;
-						else if (d1 > d2) j++;
-					}
-					else{
-						addCommonToPhrase(d1, group1, group2, phrase);
-						i++; j++;
+				if(groupsMatch(group1, group2)){
+					//Add to phrase (or create if not instantiated)
+					if(phrase == null) phrase = new NUSALSeqBuilderPhrase();
+					for(int j = 0; j < group1.length; j++){
+						//Add to phrase (coordinates are relative to phrase)
+						phrase.addNote(d1, group1[j]);
+						
+						//Update coordinate of phrase end
+						int noteend = t1 + group1[j].getLengthInTicks();
+						if(noteend > p_end) p_end = noteend;
 					}
 				}
+				else break;
+			}
+			
+			//Add to output list if long enough.
+			if(phrase != null){
 				if(phrase.getLengthInEvents() >= min_events && phrase.getLengthInTicks() >= min_time){
-					//findPhrase(phrase);
-					if(phraseClearsLoop(phrase)){
+					
+					//Check for seq segmentation conflicts
+					findPhrase(phrase, false, !seg_remove_all);
+					if(seg_remove_all && !phraseClearsBorders(phrase)) phrase.clearStartCoords();
+					
+					//If phrase passes seg check (instances left without conflicts), add.
+					if(phrase.hasAnnotatedCoordinates()){
 						list.add(phrase);
 						if(breakAtOne) return list;	
 					}
 				}
 			}
+			
+			//And don't forget to increment!
 			next_idx++;
 		}
+		
 		return list;
+	}
+	
+	private List<NUSALSeqBuilderPhrase> getPhrasesAt_voxOR(int ontick_idx, boolean breakAtOne){
+		//Construct output container
+		List<NUSALSeqBuilderPhrase> list = new LinkedList<NUSALSeqBuilderPhrase>();
+		
+		int mytick = event_tbl[ontick_idx][0];
+		//Scan for start (must be at least min_time AND min_events forward)
+		int next_idx = findScanStartIndex(ontick_idx);
+		
+		while(next_idx < event_tbl.length){
+			//Is there a common phrase starting at mytick and this tick? If so, how long is it in common?
+			
+			//First, compare the starting groups.
+			//If these don't match, no point in continuing with this combo.
+			//(Don't need to compare start times since they would both be 0 phrase-relative)
+			int t1 = event_tbl[ontick_idx][0];
+			int t2 = event_tbl[next_idx][0];
+			NUSALSeqBuilderNote[] group1 = nowmap.get(t1);
+			NUSALSeqBuilderNote[] group2 = nowmap.get(t2);
+			if(!groupsMatch(group1, group2)) {next_idx++; continue;}
+			
+			int nexttick = event_tbl[next_idx][0];
+			
+			//Determine ends of space we have to work with on each side
+			int i_max = next_idx - ontick_idx; //Earlier instance cannot go beyond later's start
+			int j_max = event_tbl.length - next_idx; //Later instance cannot go beyond seq end
+			
+			NUSALSeqBuilderPhrase phrase = new NUSALSeqBuilderPhrase();
+			//Put common notes from first event in phrase.
+			addCommonToPhrase(0, group1, group2, phrase);
+			int p_len = phrase.getLengthInTicks();
+			
+			int i = 1; //Event groups from ref (earlier) time coordinate
+			int j = 1; //Event groups from test (later) time coordinate
+			while(j < j_max && i < i_max){
+				//Commented these out because I think they are redundant to while condition
+				//if((ontick_idx + i) >= next_idx) break;
+				//if((next_idx + j) >= event_tbl.length) break;
+				
+				t1 = event_tbl[ontick_idx+i][0];
+				t2 = event_tbl[next_idx+j][0];
+				
+				//See if these events are close enough.
+				int d1 = mytick - t1;
+				int d2 = nexttick - t2;
+				int dd = Math.abs(d2 - d1);
+				if(dd > time_leeway){
+					//Because this is OR mode (only one voice need match)
+					//	need to account for small mis-match inserts that can be put on a voice outside phrase
+					if(d2 > d1) i++;
+					else if (d1 > d2) j++;
+					continue;
+				}
+				
+				//Check rest length
+				if((t1 - p_len) > max_rest) break;
+				
+				//Now actual note match check
+				group1 = nowmap.get(t1);
+				group2 = nowmap.get(t2);
+				if(!groupsMatch(group1, group2)){
+					if(d2 > d1) i++;
+					else if (d1 > d2) j++;
+				}
+				else{
+					addCommonToPhrase(d1, group1, group2, phrase);
+					i++; j++;
+					p_len = phrase.getLengthInTicks();
+				}
+			}
+			
+			//Add to output list if long enough.
+			if(phrase.getLengthInEvents() >= min_events && phrase.getLengthInTicks() >= min_time){
+				//Check for seq segmentation conflicts
+				findPhrase(phrase, false, !seg_remove_all);
+				if(seg_remove_all && !phraseClearsBorders(phrase)) phrase.clearStartCoords();
+				
+				//If phrase passes seg check (instances left without conflicts), add.
+				if(phrase.hasAnnotatedCoordinates()){
+					list.add(phrase);
+					if(breakAtOne) return list;	
+				}
+			}
+			
+			//And don't forget to increment!
+			next_idx++;
+		}
+		
+		return list;
+	}
+	
+	protected List<NUSALSeqBuilderPhrase> getPhrasesAt(int ontick_idx, boolean breakAtOne){
+		if(ontick_idx < 0 || ontick_idx > event_tbl.length) return null;
+		
+		if(!one_voice_match){
+			//Must be perfect match
+			return getPhrasesAt_voxAND(ontick_idx, breakAtOne);
+		}
+		else{
+			return getPhrasesAt_voxOR(ontick_idx, breakAtOne);
+		}
 	}
 	
 	protected List<NUSALSeqBuilderPhrase> getPossiblePhrases(){
@@ -542,7 +845,8 @@ public class PhraseBuilder {
 					if(!addme) continue;
 					
 					//Call findPhrase (without anno)
-					findPhrase(p, false);
+					//findPhrase(p, false);
+					//Update: don't need to do this - getPhrasesAt_vox# does this already to toss phrases across seg borders
 					
 					//Add to biglist
 					biglist.add(p);
@@ -552,12 +856,17 @@ public class PhraseBuilder {
 		return biglist;
 	}
 	
+	//	--> Compression Wrapper Methods
+	
 	protected MusicEventMap compressMusicEvents0(){
+		final String method_name = "compressMusicEvents0";
+		
 		chdat.clearPhraseAnnotations();
 		//Store these
 		NoteMap chdat_st = chdat;
 		Map<Integer, NUSALSeqBuilderNote[]> nowmap_st = nowmap;
 		int[][] event_tbl_st = event_tbl;
+		writeLogLine(method_name, "Builder backup state stored.", true);
 		
 		int ecount = event_tbl.length;
 		for(int e = 0; e < ecount; e++){
@@ -565,11 +874,14 @@ public class PhraseBuilder {
 			int etick = event_tbl_st[e][0];
 			if(!chdat.hasNotesAt(etick)) continue;
 			
+			//Get the first phrase match available at this tick
 			List<NUSALSeqBuilderPhrase> plist = getPhrasesAt(etick, true);
 			if(plist == null || plist.isEmpty()) continue;
-			
 			NUSALSeqBuilderPhrase phrase = plist.get(0);
-			findPhrase(phrase, true);
+			
+			//Mark notes in this phrase
+			//Then remove from temporary table so invisible to next round.
+			findPhrase(phrase, true, true);
 			buildEventTable(chdat.copyWithoutPhrasedNotes());
 		}
 		
@@ -577,15 +889,21 @@ public class PhraseBuilder {
 		chdat = chdat_st;
 		nowmap = nowmap_st;
 		event_tbl = event_tbl_st;
+		
+		//Because notes are persistent objects, this method should be able to condense them back into annotated phrases
+		writeLogLine(method_name, "Pattern scan complete. Organizing output.", true);
 		return chdat.condense();
 	}
 	
 	protected MusicEventMap compressMusicEvents1(){
+		final String method_name = "compressMusicEvents1";
+		
 		chdat.clearPhraseAnnotations();
 		//Store these
 		NoteMap chdat_st = chdat;
 		Map<Integer, NUSALSeqBuilderNote[]> nowmap_st = nowmap;
 		int[][] event_tbl_st = event_tbl;
+		writeLogLine(method_name, "Builder backup state stored.", true);
 		
 		int ecount = event_tbl.length;
 		for(int e = 0; e < ecount; e++){
@@ -593,6 +911,7 @@ public class PhraseBuilder {
 			int etick = event_tbl_st[e][0];
 			if(!chdat.hasNotesAt(etick)) continue;
 			
+			//Get all possible phrases starting at current time coordinate
 			List<NUSALSeqBuilderPhrase> plist = getPhrasesAt(etick, false);
 			if(plist == null || plist.isEmpty()) continue;
 			
@@ -608,7 +927,8 @@ public class PhraseBuilder {
 			}
 			if(phrase == null) continue;
 			
-			findPhrase(phrase, true);
+			//Phrase passed. Annotate it and temporarily remove included notes.
+			findPhrase(phrase, true, true);
 			buildEventTable(chdat.copyWithoutPhrasedNotes());
 		}
 		
@@ -616,6 +936,8 @@ public class PhraseBuilder {
 		chdat = chdat_st;
 		nowmap = nowmap_st;
 		event_tbl = event_tbl_st;
+		
+		writeLogLine(method_name, "Pattern scan complete. Organizing output.", true);
 		return chdat.condense();
 	}
 	
@@ -642,21 +964,34 @@ public class PhraseBuilder {
 	}
 	
 	protected MusicEventMap compressMusicEvents2(){
-		chdat.clearPhraseAnnotations();
-		List<NUSALSeqBuilderPhrase> allphrase = getPossiblePhrases();
-		if(allphrase.isEmpty()) return chdat.condense();
+		final String method_name = "compressMusicEvents2";
 		
+		chdat.clearPhraseAnnotations();
+		writeLogLine(method_name, "Gathering all possible phrases...", true);
+		List<NUSALSeqBuilderPhrase> allphrase = getPossiblePhrases();
+		if(allphrase.isEmpty()){
+			writeLogLine(method_name, "No patterns found!", true);
+			return chdat.condense();
+		}
+		
+		//Reorganize phrases into an array
 		int pcount = allphrase.size();
 		NUSALSeqBuilderPhrase[] parr = new NUSALSeqBuilderPhrase[pcount];
 		int i = 0;
 		for(NUSALSeqBuilderPhrase p : allphrase) parr[i++] = p;
+		writeLogLine(method_name, "Possible phrases found: " + pcount, true);
+		
+		//Called a recursive optimizer to try all combos.
+		//It's a terrible idea but wth, this is the "high opt slow run" anyway
+		writeLogLine(method_name, "Now trying all phrase combinations...", true);
 		PhraseStack stack = new PhraseStack(parr);
 		findBestCombo(stack, 0);
 		Set<Integer> best = stack.getBestSet();
 		for(Integer idx : best){
-			findPhrase(parr[idx], true);
+			findPhrase(parr[idx], true, true);
 		}
 		
+		writeLogLine(method_name, "Pattern scan complete. Organizing output.", true);
 		return chdat.condense();
 	}
 	
@@ -696,10 +1031,18 @@ public class PhraseBuilder {
 		return true;
 	}
 	
+	//	--> Interface Method
+	
 	public MusicEventMap compressMusicEvents(NoteMap notemap){
-		if(notemap == null) return null;
+		final String methodname = "compressMusicEvents";
+		if(notemap == null){
+			writeLogLine(methodname, "Provided note map is null. Terminating phrasebuilder.", true);
+			return null;
+		}
+		
 		buildEventTable(notemap);
 		MusicEventMap out = null;
+		writeLogLine(methodname, "Events analyzed. Now searching for musical patterns...", true);
 		switch(optimization){
 		case 0:
 			out = compressMusicEvents0();

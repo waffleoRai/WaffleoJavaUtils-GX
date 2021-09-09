@@ -102,7 +102,12 @@ public class NUSALSeqGenerator implements SequenceController{
 	
 	public void setLoopPoint(int tick){
 		loop_tick = tick;
-		phrase_builder.setLoopStart(loop_tick);
+		if(loop_tick >= 0) phrase_builder.addSegmentBorder(loop_tick);
+		else{
+			phrase_builder.clearSegmentBorders();
+			if(loop_end >= 0) phrase_builder.addSegmentBorder(loop_end);
+			for(Integer val : alt_entries.values()) phrase_builder.addSegmentBorder(val);
+		}
 	}
 	
 	public void setDelayTrack(int delay_track, int ref_track, int delay_ticks){
@@ -196,21 +201,30 @@ public class NUSALSeqGenerator implements SequenceController{
 		if(loop_end < 0) loop_end = 0;
 		loop_end = loopEnd;
 		outro_trigger = (int)trigger_val;
-		phrase_builder.setLoopEnd(loop_end);
+		//phrase_builder.setLoopEnd(loop_end);
+		phrase_builder.addSegmentBorder(loop_end);
 	}
 	
 	public void clearOutro(){
 		loop_end = -1;
 		outro_trigger = 0;
-		phrase_builder.setLoopEnd(loop_end);
+		//phrase_builder.setLoopEnd(loop_end);
+		//Clear phrase_builder and put other values back...
+		phrase_builder.clearSegmentBorders();
+		if(loop_tick >= 0) phrase_builder.addSegmentBorder(loop_tick);
+		for(Integer val : alt_entries.values()) phrase_builder.addSegmentBorder(val);
 	}
 	
 	public void addAlternateEntry(int tick, byte trigger_val){
 		alt_entries.put((int)trigger_val, tick);
+		phrase_builder.addSegmentBorder(tick);
 	}
 	
 	public void clearAlternateEntries(){
 		alt_entries.clear();
+		phrase_builder.clearSegmentBorders();
+		if(loop_tick >= 0) phrase_builder.addSegmentBorder(loop_tick);
+		if(loop_end >= 0) phrase_builder.addSegmentBorder(loop_end);
 	}
 	
 	/*----- Utils -----*/

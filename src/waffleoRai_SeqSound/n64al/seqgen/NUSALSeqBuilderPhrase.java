@@ -104,6 +104,14 @@ public class NUSALSeqBuilderPhrase implements MusicEvent{
 		return notes.getNoteGroupAt(tick_coord);
 	}
 	
+	public boolean hasAnnotatedCoordinates(){
+		return !coordinates.isEmpty();
+	}
+	
+	public boolean startsAtTime(int tick_coord){
+		return coordinates.contains(tick_coord);
+	}
+	
 	public byte getFirstNotePitch(){
 		if(notes.isEmpty()) return -1;
 		int time = notes.getLowestTimeCoord();
@@ -304,6 +312,8 @@ public class NUSALSeqBuilderPhrase implements MusicEvent{
 	public void addStartCoord(int val){
 		coordinates.add(val);
 	}
+	
+	public void clearStartCoords(){coordinates.clear();}
 	
 	public void assignToVoices(){
 		if(dirty) refreshBookkeeping();

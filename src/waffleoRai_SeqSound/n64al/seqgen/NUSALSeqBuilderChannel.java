@@ -26,6 +26,8 @@ public class NUSALSeqBuilderChannel {
 	private NoteMap in_notes;
 	private Map<Byte, int[]> active_notes; //[vel, start_tick]
 	
+	//Temporary builder fields...
+	
 	public NUSALSeqBuilderChannel(int index){
 		ch_idx = index;
 		cmd_map = new TreeMap<Integer, List<NUSALSeqCommand>>();
@@ -337,13 +339,18 @@ public class NUSALSeqBuilderChannel {
 		
 		//----- Build voice level command blocks
 		Map<Integer, List<CommandChunk>> vox_cmd_map = new TreeMap<Integer, List<CommandChunk>>();
+		List<Integer> boundaries = phraser.getBoundaryTimes();
 		for(int v = 0; v < 4; v++){
 			//TODO
 			Map<Integer, MusicEvent> voxevents = voice_notes.get(v);
 			
-			//Turn each continuous chunk into a block
+			//Block up the voice
 			CoverageMap1D cmap = voice_coverage[v];
 			cmap.mergeBlocks();
+			cmap.fillGapsSmallerThan(phraser.getMaxRestTime());
+			for(int i : boundaries) cmap.splitBlockAt(i);
+			
+			//Partially serialize each block
 			int[][] vblocks = cmap.getBlocks();
 			int bcount = vblocks.length;
 			for(int b = 0; b < bcount; b++){
