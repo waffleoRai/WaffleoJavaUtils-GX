@@ -26,6 +26,8 @@ public class NUSALSeqChannel {
 	private SequenceController target;
 	private NUSALSeqCommandSource source;
 	
+	private NUSALSeqCommandMap ch_cmds;
+	
 	private NUSALSeqLayer[] layers;
 	
 	private int program;
@@ -101,6 +103,15 @@ public class NUSALSeqChannel {
 	public int getLoopCount(){return loopct;}
 	public boolean loopEnabled(){return loop_enabled;}
 	
+	public NUSALSeqCommandMap getCommandTickMap(){
+		return ch_cmds;
+	}
+	
+	public NUSALSeqCommandMap getVoiceCommandTickMap(int layer){
+		if(layers[layer] == null) return null;
+		return layers[layer].getCommandTickMap();
+	}
+	
 	/*----- Setters -----*/
 	
 	public void setLoopEnabled(boolean b){loop_enabled = b;}
@@ -127,9 +138,9 @@ public class NUSALSeqChannel {
 	
 	public void setTranspose(int semis){transpose = semis;}
 	
-	public void setPitchbend(byte val, int time){
+	public void setPitchbend(byte val){
 		pitchbend = val;
-		if(time > 0) wait_remain = NUSALSeq.scaleTicks(time);
+		//if(time > 0) wait_remain = NUSALSeq.scaleTicks(time);
 		
 		if(target != null){
 			//Scale to MIDI standard (14 bit unsigned)
@@ -150,9 +161,9 @@ public class NUSALSeqChannel {
 		}
 	}
 	
-	public void setVibrato(byte val, int time){
+	public void setVibrato(byte val){
 		vibrato = val;
-		if(time > 0) wait_remain = NUSALSeq.scaleTicks(time);
+		//if(time > 0) wait_remain = NUSALSeq.scaleTicks(time);
 		
 		if(target != null){
 			//Use mod wheel
@@ -165,9 +176,9 @@ public class NUSALSeqChannel {
 		}
 	}
 	
-	public void setPan(byte val, int time){
+	public void setPan(byte val){
 		pan = val;
-		if(time > 0) wait_remain = NUSALSeq.scaleTicks(time);
+		//if(time > 0) wait_remain = NUSALSeq.scaleTicks(time);
 		
 		if(target != null){
 			byte mpan = pan;
@@ -176,9 +187,9 @@ public class NUSALSeqChannel {
 		}
 	}
 	
-	public void setVolume(byte val, int time){
+	public void setVolume(byte val){
 		volume = val;
-		if(time > 0) wait_remain = NUSALSeq.scaleTicks(time);
+		//if(time > 0) wait_remain = NUSALSeq.scaleTicks(time);
 		
 		if(target != null){
 			target.setChannelVolume(ch_idx, volume);
@@ -195,6 +206,16 @@ public class NUSALSeqChannel {
 	public boolean setWait(int ticks){
 		wait_remain = NUSALSeq.scaleTicks(ticks);
 		return true;
+	}
+	
+	public void mapCommandToTick(int tick, NUSALSeqCommand cmd){
+		if(ch_cmds == null) ch_cmds = new NUSALSeqCommandMap();
+		ch_cmds.addCommand(tick, cmd);
+	}
+	
+	public void mapVoiceCommandToTick(int layer, int tick, NUSALSeqCommand cmd){
+		if(layers[layer] == null) return;
+		layers[layer].mapCommandToTick(tick, cmd);
 	}
 	
 	/*----- Actions -----*/
@@ -259,7 +280,7 @@ public class NUSALSeqChannel {
 	
 	/*----- Playback -----*/
 	
-	public boolean nextTick(){
+	public boolean nextTick(boolean savecmd, int tick){
 		if(err_addr >= 0) return false;
 		if(term_flag) return true;
 		
@@ -280,13 +301,14 @@ public class NUSALSeqChannel {
 				//The command wasn't a jump, so advance manually.
 				pos += cmd.getSizeInBytes();
 			}
+			if(savecmd) mapCommandToTick(tick, cmd);
 		}
 		
 		//Its layers
 		for(int i = 0; i < 4; i++){
 			if(layers[i] != null){
 				if(!layers[i].isActive()) continue;
-				if(!layers[i].nextTick()){
+				if(!layers[i].nextTick(savecmd, tick)){
 					err_addr = layers[i].getErrorAddress();
 					//bad_cmd = layers[i].getErrorCommand();
 					err_layer = i;

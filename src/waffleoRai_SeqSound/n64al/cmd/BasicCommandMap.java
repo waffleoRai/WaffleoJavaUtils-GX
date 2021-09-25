@@ -1,5 +1,7 @@
 package waffleoRai_SeqSound.n64al.cmd;
 
+import java.io.IOException;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -47,4 +49,38 @@ public class BasicCommandMap implements NUSALSeqCommandSource{
 		return smap;
 	}
 
+	public void printMeTo(Writer out) throws IOException{
+		if(map.isEmpty()){
+			out.write("<Command map is empty>\n");
+			return;
+		}
+		List<Integer> keys = new ArrayList<Integer>(map.size()+1);
+		keys.addAll(map.keySet());
+		Collections.sort(keys);
+		
+		for(Integer k : keys){
+			out.write(String.format("%04x\t", k));
+			NUSALSeqCommand cmd = map.get(k);
+			out.write(cmd.toString() + "\t");
+			int bcount = cmd.getSizeInBytes();
+			byte[] ser = cmd.serializeMe();
+			for(int i = 0; i < bcount; i++){
+				out.write(String.format("%02x ", ser[i]));
+			}
+			out.write("\t");
+			
+			if(cmd.seqUsed()) out.write("seq ");
+			for(int i = 0; i < 16; i++){
+				if(cmd.channelUsed(i)) out.write("ch-" + Integer.toHexString(i) + " ");
+				for(int j = 0; j < 4; j++){
+					if(cmd.layerUsed(i, j)){
+						out.write(Integer.toHexString(i) + "-" + j + " ");
+					}
+				}
+			}
+			out.write("\n");
+		}
+		
+	}
+	
 }

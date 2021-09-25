@@ -11,7 +11,7 @@ import java.util.Map.Entry;
 import java.util.TreeMap;
 
 import waffleoRai_Files.WriterPrintable;
-import waffleoRai_SeqSound.n64al.cmd.BasicCommandMap;
+import waffleoRai_SeqSound.n64al.cmd.*;
 import waffleoRai_SeqSound.n64al.cmd.CMD_IgnoredCommand;
 import waffleoRai_Utils.FileBuffer;
 
@@ -67,15 +67,13 @@ public class NUSALSeqParser implements WriterPrintable{
 		int hi = (cmdi >>> 4) & 0xf;
 		int lo = cmdi & 0xf;
 		
+		int[] iarr = null;
+		
 		switch(hi){
 			case 0x0:
 				//Set seq var to ch var
 				//No parameters (besides channel)
-				return new NUSALSeqCommand(NUSALSeqCmdType.LOAD_CH_VAR, cmdb){
-
-					protected void onInit(){super.setParam(0, lo);}
-					public int getSizeInBytes() {return 1;}
-					
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.LOAD_CH_VAR, lo){
 					public boolean doCommand(NUSALSeq sequence){
 						if(sequence == null) return false;
 						NUSALSeqChannel chan = sequence.getChannel(super.getParam(0));
@@ -95,14 +93,10 @@ public class NUSALSeqParser implements WriterPrintable{
 				break;
 			case 0x4:
 				//Some kind of channel control, but unknown
-				return new CMD_IgnoredCommand(NUSALSeqCmdType.SEQ_UNK_4x, cmdb, 1);
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.SEQ_UNK_4x, lo);
 			case 0x5:
 				//seq var -= ch var
-				return new NUSALSeqCommand(NUSALSeqCmdType.SUBTRACT_CH, cmdb){
-
-					protected void onInit(){super.setParam(0, lo);}
-					public int getSizeInBytes() {return 1;}
-					
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.SUBTRACT_CH, lo){
 					public boolean doCommand(NUSALSeq sequence){
 						if(sequence == null) return false;
 						NUSALSeqChannel chan = sequence.getChannel(super.getParam(0));
@@ -115,14 +109,15 @@ public class NUSALSeqParser implements WriterPrintable{
 			case 0x6:
 				//Channel op unknown, but it has 3 params including channel
 				//seq64 reckons it has something to do with a DMA/channel var transfer?
-				return new CMD_IgnoredCommand(NUSALSeqCmdType.LOAD_CH_DMA, cmdb, 3);
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.LOAD_CH_DMA, lo){
+					protected void onInit(){
+						super.setParam(1, (int)data.getByte(pos+1));
+						super.setParam(2, (int)data.getByte(pos+2));
+					}
+				};
 			case 0x7:
 				//Set ch var
-				return new NUSALSeqCommand(NUSALSeqCmdType.SET_CH_VAR, cmdb){
-
-					protected void onInit(){super.setParam(0, lo);}
-					public int getSizeInBytes() {return 1;}
-					
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.SET_CH_VAR, lo){
 					public boolean doCommand(NUSALSeq sequence){
 						if(sequence == null) return false;
 						NUSALSeqChannel chan = sequence.getChannel(super.getParam(0));
@@ -134,11 +129,7 @@ public class NUSALSeqParser implements WriterPrintable{
 				};
 			case 0x8:
 				//Sets seq var to ch var, and if ch < 2, sets ch var to -1?
-				return new NUSALSeqCommand(NUSALSeqCmdType.SEQ_UNK_8x, cmdb){
-
-					protected void onInit(){super.setParam(0, lo);}
-					public int getSizeInBytes() {return 1;}
-					
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.SEQ_UNK_8x, lo){
 					public boolean doCommand(NUSALSeq sequence){
 						if(sequence == null) return false;
 						NUSALSeqChannel chan = sequence.getChannel(super.getParam(0));
@@ -151,62 +142,60 @@ public class NUSALSeqParser implements WriterPrintable{
 				};
 			case 0x9:
 				//Specify channel start (abs addr)
-				return new NUSALSeqCommand(NUSALSeqCmdType.CHANNEL_OFFSET, cmdb){
-
-					protected void onInit(){super.setParam(0, lo); 
-					super.setParam(1, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					
-					public int getSizeInBytes() {return 3;}
-					
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.CHANNEL_OFFSET, lo, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeq sequence){
 						if(sequence == null) return false;
 						flagSeqUsed();
 						return sequence.pointChannelTo(super.getParam(0), super.getParam(1));
 					}
-					
-					protected String paramsToString(){
-						return super.getParam(0) + " 0x" + String.format("%04x", super.getParam(1)); 
-					}
 				};
 			case 0xa:
 				//Specify channel start (rel addr)
-				return new NUSALSeqCommand(NUSALSeqCmdType.CHANNEL_OFFSET_REL, cmdb){
-
-					protected void onInit(){super.setParam(0, lo); 
-					super.setParam(1, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					
-					public int getSizeInBytes() {return 3;}
-					
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.CHANNEL_OFFSET_REL, lo, (int)data.getByte(pos+1)){
 					public boolean doCommand(NUSALSeq sequence){
 						if(sequence == null) return false;
 						flagSeqUsed();
-						return sequence.pointChannelTo(super.getParam(0), super.getParam(1) + sequence.getCurrentPosition());
-					}
-					protected String paramsToString(){
-						return super.getParam(0) + " 0x" + String.format("%04x", super.getParam(1)); 
+						return sequence.pointChannelTo(super.getParam(0), getBranchAddress());
 					}
 				};
 			case 0xb:
 				//"New sequence from" using channel??? 
-				return new CMD_IgnoredCommand(NUSALSeqCmdType.NEW_SEQ_FROM, cmdb, 4);
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.NEW_SEQ_FROM, lo){
+					protected void onInit(){
+						super.setParam(1, (int)data.getByte(pos+1));
+						super.setParam(2, (int)data.shortFromFile(pos+2));
+					}
+				};
 			case 0xc:
 				switch(lo){
 				case 0x4:
-					return new CMD_IgnoredCommand(NUSALSeqCmdType.SEQ_UNK_C4, cmdb, 3);
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SEQ_UNK_C4){
+						protected void onInit(){
+							super.setParam(0, (int)data.getByte(pos+1));
+							super.setParam(1, (int)data.getByte(pos+2));
+						}
+					};
 				case 0x5:
-					return new CMD_IgnoredCommand(NUSALSeqCmdType.SEQ_UNK_C5, cmdb, 3);
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SEQ_UNK_C5){
+						protected void onInit(){
+							super.setParam(0, (int)data.shortFromFile(pos+1));
+						}
+					};
 				case 0x6:
-					return new CMD_IgnoredCommand(NUSALSeqCmdType.RETURN_FROM_SEQ, cmdb, 1);
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.RETURN_FROM_SEQ);
 				case 0x7:
-					return new CMD_IgnoredCommand(NUSALSeqCmdType.SEQ_UNK_C7, cmdb, 4);
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SEQ_UNK_C7){
+						protected void onInit(){
+							super.setParam(0, (int)data.getByte(pos+1));
+							super.setParam(1, (int)data.getByte(pos+2));
+						}
+					};
 				case 0x8:
-					return new NUSALSeqCommand(NUSALSeqCmdType.SUBTRACT_IMM, cmdb){
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SUBTRACT_IMM){
 
 						protected void onInit(){
 							super.setParam(0, (int)data.getByte(pos+1));}
-						
-						public int getSizeInBytes() {return 2;}
-						
+
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							int var = sequence.getSeqVar();
@@ -217,13 +206,11 @@ public class NUSALSeqParser implements WriterPrintable{
 						}
 					};
 				case 0x9:
-					return new NUSALSeqCommand(NUSALSeqCmdType.AND_IMM, cmdb){
-
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.AND_IMM){
 						protected void onInit(){
-							super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-						
-						public int getSizeInBytes() {return 2;}
-						
+							super.setDisplayStringHex(true);
+							super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));
+						}
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							int var = sequence.getSeqVar();
@@ -232,22 +219,17 @@ public class NUSALSeqParser implements WriterPrintable{
 							flagSeqUsed();
 							return true;
 						}
-						protected String paramsToString(){
-							return "0x" + String.format("%02x", super.getParam(0)); 
-						}
 					};
 				case 0xa:
-					return new CMD_IgnoredCommand(NUSALSeqCmdType.SEQ_UNK_CA, cmdb, 1);
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SEQ_UNK_CA);
 				case 0xb:
-					return new CMD_IgnoredCommand(NUSALSeqCmdType.SEQ_UNK_CB, cmdb, 1);
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SEQ_UNK_CB);
 				case 0xc:
-					return new NUSALSeqCommand(NUSALSeqCmdType.SET_VAR, cmdb){
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SET_VAR){
 
 						protected void onInit(){ 
 							super.setParam(0, (int)data.getByte(pos+1));}
-						
-						public int getSizeInBytes() {return 2;}
-						
+
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							sequence.setSeqVar(super.getParam(0));
@@ -260,40 +242,37 @@ public class NUSALSeqParser implements WriterPrintable{
 			case 0xd:
 				switch(lo){
 				case 0x3:
-					return new NUSALSeqCommand(NUSALSeqCmdType.SET_FORMAT, cmdb){
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SET_FORMAT){
 						protected void onInit(){
-							super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-						public int getSizeInBytes() {return 2;}
+							super.setDisplayStringHex(true);
+							super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));
+						}
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							sequence.setFormat((byte)super.getParam(0));
 							flagSeqUsed();
 							return true;
 						}
-						protected String paramsToString(){
-							return "0x" + String.format("%02x", super.getParam(0)); 
-						}
 					};
 				case 0x5:
-					return new NUSALSeqCommand(NUSALSeqCmdType.SET_TYPE, cmdb){
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SET_TYPE){
 						protected void onInit(){
-							super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-						public int getSizeInBytes() {return 2;}
+							super.setDisplayStringHex(true);
+							super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));
+						}
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							sequence.setType((byte)super.getParam(0));
 							flagSeqUsed();
 							return true;
 						}
-						protected String paramsToString(){
-							return "0x" + String.format("%02x", super.getParam(0)); 
-						}
 					};
 				case 0x6:
-					return new NUSALSeqCommand(NUSALSeqCmdType.DISABLE_CHANNELS, cmdb){
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.DISABLE_CHANNELS){
 						protected void onInit(){
-							super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-						public int getSizeInBytes() {return 3;}
+							super.setDisplayStringHex(true);
+							super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));
+						}
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							int mask = 1; int param = super.getParam(0);
@@ -306,15 +285,13 @@ public class NUSALSeqParser implements WriterPrintable{
 							flagSeqUsed();
 							return true;
 						}
-						protected String paramsToString(){
-							return "0x" + String.format("%04x", super.getParam(0)); 
-						}
 					};
 				case 0x7:
-					return new NUSALSeqCommand(NUSALSeqCmdType.ENABLE_CHANNELS, cmdb){
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.ENABLE_CHANNELS){
 						protected void onInit(){
-							super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-						public int getSizeInBytes() {return 3;}
+							super.setDisplayStringHex(true);
+							super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));
+						}
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							int mask = 1; int param = super.getParam(0);
@@ -327,15 +304,11 @@ public class NUSALSeqParser implements WriterPrintable{
 							flagSeqUsed();
 							return true;
 						}
-						protected String paramsToString(){
-							return "0x" + String.format("%04x", super.getParam(0)); 
-						}
 					};
 				case 0xb:
-					return new NUSALSeqCommand(NUSALSeqCmdType.MASTER_VOLUME, cmdb){
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.MASTER_VOLUME){
 						protected void onInit(){
 							super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-						public int getSizeInBytes() {return 2;}
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							sequence.setMasterVolume((byte)super.getParam(0));
@@ -344,10 +317,9 @@ public class NUSALSeqParser implements WriterPrintable{
 						}
 					};
 				case 0xd:
-					return new NUSALSeqCommand(NUSALSeqCmdType.SET_TEMPO, cmdb){
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SET_TEMPO){
 						protected void onInit(){
 							super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-						public int getSizeInBytes() {return 2;}
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							sequence.setTempo(super.getParam(0));
@@ -359,83 +331,64 @@ public class NUSALSeqParser implements WriterPrintable{
 						}
 					};
 				case 0xf:
-					return new CMD_IgnoredCommand(NUSALSeqCmdType.SEQ_UNK_DF, cmdb, 2);
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SEQ_UNK_DF){
+						protected void onInit(){
+							super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
+					};
 				}
 				break;
 			case 0xe:
 				switch(lo){
 				case 0xf:
-					return new CMD_IgnoredCommand(NUSALSeqCmdType.SEQ_UNK_EF, cmdb, 4);
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.SEQ_UNK_EF){
+						protected void onInit(){
+							super.setParam(0, (int)data.shortFromFile(pos+1));
+							super.setParam(1, Byte.toUnsignedInt(data.getByte(pos+3)));
+						}
+					};
 				}
 				break;
 			case 0xf:
 				switch(lo){
 				case 0x2:
-					return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_LTZ_REL, cmdb){
-						protected void onInit(){
-							super.setParam(0, (int)data.getByte(pos+1));}
-						public int getSizeInBytes() {return 2;}
+					return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_LTZ_REL, (int)data.getByte(pos+1)){
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							if(sequence.getSeqVar() < 0){
-								int nowpos = sequence.getCurrentPosition();
-								sequence.jumpTo(nowpos + getBranchAddress(), false);	
+								/*int nowpos = sequence.getCurrentPosition();
+								sequence.jumpTo(nowpos + getBranchAddress(), false);*/
+								sequence.jumpTo(this.getBranchAddress(), false);
 							}
 							flagSeqUsed();
 							return true;
-						}
-						public boolean isBranch(){return true;};
-						public boolean isRelativeBranch(){return true;}
-						public int getBranchAddress(){return super.getParam(0)-1;}
-						protected String paramsToString(){
-							return String.format("0x%02x", super.getParam(0));  
 						}
 					};
 				case 0x3:
-					return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_EQZ_REL, cmdb){
-						protected void onInit(){
-							super.setParam(0, (int)data.getByte(pos+1));}
-						public int getSizeInBytes() {return 2;}
+					return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_EQZ_REL, (int)data.getByte(pos+1)){
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							if(sequence.getSeqVar() == 0){
-								int nowpos = sequence.getCurrentPosition();
-								sequence.jumpTo(nowpos + getBranchAddress(), false);	
+								/*int nowpos = sequence.getCurrentPosition();
+								sequence.jumpTo(nowpos + getBranchAddress(), false);	*/
+								sequence.jumpTo(this.getBranchAddress(), false);
 							}
 							flagSeqUsed();
 							return true;
 						}
-						public boolean isBranch(){return true;}
-						public boolean isRelativeBranch(){return true;}
-						public int getBranchAddress(){return super.getParam(0)-1;}
-						protected String paramsToString(){
-							return String.format("0x%02x", super.getParam(0)); 
-						}
 					};
 				case 0x4:
-					return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_ALWAYS_REL, cmdb){
-						protected void onInit(){
-							super.setParam(0, (int)data.getByte(pos+1));}
-						public int getSizeInBytes() {return 2;}
+					return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_ALWAYS_REL, (int)data.getByte(pos+1)){
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
-							int nowpos = sequence.getCurrentPosition();
-							sequence.jumpTo(nowpos + getBranchAddress(), false);	
+							/*int nowpos = sequence.getCurrentPosition();
+							sequence.jumpTo(nowpos + getBranchAddress(), false);*/	
+							sequence.jumpTo(this.getBranchAddress(), false);
 							flagSeqUsed();
 							return true;
 						}
-						public boolean isBranch(){return true;}
-						public boolean isRelativeBranch(){return true;}
-						public int getBranchAddress(){return super.getParam(0)-1;}
-						protected String paramsToString(){
-							return String.format("0x%02x", super.getParam(0)); 
-						}
 					};
 				case 0x5:
-					return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_GTEZ, cmdb){
-						protected void onInit(){
-							super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-						public int getSizeInBytes() {return 3;}
+					return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_GTEZ, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							if(sequence.getSeqVar() >= 0){
@@ -444,14 +397,9 @@ public class NUSALSeqParser implements WriterPrintable{
 							flagSeqUsed();
 							return true;
 						}
-						public boolean isBranch(){return true;};
-						public int getBranchAddress(){return super.getParam(0);}
-						protected String paramsToString(){
-							return String.format("0x%04x", super.getParam(0)); 
-						}
 					};
 				case 0x6:
-					return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_TO_SEQSTART, cmdb){
+					return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_TO_SEQSTART, 0){
 						public int getSizeInBytes() {return 1;}
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
@@ -459,12 +407,9 @@ public class NUSALSeqParser implements WriterPrintable{
 							flagSeqUsed();
 							return true;
 						}
-						public boolean isBranch(){return true;};
-						public int getBranchAddress(){return 0;}
 					};
 				case 0x7:
-					return new NUSALSeqCommand(NUSALSeqCmdType.LOOP_END, cmdb){
-						public int getSizeInBytes() {return 1;}
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.LOOP_END){
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							sequence.signalLoopEnd();
@@ -473,10 +418,9 @@ public class NUSALSeqParser implements WriterPrintable{
 						}
 					};
 				case 0x8:
-					return new NUSALSeqCommand(NUSALSeqCmdType.LOOP_START, cmdb){
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.LOOP_START){
 						protected void onInit(){
 							super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-						public int getSizeInBytes() {return 2;}
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							sequence.signalLoopStart(super.getParam(0));
@@ -485,10 +429,7 @@ public class NUSALSeqParser implements WriterPrintable{
 						}
 					};
 				case 0x9:
-					return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_LTZ, cmdb){
-						protected void onInit(){
-							super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-						public int getSizeInBytes() {return 3;}
+					return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_LTZ, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							if(sequence.getSeqVar() < 0){
@@ -497,17 +438,9 @@ public class NUSALSeqParser implements WriterPrintable{
 							flagSeqUsed();
 							return true;
 						}
-						public boolean isBranch(){return true;};
-						public int getBranchAddress(){return super.getParam(0);}
-						protected String paramsToString(){
-							return String.format("0x%04x", super.getParam(0)); 
-						}
 					};
 				case 0xa:
-					return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_EQZ, cmdb){
-						protected void onInit(){
-							super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-						public int getSizeInBytes() {return 3;}
+					return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_EQZ, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							if(sequence.getSeqVar() == 0){
@@ -516,64 +449,30 @@ public class NUSALSeqParser implements WriterPrintable{
 							flagSeqUsed();
 							return true;
 						}
-						public boolean isBranch(){return true;};
-						public int getBranchAddress(){return super.getParam(0);}
-						protected String paramsToString(){
-							return String.format("0x%04x", super.getParam(0)); 
-						}
 					};
 				case 0xb:
-					return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_ALWAYS, cmdb){
-						protected void onInit(){
-							super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-						public int getSizeInBytes() {return 3;}
+					return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_ALWAYS, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							sequence.jumpTo(super.getParam(0), false);	
 							flagSeqUsed();
 							return true;
 						}
-						public boolean isBranch(){return true;};
-						public int getBranchAddress(){return super.getParam(0);}
-						protected String paramsToString(){
-							return String.format("0x%04x", super.getParam(0)); 
-						}
 					};
 				case 0xc:
-					return new NUSALSeqCommand(NUSALSeqCmdType.CALL, cmdb){
-						protected void onInit(){
-							super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-						public int getSizeInBytes() {return 3;}
+					return new NUSALSeqReferenceCommand(NUSALSeqCmdType.CALL, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							sequence.jumpTo(super.getParam(0), true);	
 							flagSeqUsed();
 							return true;
 						}
-						public boolean isBranch(){return true;};
-						public int getBranchAddress(){return super.getParam(0);}
-						protected String paramsToString(){
-							return String.format("0x%04x", super.getParam(0)); 
-						}
 					};
 				case 0xd:
-					return new NUSALSeqCommand(NUSALSeqCmdType.WAIT, cmdb){
-						private int bcount;
-						protected void onInit(){
-							int[] vlq = readVLQ(pos+1);
-							super.setParam(0, vlq[0]);
-							bcount = vlq[1]+1;
-						}
-						public int getSizeInBytes() {return bcount;}
-						public boolean doCommand(NUSALSeq sequence){
-							if(sequence == null) return false;	
-							flagSeqUsed();
-							return sequence.setSeqWait(super.getParam(0));
-						}
-					};
+					iarr = readVLQ(pos+1);
+					return new NUSALSeqWaitCommand(iarr[0] ,false);
 				case 0xe:
-					return new NUSALSeqCommand(NUSALSeqCmdType.RETURN, cmdb){
-						public int getSizeInBytes() {return 1;}
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.RETURN){
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							sequence.returnFromCall();
@@ -582,8 +481,7 @@ public class NUSALSeqParser implements WriterPrintable{
 						}
 					};
 				case 0xf:
-					return new NUSALSeqCommand(NUSALSeqCmdType.END_READ, cmdb){
-						public int getSizeInBytes() {return 1;}
+					return new NUSALSeqGenericCommand(NUSALSeqCmdType.END_READ){
 						public boolean doCommand(NUSALSeq sequence){
 							if(sequence == null) return false;
 							sequence.signalSeqEnd();
@@ -609,23 +507,13 @@ public class NUSALSeqParser implements WriterPrintable{
 		case 0x7: 
 			if(lo >= 0x8 && lo <= 0xb){
 				int layer = lo - 8;
-				return new NUSALSeqCommand(NUSALSeqCmdType.VOICE_OFFSET_REL, cmdb){
-
-					protected void onInit(){super.setParam(0, layer); 
-					super.setParam(1, (int)data.shortFromFile(pos+1));}
-					
-					public int getSizeInBytes() {return 3;}
-					
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.VOICE_OFFSET_REL, layer, (int)data.getByte(pos+1)){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						super.flagChannelUsed(channel.getIndex());
-						int pos = channel.getCurrentPosition();	
+						//int pos = channel.getCurrentPosition();	
 						return channel.pointLayerTo(super.getParam(0), 
-								pos + super.getParam(1));
-					}
-					
-					protected String paramsToString(){
-						return super.getParam(0) + " 0x" + String.format("%04x", super.getParam(1)); 
+								super.getBranchAddress());
 					}
 				};
 			}
@@ -633,22 +521,12 @@ public class NUSALSeqParser implements WriterPrintable{
 		case 0x8: 
 			if(lo >= 0x8 && lo <= 0xb){
 				int layer = lo - 8;
-				return new NUSALSeqCommand(NUSALSeqCmdType.VOICE_OFFSET, cmdb){
-
-					protected void onInit(){super.setParam(0, layer); 
-					super.setParam(1, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					
-					public int getSizeInBytes() {return 3;}
-					
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.VOICE_OFFSET, layer, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						super.flagChannelUsed(channel.getIndex());
 						return channel.pointLayerTo(super.getParam(0), 
 								super.getParam(1));
-					}
-					
-					protected String paramsToString(){
-						return super.getParam(0) + " 0x" + String.format("%04x", super.getParam(1)); 
 					}
 				};
 			}
@@ -656,9 +534,8 @@ public class NUSALSeqParser implements WriterPrintable{
 		case 0xc: 
 			switch(lo){
 			case 0x1:
-				return new NUSALSeqCommand(NUSALSeqCmdType.SET_PROGRAM, cmdb){
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.SET_PROGRAM){
 					protected void onInit(){super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-					public int getSizeInBytes() {return 2;}
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						super.flagChannelUsed(channel.getIndex());
@@ -666,9 +543,8 @@ public class NUSALSeqParser implements WriterPrintable{
 					}
 				};
 			case 0x2:
-				return new NUSALSeqCommand(NUSALSeqCmdType.TRANSPOSE, cmdb){
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.TRANSPOSE){
 					protected void onInit(){super.setParam(0, (int)data.getByte(pos+1));}
-					public int getSizeInBytes() {return 2;}
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						super.flagChannelUsed(channel.getIndex());
@@ -677,8 +553,7 @@ public class NUSALSeqParser implements WriterPrintable{
 					}
 				};
 			case 0x4:
-				return new NUSALSeqCommand(NUSALSeqCmdType.INIT_CHANNEL, cmdb){
-					public int getSizeInBytes() {return 1;}
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.INIT_CHANNEL){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						super.flagChannelUsed(channel.getIndex());
@@ -691,160 +566,104 @@ public class NUSALSeqParser implements WriterPrintable{
 		case 0xd: 
 			switch(lo){
 			case 0x3:
-				return new NUSALSeqCommand(NUSALSeqCmdType.CH_PITCHBEND, cmdb){
-					private boolean timeflag;
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.CH_PITCHBEND, (int)data.getByte(pos+1)){
 					protected void onInit(){
-						super.setParam(0, (int)data.getByte(pos+1));
 						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
 						if(nb < 0x78){
 							//Set
-							timeflag = true;
 							super.setParam(1, nb);
 						}
 					}
 					
-					public int getSizeInBytes() {return timeflag?3:2;}
-					
-					public boolean doCommand(NUSALSeqChannel channel){
-						if(channel == null) return false;
-						super.flagChannelUsed(channel.getIndex());
-						channel.setPitchbend((byte)super.getParam(0), super.getParam(1));
-						return true;
-					}
-					
-					protected String paramsToString(){
-						String str = "0x" + String.format("%02x", super.getParam(0));
-						if(super.getParam(1) > 0){
-							str += " " + super.getParam(1);
-						}
-						return str;
+					protected void doChannelAction(NUSALSeqChannel channel){
+						channel.setPitchbend((byte)super.getParam(0));
 					}
 				};
 			case 0x4:
-				return new NUSALSeqCommand(NUSALSeqCmdType.CH_REVERB, cmdb){
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.CH_REVERB, (int)data.getByte(pos+1)){
 
-					protected void onInit(){super.setParam(0, (int)data.getByte(pos+1));}
+					protected void onInit(){
+						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
+						if(nb < 0x78){
+							//Set
+							super.setParam(1, nb);
+						}
+					}
 					
-					public int getSizeInBytes() {return 2;}
-					
-					public boolean doCommand(NUSALSeqChannel channel){
-						if(channel == null) return false;
-						super.flagChannelUsed(channel.getIndex());
+					protected void doChannelAction(NUSALSeqChannel channel){
 						channel.setEffectsLevel((byte)super.getParam(0));
-						return true;
 					}
 					
-					protected String paramsToString(){
-						return super.getParam(0) + " 0x" + String.format("%02x", super.getParam(0)); 
-					}
 				};
 			case 0x8:
-				return new NUSALSeqCommand(NUSALSeqCmdType.CH_VIBRATO, cmdb){
-					private boolean timeflag;
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.CH_VIBRATO, (int)data.getByte(pos+1)){
 					protected void onInit(){
-						super.setParam(0, (int)data.getByte(pos+1));
-						//Check next byte
 						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
 						if(nb < 0x78){
 							//Set
-							timeflag = true;
 							super.setParam(1, nb);
 						}
 					}
-					
-					public int getSizeInBytes() {return timeflag?3:2;}
-					
-					public boolean doCommand(NUSALSeqChannel channel){
-						if(channel == null) return false;
-						super.flagChannelUsed(channel.getIndex());
-						channel.setVibrato((byte)super.getParam(0), super.getParam(1));
-						return true;
-					}
-					
-					protected String paramsToString(){
-						String str = "0x" + String.format("%02x", super.getParam(0));
-						if(super.getParam(1) > 0){
-							str += " " + super.getParam(1);
-						}
-						return str;
-					}
+					protected void doChannelAction(NUSALSeqChannel channel){
+						channel.setVibrato((byte)super.getParam(0));
+					}	
 				};
 			case 0xa:
-				return new CMD_IgnoredCommand(NUSALSeqCmdType.CH_UNK_DA, cmdb, 2);
-			case 0xc:
-				return new CMD_IgnoredCommand(NUSALSeqCmdType.CH_DRUMSET, cmdb, 2);
-			case 0xd:
-				return new NUSALSeqCommand(NUSALSeqCmdType.CH_PAN, cmdb){
-					private boolean timeflag;
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.CH_UNK_DA){
 					protected void onInit(){
-						super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));
-						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
-						if(nb < 0x78){
-							//Set
-							timeflag = true;
-							super.setParam(1, nb);
-						}
-					}
-					public int getSizeInBytes() {return timeflag?3:2;}
-					public boolean doCommand(NUSALSeqChannel channel){
-						if(channel == null) return false;
-						super.flagChannelUsed(channel.getIndex());
-						channel.setPan((byte)super.getParam(0), super.getParam(1));
-						return true;
-					}
-					protected String paramsToString(){
-						String str = "0x" + String.format("%02x", super.getParam(0));
-						if(super.getParam(1) > 0){
-							str += " " + super.getParam(1);
-						}
-						return str;
+						super.setParam(0, (int)data.getByte(pos+1));
 					}
 				};
-			case 0xf:
-				return new NUSALSeqCommand(NUSALSeqCmdType.CH_VOLUME, cmdb){
-					private boolean timeflag;
+			case 0xc:
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.CH_DRUMSET){
 					protected void onInit(){
-						super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));
+						super.setParam(0, (int)data.getByte(pos+1));
+					}
+				};
+			case 0xd:
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.CH_PAN, (int)data.getByte(pos+1)){
+					protected void onInit(){
 						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
 						if(nb < 0x78){
 							//Set
-							timeflag = true;
 							super.setParam(1, nb);
 						}
 					}
-					public int getSizeInBytes() {return timeflag?3:2;}
-					public boolean doCommand(NUSALSeqChannel channel){
-						if(channel == null) return false;
-						super.flagChannelUsed(channel.getIndex());
-						channel.setVolume((byte)super.getParam(0), super.getParam(1));
-						return true;
-					}
-					protected String paramsToString(){
-						String str = "0x" + String.format("%02x", super.getParam(0));
-						if(super.getParam(1) > 0){
-							str += " " + super.getParam(1);
+					protected void doChannelAction(NUSALSeqChannel channel){
+						channel.setPan((byte)super.getParam(0));
+					}	
+				};
+			case 0xf:
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.CH_VOLUME, (int)data.getByte(pos+1)){
+					protected void onInit(){
+						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
+						if(nb < 0x78){
+							//Set
+							super.setParam(1, nb);
 						}
-						return str;
 					}
+					protected void doChannelAction(NUSALSeqChannel channel){
+						channel.setVolume((byte)super.getParam(0));
+					}	
 				};
 			}
 			break;
 		case 0xe: 
 			switch(lo){
 			case 0x0:
-				return new CMD_IgnoredCommand(NUSALSeqCmdType.CH_UNK_E0, cmdb, 2);
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.CH_UNK_E0){
+					protected void onInit(){
+						super.setParam(0, (int)data.getByte(pos+1));
+					}
+				};
 			case 0x9:
-				return new NUSALSeqCommand(NUSALSeqCmdType.CH_PRIORITY, cmdb){
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.CH_PRIORITY){
 					protected void onInit(){super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-					public int getSizeInBytes() {return 2;}
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						super.flagChannelUsed(channel.getIndex());
 						channel.setPriority((byte)super.getParam(0));
 						return true;
-					}
-					protected String paramsToString(){
-						return super.getParam(0) + " 0x" + String.format("%02x", (byte)super.getParam(0)); 
 					}
 				};
 			}
@@ -852,71 +671,44 @@ public class NUSALSeqParser implements WriterPrintable{
 		case 0xf: 
 			switch(lo){
 			case 0x2:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_LTZ_REL, cmdb){
-					protected void onInit(){
-						super.setParam(0, (int)data.getByte(pos+1));}
-					public int getSizeInBytes() {return 2;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_LTZ_REL, (int)data.getByte(pos+1)){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						if(channel.getVar() < 0){
-							int nowpos = channel.getCurrentPosition();
-							channel.jumpTo(nowpos + getBranchAddress(), false);	
+							/*int nowpos = channel.getCurrentPosition();
+							channel.jumpTo(nowpos + getBranchAddress(), false);	*/
+							channel.jumpTo(this.getBranchAddress(), false);
 						}
 						flagChannelUsed(channel.getIndex());
 						return true;
-					}
-					public boolean isBranch(){return true;};
-					public boolean isRelativeBranch(){return true;}
-					public int getBranchAddress(){return super.getParam(0)-1;}
-					protected String paramsToString(){
-						return String.format("0x%02x", super.getParam(0));  
 					}
 				};
 			case 0x3:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_EQZ_REL, cmdb){
-					protected void onInit(){
-						super.setParam(0, (int)data.getByte(pos+1));}
-					public int getSizeInBytes() {return 2;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_EQZ_REL, (int)data.getByte(pos+1)){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						if(channel.getVar() == 0){
-							int nowpos = channel.getCurrentPosition();
-							channel.jumpTo(nowpos + getBranchAddress(), false);	
+							/*int nowpos = channel.getCurrentPosition();
+							channel.jumpTo(nowpos + getBranchAddress(), false);	*/
+							channel.jumpTo(this.getBranchAddress(), false);
 						}
 						flagChannelUsed(channel.getIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public boolean isRelativeBranch(){return true;}
-					public int getBranchAddress(){return super.getParam(0)-1;}
-					protected String paramsToString(){
-						return String.format("0x%02x", super.getParam(0)); 
-					}
 				};
 			case 0x4:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_ALWAYS_REL, cmdb){
-					protected void onInit(){
-						super.setParam(0, (int)data.getByte(pos+1));}
-					public int getSizeInBytes() {return 2;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_ALWAYS_REL, (int)data.getByte(pos+1)){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
-						int nowpos = channel.getCurrentPosition();
-						channel.jumpTo(nowpos + getBranchAddress(), false);
+						/*int nowpos = channel.getCurrentPosition();
+						channel.jumpTo(nowpos + getBranchAddress(), false);*/
+						channel.jumpTo(this.getBranchAddress(), false);
 						flagChannelUsed(channel.getIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public boolean isRelativeBranch(){return true;}
-					public int getBranchAddress(){return super.getParam(0)-1;}
-					protected String paramsToString(){
-						return String.format("0x%02x", super.getParam(0)); 
-					}
 				};
 			case 0x5:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_GTEZ, cmdb){
-					protected void onInit(){
-						super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					public int getSizeInBytes() {return 3;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_GTEZ, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						if(channel.getVar() >= 0){
@@ -925,15 +717,9 @@ public class NUSALSeqParser implements WriterPrintable{
 						flagChannelUsed(channel.getIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public int getBranchAddress(){return super.getParam(0);}
-					protected String paramsToString(){
-						return String.format("0x%04x", super.getParam(0)); 
-					}
 				};
 			case 0x7:
-				return new NUSALSeqCommand(NUSALSeqCmdType.LOOP_END, cmdb){
-					public int getSizeInBytes() {return 1;}
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.LOOP_END){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						channel.signalLoopEnd();
@@ -942,10 +728,9 @@ public class NUSALSeqParser implements WriterPrintable{
 					}
 				};
 			case 0x8:
-				return new NUSALSeqCommand(NUSALSeqCmdType.LOOP_START, cmdb){
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.LOOP_START){
 					protected void onInit(){
 						super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-					public int getSizeInBytes() {return 2;}
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						channel.signalLoopStart(super.getParam(0));
@@ -954,10 +739,7 @@ public class NUSALSeqParser implements WriterPrintable{
 					}
 				};
 			case 0x9:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_LTZ, cmdb){
-					protected void onInit(){
-						super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					public int getSizeInBytes() {return 3;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_LTZ, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						if(channel.getVar() < 0){
@@ -966,17 +748,9 @@ public class NUSALSeqParser implements WriterPrintable{
 						flagChannelUsed(channel.getIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public int getBranchAddress(){return super.getParam(0);}
-					protected String paramsToString(){
-						return String.format("0x%04x", super.getParam(0)); 
-					}
 				};
 			case 0xa:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_EQZ, cmdb){
-					protected void onInit(){
-						super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					public int getSizeInBytes() {return 3;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_EQZ, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						if(channel.getVar() == 0){
@@ -985,64 +759,30 @@ public class NUSALSeqParser implements WriterPrintable{
 						flagChannelUsed(channel.getIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public int getBranchAddress(){return super.getParam(0);}
-					protected String paramsToString(){
-						return String.format("0x%04x", super.getParam(0)); 
-					}
 				};
 			case 0xb:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_ALWAYS, cmdb){
-					protected void onInit(){
-						super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					public int getSizeInBytes() {return 3;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_ALWAYS, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						channel.jumpTo(super.getParam(0), false);
 						flagChannelUsed(channel.getIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public int getBranchAddress(){return super.getParam(0);}
-					protected String paramsToString(){
-						return String.format("0x%04x", super.getParam(0)); 
-					}
 				};
 			case 0xc:
-				return new NUSALSeqCommand(NUSALSeqCmdType.CALL, cmdb){
-					protected void onInit(){
-						super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					public int getSizeInBytes() {return 3;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.CALL, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						channel.jumpTo(super.getParam(0), true);
 						flagChannelUsed(channel.getIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public int getBranchAddress(){return super.getParam(0);}
-					protected String paramsToString(){
-						return String.format("0x%04x", super.getParam(0)); 
-					}
 				};
 			case 0xd:
-				return new NUSALSeqCommand(NUSALSeqCmdType.WAIT, cmdb){
-					private int bcount;
-					protected void onInit(){
-						int[] vlq = readVLQ(pos+1);
-						super.setParam(0, vlq[0]);
-						bcount = vlq[1]+1;
-					}
-					public int getSizeInBytes() {return bcount;}
-					public boolean doCommand(NUSALSeqChannel channel){
-						if(channel == null) return false;	
-						flagChannelUsed(channel.getIndex());
-						return channel.setWait(super.getParam(0));
-					}
-				};
+				int[] iarr = readVLQ(pos+1);
+				return new NUSALSeqWaitCommand(iarr[0] ,false);
 			case 0xe:
-				return new NUSALSeqCommand(NUSALSeqCmdType.RETURN, cmdb){
-					public int getSizeInBytes() {return 1;}
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.RETURN){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						channel.returnFromCall();
@@ -1052,8 +792,7 @@ public class NUSALSeqParser implements WriterPrintable{
 				};
 			case 0xf:
 				//System.err.println("debug -- end found");
-				return new NUSALSeqCommand(NUSALSeqCmdType.END_READ, cmdb){
-					public int getSizeInBytes() {return 1;}
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.END_READ){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						channel.signalReadEnd();
@@ -1077,122 +816,34 @@ public class NUSALSeqParser implements WriterPrintable{
 		if(hi < 0x4){
 			int[] vlq = readVLQ(pos+1);
 			byte v = data.getByte(pos+1+vlq[1]);
-			byte g = data.getByte(pos+1+vlq[1]);
-			return new NUSALSeqCommand(NUSALSeqCmdType.PLAY_NOTE_NTVG, cmdb){
-
-				private int vlq_sz;
-				protected void onInit(){
-					super.setParam(0, Byte.toUnsignedInt(cmdb));
-					super.setParam(1, vlq[0]);
-					super.setParam(2, Byte.toUnsignedInt(v));
-					super.setParam(3, Byte.toUnsignedInt(g));
-					vlq_sz = vlq[1];
-				}; 
-				
-				public int getSizeInBytes() {return 3 + vlq_sz;}
-				
-				public boolean doCommand(NUSALSeqLayer voice){
-					if(voice == null) return false;
-					voice.playNote((byte)super.getParam(0), (byte)super.getParam(2), (byte)super.getParam(3), super.getParam(1));
-					flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
-					return true;
-				}
-				
-				protected String paramsToString(){
-					return String.format("%02x, ", super.getParam(0)) + 
-							super.getParam(1) + " ticks, " +
-							"v" + super.getParam(2) + 
-							", g" + super.getParam(3); 
-				}
-			};
+			byte g = data.getByte(pos+2+vlq[1]);
+			return NUSALSeqNoteCommand.fromRawCommand(cmdb, vlq[0], v, g);
 		}
 		else if(hi >= 0x4 && hi < 0x8){
 			int[] vlq = readVLQ(pos+1);
-			byte n = (byte)(cmdi - 0x40);
+			//byte n = (byte)(cmdi - 0x40);
 			byte v = data.getByte(pos+1+vlq[1]);
-			return new NUSALSeqCommand(NUSALSeqCmdType.PLAY_NOTE_NTV, cmdb){
-
-				private int vlq_sz;
-				protected void onInit(){
-					super.setParam(0, Byte.toUnsignedInt(n));
-					super.setParam(1, vlq[0]);
-					super.setParam(2, Byte.toUnsignedInt(v));
-					vlq_sz = vlq[1];
-				}; 
-				
-				public int getSizeInBytes() {return 2 + vlq_sz;}
-				
-				public boolean doCommand(NUSALSeqLayer voice){
-					if(voice == null) return false;
-					voice.playNote((byte)super.getParam(0), (byte)super.getParam(2), super.getParam(1));
-					flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
-					return true;
-				}
-				
-				protected String paramsToString(){
-					return String.format("%02x, ", super.getParam(0)) + 
-							super.getParam(1) + " ticks, " +
-							"v" + super.getParam(2); 
-				}
-			};
+			return NUSALSeqNoteCommand.fromRawCommand(cmdb, vlq[0], v);
 		}
 		else if(hi >= 0x8 && hi < 0xc){
-			byte n = (byte)(cmdi - 0x80);
+			//byte n = (byte)(cmdi - 0x80);
 			byte v = data.getByte(pos+1);
 			byte g = data.getByte(pos+2);
-			return new NUSALSeqCommand(NUSALSeqCmdType.PLAY_NOTE_NVG, cmdb){
-				protected void onInit(){
-					super.setParam(0, Byte.toUnsignedInt(n));
-					super.setParam(1, Byte.toUnsignedInt(v));
-					super.setParam(2, Byte.toUnsignedInt(g));
-				}; 
-				
-				public int getSizeInBytes() {return 3;}
-				
-				public boolean doCommand(NUSALSeqLayer voice){
-					if(voice == null) return false;
-					voice.playNote((byte)super.getParam(0), (byte)super.getParam(1), (byte)super.getParam(2));
-					flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
-					return true;
-				}
-				
-				protected String paramsToString(){
-					return String.format("%02x, ", super.getParam(0)) + 
-							", v" + super.getParam(1) +
-							", g" + super.getParam(2); 
-				}
-			};
+			return NUSALSeqNoteCommand.fromRawCommand(cmdb, v, g);
 		}
 		else if(hi == 0xc){
 			switch(lo){
 			case 0x0:
 				//Rest
 				int[] vlq = readVLQ(pos+1);
-				return new NUSALSeqCommand(NUSALSeqCmdType.REST, cmdb){
-
-					private int vlq_sz;
-					protected void onInit(){
-						super.setParam(0, vlq[0]);
-						vlq_sz = vlq[1];
-					}; 
-					
-					public int getSizeInBytes() {return 1 + vlq_sz;}
-					
-					public boolean doCommand(NUSALSeqLayer voice){
-						if(voice == null) return false;
-						voice.rest(super.getParam(0));
-						flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
-						return true;
-					}
-				};
+				return new NUSALSeqWaitCommand(vlq[0] ,true);
 			case 0x2:
 				//Transpose
 				int amt = (int)data.getByte(pos+1);
-				return new NUSALSeqCommand(NUSALSeqCmdType.TRANSPOSE, cmdb){
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.TRANSPOSE){
 					protected void onInit(){
 						super.setParam(0, amt);
 					}; 
-					public int getSizeInBytes() {return 2;}
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						voice.setTranspose(super.getParam(0));
@@ -1206,71 +857,44 @@ public class NUSALSeqParser implements WriterPrintable{
 			//Branches -___-
 			switch(lo){
 			case 0x2:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_LTZ_REL, cmdb){
-					protected void onInit(){
-						super.setParam(0, (int)data.getByte(pos+1));}
-					public int getSizeInBytes() {return 2;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_LTZ_REL, (int)data.getByte(pos+1)){
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						if(voice.getChannelVar() < 0){
-							int nowpos = voice.getCurrentPosition();
-							voice.jumpTo(nowpos + getBranchAddress(), false);	
+							/*int nowpos = voice.getCurrentPosition();
+							voice.jumpTo(nowpos + getBranchAddress(), false);*/	
+							voice.jumpTo(getBranchAddress(), false);	
 						}
 						flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 						return true;
-					}
-					public boolean isBranch(){return true;};
-					public boolean isRelativeBranch(){return true;}
-					public int getBranchAddress(){return super.getParam(0)-1;}
-					protected String paramsToString(){
-						return String.format("0x%02x", super.getParam(0));  
 					}
 				};
 			case 0x3:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_EQZ_REL, cmdb){
-					protected void onInit(){
-						super.setParam(0, (int)data.getByte(pos+1));}
-					public int getSizeInBytes() {return 2;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_EQZ_REL, (int)data.getByte(pos+1)){
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						if(voice.getChannelVar() == 0){
-							int nowpos = voice.getCurrentPosition();
-							voice.jumpTo(nowpos + getBranchAddress(), false);	
+							/*int nowpos = voice.getCurrentPosition();
+							voice.jumpTo(nowpos + getBranchAddress(), false);*/
+							voice.jumpTo(getBranchAddress(), false);
 						}
 						flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public boolean isRelativeBranch(){return true;}
-					public int getBranchAddress(){return super.getParam(0)-1;}
-					protected String paramsToString(){
-						return String.format("0x%02x", super.getParam(0)); 
-					}
 				};
 			case 0x4:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_ALWAYS_REL, cmdb){
-					protected void onInit(){
-						super.setParam(0, (int)data.getByte(pos+1));}
-					public int getSizeInBytes() {return 2;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_ALWAYS_REL, (int)data.getByte(pos+1)){
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
-						int nowpos = voice.getCurrentPosition();
-						voice.jumpTo(nowpos + getBranchAddress(), false);	
+						/*int nowpos = voice.getCurrentPosition();
+						voice.jumpTo(nowpos + getBranchAddress(), false);	*/
+						voice.jumpTo(getBranchAddress(), false);
 						flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public boolean isRelativeBranch(){return true;}
-					public int getBranchAddress(){return super.getParam(0)-1;}
-					protected String paramsToString(){
-						return String.format("0x%02x", super.getParam(0)); 
-					}
 				};
 			case 0x5:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_GTEZ, cmdb){
-					protected void onInit(){
-						super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					public int getSizeInBytes() {return 3;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_GTEZ, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						if(voice.getChannelVar() >= 0){
@@ -1279,15 +903,9 @@ public class NUSALSeqParser implements WriterPrintable{
 						flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public int getBranchAddress(){return super.getParam(0);}
-					protected String paramsToString(){
-						return String.format("0x%04x", super.getParam(0)); 
-					}
 				};
 			case 0x7:
-				return new NUSALSeqCommand(NUSALSeqCmdType.LOOP_END, cmdb){
-					public int getSizeInBytes() {return 1;}
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.LOOP_END){
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						voice.signalLoopEnd();
@@ -1296,10 +914,9 @@ public class NUSALSeqParser implements WriterPrintable{
 					}
 				};
 			case 0x8:
-				return new NUSALSeqCommand(NUSALSeqCmdType.LOOP_START, cmdb){
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.LOOP_START){
 					protected void onInit(){
 						super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-					public int getSizeInBytes() {return 2;}
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						voice.signalLoopStart(super.getParam(0));
@@ -1308,10 +925,7 @@ public class NUSALSeqParser implements WriterPrintable{
 					}
 				};
 			case 0x9:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_LTZ, cmdb){
-					protected void onInit(){
-						super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					public int getSizeInBytes() {return 3;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_LTZ, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						if(voice.getChannelVar() < 0){
@@ -1320,17 +934,9 @@ public class NUSALSeqParser implements WriterPrintable{
 						flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public int getBranchAddress(){return super.getParam(0);}
-					protected String paramsToString(){
-						return String.format("0x%04x", super.getParam(0)); 
-					}
 				};
 			case 0xa:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_IF_EQZ, cmdb){
-					protected void onInit(){
-						super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					public int getSizeInBytes() {return 3;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_IF_EQZ, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						if(voice.getChannelVar() == 0){
@@ -1339,65 +945,30 @@ public class NUSALSeqParser implements WriterPrintable{
 						flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public int getBranchAddress(){return super.getParam(0);}
-					protected String paramsToString(){
-						return String.format("0x%04x", super.getParam(0)); 
-					}
 				};
 			case 0xb:
-				return new NUSALSeqCommand(NUSALSeqCmdType.BRANCH_ALWAYS, cmdb){
-					protected void onInit(){
-						super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					public int getSizeInBytes() {return 3;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.BRANCH_ALWAYS, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						voice.jumpTo(super.getParam(0), false);
 						flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public int getBranchAddress(){return super.getParam(0);}
-					protected String paramsToString(){
-						return String.format("0x%04x", super.getParam(0)); 
-					}
 				};
 			case 0xc:
-				return new NUSALSeqCommand(NUSALSeqCmdType.CALL, cmdb){
-					protected void onInit(){
-						super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));}
-					public int getSizeInBytes() {return 3;}
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.CALL, Short.toUnsignedInt(data.shortFromFile(pos+1))){
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						voice.jumpTo(super.getParam(0), true);
 						flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 						return true;
 					}
-					public boolean isBranch(){return true;};
-					public int getBranchAddress(){return super.getParam(0);}
-					protected String paramsToString(){
-						return String.format("0x%04x", super.getParam(0)); 
-					}
 				};
 			case 0xd:
-				return new NUSALSeqCommand(NUSALSeqCmdType.WAIT, cmdb){
-					private int bcount;
-					protected void onInit(){
-						int[] vlq = readVLQ(pos+1);
-						super.setParam(0, vlq[0]);
-						bcount = vlq[1]+1;
-					}
-					public int getSizeInBytes() {return bcount;}
-					public boolean doCommand(NUSALSeqLayer voice){
-						if(voice == null) return false;
-						voice.setWait(super.getParam(0));
-						flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
-						return true;
-					}
-				};
+				int[] vlq = readVLQ(pos+1);
+				return new NUSALSeqWaitCommand(vlq[0], false);
 			case 0xe:
-				return new NUSALSeqCommand(NUSALSeqCmdType.RETURN, cmdb){
-					public int getSizeInBytes() {return 1;}
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.RETURN){
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						voice.returnFromCall();
@@ -1406,8 +977,7 @@ public class NUSALSeqParser implements WriterPrintable{
 					}
 				};
 			case 0xf:
-				return new NUSALSeqCommand(NUSALSeqCmdType.END_READ, cmdb){
-					public int getSizeInBytes() {return 1;}
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.END_READ){
 					public boolean doCommand(NUSALSeqLayer voice){
 						if(voice == null) return false;
 						voice.signalReadEnd();
@@ -1432,11 +1002,15 @@ public class NUSALSeqParser implements WriterPrintable{
 		
 		//Seq commands
 		//System.err.println("NUSALSeqParser.parse || -DEBUG- Starting seq command parsing");
+		NUSALSeqCommand prev_cmd = null;
 		while(seq_pos >= 0){
 			//System.err.println("NUSALSeqParser.parse || -DEBUG- POSITION 0x" + Integer.toHexString(seq_pos));
 			if(cmdmap.containsKey(seq_pos)){
 				//Check for branches. If none, break.
 				if(branches.isEmpty()) break;
+				if(prev_cmd != null && (prev_cmd.getSubsequentCommand() != null)){
+					prev_cmd = null;
+				}
 				seq_pos = branches.pop(); continue;
 			}
 			NUSALSeqCommand cmd = readSeqCommand(seq_pos);
@@ -1445,7 +1019,10 @@ public class NUSALSeqParser implements WriterPrintable{
 				return false;
 			}
 			cmdmap.put(seq_pos, cmd);
+			cmd.setAddress(seq_pos);
 			cmd.flagSeqUsed();
+			if(prev_cmd != null) prev_cmd.setSubsequentCommand(cmd);
+			prev_cmd = cmd; 
 			
 			//Determine if need to save for later
 			if(cmd.isBranch()){
@@ -1454,7 +1031,7 @@ public class NUSALSeqParser implements WriterPrintable{
 					continue;
 				}
 				else if(cmd.getCommand() == NUSALSeqCmdType.BRANCH_ALWAYS_REL){
-					seq_pos += cmd.getBranchAddress();
+					seq_pos = cmd.getBranchAddress();
 					continue;
 				}
 				else if(cmd.getCommand() == NUSALSeqCmdType.BRANCH_TO_SEQSTART){
@@ -1464,16 +1041,20 @@ public class NUSALSeqParser implements WriterPrintable{
 				else if(cmd.getCommand() == NUSALSeqCmdType.RETURN){
 					//Treat like end
 					if(branches.isEmpty()) break;
+					prev_cmd = null;
 					seq_pos = branches.pop(); continue;
 				}
 				else if(cmd.getCommand() == NUSALSeqCmdType.RETURN_FROM_SEQ){
 					//Treat like end
 					if(branches.isEmpty()) break;
+					prev_cmd = null;
 					seq_pos = branches.pop(); continue;
 				}
 				else{
-					if(cmd.isRelativeBranch()){branches.add(cmd.getBranchAddress() + seq_pos);}
-					else{branches.add(cmd.getBranchAddress());}	
+					if(cmd.getCommand() != NUSALSeqCmdType.CHANNEL_OFFSET && cmd.getCommand() != NUSALSeqCmdType.CHANNEL_OFFSET_REL){
+						//System.err.println("NUSALSeqParser.parse || Adding as branch: 0x" + Integer.toHexString(cmd.getBranchAddress()) + " (via " + cmd.toString() +" )");
+						branches.add(cmd.getBranchAddress());
+					}
 				}
 			}
 			if(cmd.getCommand() == NUSALSeqCmdType.CHANNEL_OFFSET){
@@ -1489,6 +1070,7 @@ public class NUSALSeqParser implements WriterPrintable{
 			else if(cmd.getCommand() == NUSALSeqCmdType.END_READ){
 				//Check for branches. If none, break.
 				if(branches.isEmpty()) break;
+				prev_cmd = null;
 				seq_pos = branches.pop(); continue;
 			}
 			
@@ -1496,6 +1078,9 @@ public class NUSALSeqParser implements WriterPrintable{
 			if(seq_pos >= data.getFileSize()){
 				//Bad end, but break anyway.
 				if(branches.isEmpty()) break;
+				if(prev_cmd != null && (prev_cmd.getSubsequentCommand() != null)){
+					prev_cmd = null;
+				}
 				seq_pos = branches.pop();
 			}
 		}
@@ -1507,10 +1092,14 @@ public class NUSALSeqParser implements WriterPrintable{
 		for(int i = 0; i < 4; i++) vlist.add(new LinkedList<Integer>());
 		for(int i = 0; i < 16; i++){
 			//System.err.println("NUSALSeqParser.parse || -DEBUG- Now parsing channel " + i);
+			prev_cmd = null;
 			for(int j = 0; j < 4; j++) vlist.get(j).clear();
 			branches.addAll(list.get(i));
 			while(!branches.isEmpty()){
 				int ch_pos = branches.pop();
+				if(prev_cmd != null && (prev_cmd.getSubsequentCommand() != null)){
+					prev_cmd = null;
+				}
 				while(ch_pos >= 0){
 					//System.err.println("NUSALSeqParser.parse || -DEBUG- POSITION 0x" + Integer.toHexString(ch_pos));
 					NUSALSeqCommand cmd = null;
@@ -1520,15 +1109,21 @@ public class NUSALSeqParser implements WriterPrintable{
 						cmd = cmdmap.get(ch_pos);
 						if(cmd.channelUsed(i)) break;
 						cmd.flagChannelUsed(i);
+						prev_cmd = cmd;
 					}
 					else{
 						cmd = readChCommand(ch_pos);
 						if(cmd == null){
-							System.err.println("NUSALSeqParser.parse || Read error - unrecognized seq command at 0x" + Integer.toHexString(ch_pos));
+							System.err.println("NUSALSeqParser.parse || Read error - unrecognized channel control command at 0x" + Integer.toHexString(ch_pos));
 							return false;
 						}
 						cmd.flagChannelUsed(i);
+						cmd.setAddress(ch_pos);
 						cmdmap.put(ch_pos, cmd);
+						if(prev_cmd != null){
+							prev_cmd.setSubsequentCommand(cmd);
+						}
+						prev_cmd = cmd;
 					}
 					//Check for branch
 					if(cmd.isBranch()){
@@ -1543,11 +1138,14 @@ public class NUSALSeqParser implements WriterPrintable{
 						else if(cmd.getCommand() == NUSALSeqCmdType.RETURN){
 							//Treat like end
 							if(branches.isEmpty()) break;
+							prev_cmd = null;
 							ch_pos = branches.pop(); continue;
 						}
 						else{
-							if(cmd.isRelativeBranch()){branches.add(cmd.getBranchAddress() + ch_pos);}
-							else{branches.add(cmd.getBranchAddress());}	
+							if(cmd.getCommand() != NUSALSeqCmdType.VOICE_OFFSET && cmd.getCommand() != NUSALSeqCmdType.VOICE_OFFSET_REL){
+								//System.err.println("NUSALSeqParser.parse || Adding as branch: 0x" + Integer.toHexString(cmd.getBranchAddress()) + " (via " + cmd.toString() +" )");
+								branches.add(cmd.getBranchAddress());
+							}
 						}
 					}
 						
@@ -1572,9 +1170,13 @@ public class NUSALSeqParser implements WriterPrintable{
 			//Voices
 			for(int j = 0; j < 4; j++){
 				//System.err.println("NUSALSeqParser.parse || -DEBUG- Now parsing layer " + j + " from channel " + i);
+				prev_cmd = null;
 				branches.addAll(vlist.get(j));
 				while(!branches.isEmpty()){
 					int vpos = branches.pop();
+					if(prev_cmd != null && (prev_cmd.getSubsequentCommand() != null)){
+						prev_cmd = null;
+					}
 					while(vpos >= 0){
 						//System.err.println("NUSALSeqParser.parse || -DEBUG- POSITION 0x" + Integer.toHexString(vpos));
 						NUSALSeqCommand cmd = null;
@@ -1582,15 +1184,21 @@ public class NUSALSeqParser implements WriterPrintable{
 							cmd = cmdmap.get(vpos);
 							if(cmd.layerUsed(i, j)) break;
 							cmd.flagLayerUsed(i, j);
+							prev_cmd = cmd;
 						}
 						else{
 							cmd = readVoiceCommand(vpos);
 							if(cmd == null){
-								System.err.println("NUSALSeqParser.parse || Read error - unrecognized seq command at 0x" + Integer.toHexString(vpos));
+								System.err.println("NUSALSeqParser.parse || Read error - unrecognized voice command at 0x" + Integer.toHexString(vpos));
 								return false;
 							}
+							cmd.setAddress(vpos);
 							cmd.flagLayerUsed(i,j);
 							cmdmap.put(vpos, cmd);
+							if(prev_cmd != null){
+								prev_cmd.setSubsequentCommand(cmd);
+							}
+							prev_cmd = cmd;
 						}	
 						if(cmd.isBranch()){
 							if(cmd.getCommand() == NUSALSeqCmdType.BRANCH_ALWAYS){
@@ -1604,11 +1212,13 @@ public class NUSALSeqParser implements WriterPrintable{
 							else if(cmd.getCommand() == NUSALSeqCmdType.RETURN){
 								//Treat like end
 								if(branches.isEmpty()) break;
+								prev_cmd = null;
 								vpos = branches.pop(); continue;
 							}
 							else{
-								if(cmd.isRelativeBranch()){branches.add(cmd.getBranchAddress() + vpos);}
-								else{branches.add(cmd.getBranchAddress());}	
+								/*if(cmd.isRelativeBranch()){branches.add(cmd.getBranchAddress() + vpos);}
+								else{branches.add(cmd.getBranchAddress());}	*/
+								branches.add(cmd.getBranchAddress());
 							}
 						}
 							
@@ -1621,8 +1231,22 @@ public class NUSALSeqParser implements WriterPrintable{
 				} //while(!branches.isEmpty())
 			} //for(int j = 0; j < 4; j++)
 		} // for(int i = 0; i < 16; i++)
-		
+		updateReferenceLinks();
 		return true;
+	}
+	
+	public void updateReferenceLinks(){
+		List<Integer> keys = new ArrayList<Integer>(cmdmap.size()+1);
+		keys.addAll(cmdmap.keySet());
+		Collections.sort(keys);
+		for(Integer k : keys){
+			NUSALSeqCommand cmd = cmdmap.get(k);
+			if(cmd == null) continue;
+			if(cmd.isBranch()){
+				NUSALSeqCommand targ = cmdmap.get(cmd.getBranchAddress());
+				cmd.setReference(targ);
+			}
+		}
 	}
 	
 	public NUSALSeqCommandSource getCommandSource(){

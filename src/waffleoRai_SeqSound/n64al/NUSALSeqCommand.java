@@ -1,7 +1,12 @@
 package waffleoRai_SeqSound.n64al;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Set;
 import java.util.TreeSet;
+
+import waffleoRai_SeqSound.n64al.seqgen.NUSALSeqGenerator;
+import waffleoRai_Utils.FileBuffer;
 
 public abstract class NUSALSeqCommand {
 
@@ -9,10 +14,16 @@ public abstract class NUSALSeqCommand {
 	private byte cmdbyte;
 	private int[] params;
 	
+	private int address;
+	
 	private boolean seq_ctx; //Has this command been called by the seq?
 	private Set<Integer> ch_ctx; //What channel/voices have called this command?
 	//These should be read as bytes - high nyb is channel, low nyb is voice.
 	//If channel itself, the low nyb is 0xf
+	
+	//Linked list
+	private NUSALSeqCommand next_cmd;
+	private NUSALSeqCommand prev_cmd;
 	
 	public NUSALSeqCommand(NUSALSeqCmdType cmd, byte cmd_byte){
 		cmdbyte = cmd_byte;
@@ -29,6 +40,15 @@ public abstract class NUSALSeqCommand {
 	public byte getCommandByte(){return cmdbyte;}
 	protected void setCommand(NUSALSeqCmdType cmd){command = cmd;}
 	protected void setCommandByte(byte b){cmdbyte = b;}
+	
+	public NUSALSeqCommand getSubsequentCommand(){return next_cmd;}
+	public NUSALSeqCommand getPreviousCommand(){return prev_cmd;}
+	public void setReference(NUSALSeqCommand target){}
+	
+	public void setSubsequentCommand(NUSALSeqCommand next){
+		next_cmd = next;
+		if(next_cmd != null) next_cmd.prev_cmd = this;
+	}
 	
 	public boolean seqUsed(){return seq_ctx;}
 	public void flagSeqUsed(){seq_ctx = true;}
@@ -88,6 +108,9 @@ public abstract class NUSALSeqCommand {
 		else params[idx] = Short.toUnsignedInt(val);
 	}
 	
+	public void setAddress(int addr){address = addr;}
+	public int getAddress(){return address;}
+	
 	public boolean doCommand(NUSALSeq sequence){
 		throw new UnsupportedOperationException("Command 0x" + String.format("%02x", cmdbyte)
 			+ " not supported in sequence context");
@@ -107,6 +130,12 @@ public abstract class NUSALSeqCommand {
 	public boolean isBranch(){return false;}
 	public boolean isRelativeBranch(){return false;}
 	public int getBranchAddress(){return -1;}
+	public NUSALSeqCommand getBranchTarget(){return null;}
+	
+	public boolean isChunk(){return false;}
+	public boolean isTimeExtendable(){return false;}
+	public int getSizeInTicks(){return 0;}
+	public void setOptionalTime(int ticks){}
 	
 	protected String paramsToString(){
 		//Defaults to all decimal
@@ -126,6 +155,25 @@ public abstract class NUSALSeqCommand {
 		String params = paramsToString();
 		if(params != null && !params.isEmpty()) return cmdname + " " + params;
 		return cmdname;
+	}
+	
+	public byte[] serializeMe(){
+		byte[] bytes = NUSALSeqGenerator.serializeCommand(this);
+		return bytes;
+	}
+	
+	public int serializeTo(OutputStream stream) throws IOException{
+		byte[] bytes = NUSALSeqGenerator.serializeCommand(this);
+		if(bytes == null) return 0;
+		stream.write(bytes);
+		return bytes.length;
+	}
+	
+	public int serializeTo(FileBuffer buffer){
+		byte[] bytes = NUSALSeqGenerator.serializeCommand(this);
+		if(bytes == null) return 0;
+		for(int i = 0; i < bytes.length; i++) buffer.addToFile(bytes[i]);
+		return bytes.length;
 	}
 	
 }

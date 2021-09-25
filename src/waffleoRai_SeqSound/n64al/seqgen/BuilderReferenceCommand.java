@@ -7,17 +7,17 @@ class BuilderReferenceCommand extends BuilderCommand{
 	//Relative addresses (in target format) appear to be
 	//	the address of the byte BEFORE the jump rel command
 
-	private BuilderReferenceCommand reference;
+	private BuilderCommand reference;
 	private boolean is_relative;
 	private int p_idx_addr;
 	
-	public BuilderReferenceCommand(NUSALSeqCmdType cmd, BuilderReferenceCommand ref) {
+	public BuilderReferenceCommand(NUSALSeqCmdType cmd, BuilderCommand ref) {
 		super(cmd, cmd.getBaseCommand());
 		reference = ref;
 		detectRelative();
 	}
 	
-	public BuilderReferenceCommand(NUSALSeqCmdType cmd, int index, BuilderReferenceCommand ref) {
+	public BuilderReferenceCommand(NUSALSeqCmdType cmd, int index, BuilderCommand ref) {
 		super(cmd, (byte)(cmd.getBaseCommand() + index));
 		reference = ref;
 		super.setParam(0, index);
@@ -55,6 +55,8 @@ class BuilderReferenceCommand extends BuilderCommand{
 			break;
 		}
 	}
+	
+	public BuilderCommand getReference(){return reference;}
 	
 	public boolean isBranch(){return true;}
 	public boolean isRelativeBranch(){return is_relative;}

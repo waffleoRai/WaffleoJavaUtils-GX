@@ -1,5 +1,7 @@
 package waffleoRai_SeqSound.n64al;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
@@ -51,7 +53,10 @@ public class NUSALSeq implements WriterPrintable{
 	private int master_pos;
 	private Deque<Integer> return_stack;
 	
+	private NUSALSeqCommandMap seq_cmds; //This is filled at first play. Used for viewing commands
+	
 	private long wait_remain;
+	private long current_tick;
 	private int var;
 	private boolean term_flag;
 	
@@ -87,6 +92,7 @@ public class NUSALSeq implements WriterPrintable{
 			channels = new NUSALSeqChannel[16];
 			return_stack = new LinkedList<Integer>();
 			reset();
+			initialize();
 		}
 		catch(IOException ex){
 			ex.printStackTrace();
@@ -121,6 +127,7 @@ public class NUSALSeq implements WriterPrintable{
 	
 	public void initialize(){
 		//Creates channel objects and parses commands
+		seq_cmds = null;
 		NUSALSeqParser parser = new NUSALSeqParser(data);
 		parser.parse();
 		source = parser.getCommandSource();
@@ -145,6 +152,11 @@ public class NUSALSeq implements WriterPrintable{
 		return channels[idx];
 	}
 	
+	public NUSALSeqCommandMap getCommandTickMap(){
+		if(seq_cmds == null) playDummy();
+		return seq_cmds;
+	}
+	
 	/*----- Setters -----*/
 	
 	public void setSeqVar(int value){var = value;}
@@ -152,6 +164,11 @@ public class NUSALSeq implements WriterPrintable{
 	public void setType(byte value){type = value;}
 	public void setLoopEnabled(boolean b){loop_enabled = b;}
 	public void setAnnotationsEnabled(boolean b){anno_enable = b;}
+	
+	public void mapCommandToTick(int tick, NUSALSeqCommand cmd){
+		if(seq_cmds == null) seq_cmds = new NUSALSeqCommandMap();
+		seq_cmds.addCommand(tick, cmd);
+	}
 	
 	/*----- Channels -----*/
 	
@@ -319,7 +336,7 @@ public class NUSALSeq implements WriterPrintable{
 		return true;
 	}
 	
-	public boolean nextTick(){
+	public boolean nextTick(boolean savecmd){
 		if(term_flag || error_flag) return false;
 		
 		//Seq Itself
@@ -346,6 +363,7 @@ public class NUSALSeq implements WriterPrintable{
 				error_ch = -1;
 				return false;
 			}
+			if(savecmd) seq_cmds.addCommand((int)current_tick, cmd);
 			if(master_pos == mypos){
 				//The command wasn't a jump, so advance manually.
 				master_pos += cmd.getSizeInBytes();
@@ -361,7 +379,7 @@ public class NUSALSeq implements WriterPrintable{
 				error_msg = "Channel " + i + " enabled, but not allocated";
 				return false;
 			}
-			if(!channels[i].nextTick()){
+			if(!channels[i].nextTick(savecmd, (int)current_tick)){
 				error_flag = true;
 				error_addr = -1;
 				error_ch = i;
@@ -370,6 +388,22 @@ public class NUSALSeq implements WriterPrintable{
 		}
 		
 		return !term_flag;
+	}
+
+	private void playDummy(){
+		//Used to sort commands into channels/voices/seq etc. 
+		//	mapped to tick
+		reset();
+		initialize();
+		detectLoop();
+		
+		seq_cmds = new NUSALSeqCommandMap();
+		
+		final int MAX_TICKS = 10 * 255 * NUS_TPQN;
+		current_tick = 0;
+		while(nextTick(true) && (current_tick < MAX_TICKS)){
+			current_tick++;
+		}
 	}
 	
 	public void play(SequenceController listener, boolean loop){
@@ -382,16 +416,16 @@ public class NUSALSeq implements WriterPrintable{
 		for(int i = 0; i < 16; i++) channels[i].setListener(target);
 		
 		final int MAX_TICKS = 10 * 255 * NUS_TPQN; //10 min @ 255 bpm (max)
-		int ticks = 0;
-		while(nextTick() && (!loop || (ticks < MAX_TICKS))){
-			ticks++;
+		current_tick = 0;
+		while(nextTick(false) && (!loop || (current_tick < MAX_TICKS))){
+			current_tick++;
 			listener.advanceTick();
 			//System.err.println("ticks = " + ticks);
 		}
 		
 		if(error_flag){
 			//Print error message!
-			System.err.println("NUSALSeq.play -- ERROR at tick " + ticks);
+			System.err.println("NUSALSeq.play -- ERROR at tick " + current_tick);
 			if(error_ch >= 0){
 				if(channels[error_ch] != null){
 					error_addr = channels[error_ch].getErrorAddress();
@@ -414,8 +448,8 @@ public class NUSALSeq implements WriterPrintable{
 			return;
 		}
 		
-		if(!loop && ticks >= MAX_TICKS){
-			 System.err.println("Warning -- Playback terminated after " + ticks + " ticks due to possible undetected infinite loop.");
+		if(!loop && current_tick >= MAX_TICKS){
+			 System.err.println("Warning -- Playback terminated after " + current_tick + " ticks due to possible undetected infinite loop.");
 		}
 	}
 	
@@ -516,12 +550,13 @@ public class NUSALSeq implements WriterPrintable{
 	/*--- DEBUG ---*/
 	
 	public void printMeTo(Writer out) throws IOException{
-		//TODO
+		if(source == null) {out.write("<Seq empty>"); return;}
+		source.printMeTo(out);
 	}
 	
 	public static void main(String[] args){
 		String inpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\n64test\\seq_095.buseq";
-		//String logpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\n64test\\seq_095_parsetest.out";
+		String logpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\n64test\\seq_095_parsetest.out";
 		String outpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\n64test\\seq_095.mid";
 		
 		try{
@@ -536,6 +571,11 @@ public class NUSALSeq implements WriterPrintable{
 			
 			FileBuffer dat = FileBuffer.createBuffer(inpath, true);
 			NUSALSeq seq = new NUSALSeq(dat);
+			
+			BufferedWriter bw = new BufferedWriter(new FileWriter(logpath));
+			seq.printMeTo(bw);
+			bw.close();
+			
 			/*seq.initialize();
 			seq.detectLoop();
 			System.err.println("DEBUG || Loop: 0x" + Integer.toHexString(seq.loopst) + " - 0x" + Integer.toHexString(seq.looped));*/

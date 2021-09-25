@@ -50,6 +50,17 @@ class BuilderNoteCommand extends BuilderCommand{
 	}
 	
 	public byte getGate(){return (byte)super.getParam(idx_gate);}
+	
+	public int getSizeInTicks(){
+		return getTime();
+	}
+	
+	public void limitTicksTo(int ticks){
+		if(ticks < 1) return;
+		if(getTime() > ticks){
+			super.setParam(idx_time, ticks);
+		}
+	}
 
 	public int getSizeInBytes() {
 		if(idx_time < 0) return 3; //NVG

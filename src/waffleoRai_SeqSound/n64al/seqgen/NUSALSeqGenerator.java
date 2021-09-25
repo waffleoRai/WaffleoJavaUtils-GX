@@ -1,5 +1,10 @@
-package waffleoRai_SeqSound.n64al;
+package waffleoRai_SeqSound.n64al.seqgen;
 
+import java.io.BufferedOutputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -9,9 +14,9 @@ import javax.sound.midi.Sequence;
 
 import waffleoRai_SeqSound.MIDI;
 import waffleoRai_SeqSound.MIDIInterpreter;
-import waffleoRai_SeqSound.n64al.cmd.CMD_IgnoredCommand;
-import waffleoRai_SeqSound.n64al.seqgen.NUSALSeqBuilderChannel;
-import waffleoRai_SeqSound.n64al.seqgen.PhraseBuilder;
+import waffleoRai_SeqSound.n64al.NUSALSeq;
+import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SoundSynth.SequenceController;
 
 public class NUSALSeqGenerator implements SequenceController{
@@ -21,14 +26,6 @@ public class NUSALSeqGenerator implements SequenceController{
 	 * Effects2, vibrato NRPN, or mod wheel interpreted as vibrato 
 	 * Priority NRPN can be read as priority
 	 * LoopStart NRPN interpreted as loop point
-	 */
-
-	/*
-	 * TODO
-	 * 	Add delay track settability
-	 * 	Phrasebuilder tuning parameters
-	 *  Loop point setter (direct from program as opposed to marked in seq)
-	 *  Manual channel priority setters (default priorities if not marked in seq)
 	 */
 	
 	/*----- Constants -----*/
@@ -46,12 +43,12 @@ public class NUSALSeqGenerator implements SequenceController{
 	//private boolean mastervol_set; //Was master vol ever set by seq?
 	private int output_pb_range = 700; //Cents
 	
-	private Map<Integer, List<NUSALSeqCommand>> seqcmds;
+	private Map<Integer, List<BuilderCommand>> seqcmds;
 	private NUSALSeqBuilderChannel[] channels;
 	
 	private int[][] delay_tracks; //[n][0] is channel it is repeating. [n][1] is delay in ticks.
 	private int[] ch_pri; //Starting priorities for each channel if not overridden by seq
-	private boolean[] ch_enable;
+	private boolean[][] ch_enable; //First col is enable, second col is whether a note-on has been seen
 	private int[] input_pb_range; //Cents. Per channel.
 	private PhraseBuilder phrase_builder;
 	
@@ -64,7 +61,7 @@ public class NUSALSeqGenerator implements SequenceController{
 	/*----- Init -----*/
 	
 	public NUSALSeqGenerator(){
-		seqcmds = new TreeMap<Integer, List<NUSALSeqCommand>>();
+		seqcmds = new TreeMap<Integer, List<BuilderCommand>>();
 		channels = new NUSALSeqBuilderChannel[16];
 		for(int i = 0; i < 16; i++){
 			channels[i] = new NUSALSeqBuilderChannel(i);
@@ -72,12 +69,13 @@ public class NUSALSeqGenerator implements SequenceController{
 		loop_tick = -1;
 		delay_tracks = new int[16][2];
 		ch_pri = new int[16];
-		ch_enable = new boolean[16];
+		ch_enable = new boolean[16][2];
 		input_pb_range = new int[16];
 		for(int i = 0; i < 16; i++){
 			delay_tracks[i][0] = -1;
 			//ch_pri[i] = -1;
-			ch_enable[i] = true;
+			ch_enable[i][0] = true;
+			ch_enable[i][1] = false;
 			input_pb_range[i] = 200;
 		}
 		phrase_builder = new PhraseBuilder();
@@ -85,18 +83,29 @@ public class NUSALSeqGenerator implements SequenceController{
 		
 		loop_end = -1;
 		alt_entries = new TreeMap<Integer, Integer>();
+		//ch_used = new boolean[16];
 	}
 	
 	private void refreshPriorities(){
 		int p = 2;
 		for(int i = 0; i < 16; i++){
 			int ch = DEFO_CH_PRIS[i];
-			if(ch_enable[ch]) ch_pri[ch] = p++;
+			if(ch_enable[ch][0]) ch_pri[ch] = p++;
 			else ch_pri[ch] = -1;
 		}
 	}
 	
 	/*----- Getters -----*/
+	
+	public boolean channelEnabled(int idx){
+		if(idx < 0 || idx >= 16) return false;
+		return ch_enable[idx][0];
+	}
+	
+	public int getCurrentLengthInTicks(){
+		//TODO
+		return 0;
+	}
 	
 	/*----- Setters -----*/
 	
@@ -139,7 +148,7 @@ public class NUSALSeqGenerator implements SequenceController{
 	
 	public void increaseChannelPriority(int ch_idx){
 		if(ch_idx < 0 || ch_idx >= 16) return;
-		if(ch_enable[ch_idx]){
+		if(ch_enable[ch_idx][0]){
 			if(ch_pri[ch_idx] <= 2) ch_pri[ch_idx] = 2;
 			else{
 				ch_pri[ch_idx]--;
@@ -150,7 +159,7 @@ public class NUSALSeqGenerator implements SequenceController{
 	
 	public void decreaseChannelPriority(int ch_idx){
 		if(ch_idx < 0 || ch_idx >= 16) return;
-		if(ch_enable[ch_idx]){
+		if(ch_enable[ch_idx][0]){
 			if(ch_pri[ch_idx] <= 2) ch_pri[ch_idx] = 2;
 			else{
 				ch_pri[ch_idx]++;
@@ -227,39 +236,379 @@ public class NUSALSeqGenerator implements SequenceController{
 		if(loop_end >= 0) phrase_builder.addSegmentBorder(loop_end);
 	}
 	
+	public void disableChannel(int idx){
+		if(idx < 0 || idx >= 16) return;
+		ch_enable[idx][0] = false;
+	}
+	
+	public void enableChannel(int idx){
+		if(idx < 0 || idx >= 16) return;
+		ch_enable[idx][0] = true;
+	}
+
 	/*----- Utils -----*/
 	
-	protected void addToCmdMap(int time, NUSALSeqCommand cmd){
+	protected void addToCmdMap(int time, BuilderCommand cmd){
 		if(time < 0) return;
-		List<NUSALSeqCommand> list = seqcmds.get(time);
+		List<BuilderCommand> list = seqcmds.get(time);
 		if(list == null){
-			list = new LinkedList<NUSALSeqCommand>();
+			list = new LinkedList<BuilderCommand>();
 			seqcmds.put(time, list);
 		}
 		list.add(cmd);
 	}
 	
 	public boolean compressMIDI(Sequence seq, String outpath){
-		//TODO
 		if(seq == null) return false;
-		
-		//Ready generator
-		pushPriorities(0); //straighten priorities
+		for(int i = 0; i < 16; i++) ch_enable[i][1] = false;
 		
 		//Read MIDI
 		MIDIInterpreter reader = new MIDIInterpreter(seq);
 		reader.readMIDITo(this);
 		
-		//Optimize channels
+		pushPriorities(0); //straighten priorities
 		
-		return false;
+		//Alloc some containers for the chunks
+		int chunk_count = alt_entries.size() + 1;
+		if(loop_tick >= 0 && !alt_entries.containsValue(loop_tick)) chunk_count++;
+		if(loop_end >= 0 && !alt_entries.containsValue(loop_end)) chunk_count++;
+		//Chunk table
+		int[] ct_ticks = new int[chunk_count];
+		boolean[] ct_isEntry = new boolean[chunk_count];
+		CommandChunk[] ct_chunks = new CommandChunk[chunk_count];
+		List<Integer> cpoints = new ArrayList<Integer>(chunk_count+1);
+		cpoints.add(0);
+		cpoints.addAll(alt_entries.values());
+		if(loop_tick >= 0 && !alt_entries.containsValue(loop_tick)) cpoints.add(loop_tick);
+		if(loop_end >= 0 && !alt_entries.containsValue(loop_end)) cpoints.add(loop_end);
+		Collections.sort(cpoints);
+		int i = 0;
+		int ct_loop_idx = -1; //Index in chunk table of loop start
+		for(Integer point : cpoints){
+			ct_ticks[i] = point;
+			ct_isEntry[i] = (point == 0) || (alt_entries.containsValue(point));
+			ct_chunks[i] = new CommandChunk();
+			if(point == loop_tick) ct_loop_idx = i;
+			i++;
+		}
+
+		//Optimize channels 
+		// (need to detect empty channels too and set defo priorities)
+		int ticklen = getCurrentLengthInTicks();
+		for(i = 0; i < 16; i++){
+			channels[i].setExpectedSequenceLength(ticklen);
+			channels[i].setDefaultPriority((byte)ch_pri[i]);
+			channels[i].allocateBlocks(ct_ticks);
+			for(int j = 0; j < chunk_count; j++){
+				if(ct_ticks[j] == 0 || alt_entries.containsValue(ct_ticks[j])) channels[i].setBlockAsEntrypoint(j, true);
+			}
+		}
+		
+		//Compress regular channels
+		for(i = 0; i < 16; i++){
+			if(ch_enable[i][0] && ch_enable[i][1]){
+				if(delay_tracks[i][0] < 0){
+					channels[i].compressMusic(phrase_builder);
+				}
+			}
+		}
+		
+		//Compress delay channels
+		for(i = 0; i < 16; i++){
+			if(ch_enable[i][0]){
+				if(delay_tracks[i][0] >= 0){
+					channels[i].compressAsDelayChannel(phrase_builder, 
+							channels[delay_tracks[i][0]], delay_tracks[i][1]);
+				}
+			}
+		}
+		
+		CommandChunk seq_chunk = new CommandChunk();
+		//Seq start commands
+		BuilderCommand bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SET_FORMAT, 2);
+		bcmd.setParam(0, 0x20); 
+		seq_chunk.addCommand(bcmd);
+		 
+		bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SET_TYPE, 2);
+		bcmd.setParam(0, 0x32); 
+		seq_chunk.addCommand(bcmd);
+		
+		bcmd = new BuilderGenericCommand(NUSALSeqCmdType.ENABLE_CHANNELS, 3);
+		bcmd.setParam(0, 0xffff); 
+		seq_chunk.addCommand(bcmd);
+		
+		
+		//Multi-entrypoint jump table (if applicable)
+				/*
+				 * So what a lot of the multi-entry zelda seqs appear to do here is...
+				 * 
+				 * First, this little exchange...
+				 * Q = C[7] (87)
+				 * C[6] = Q (76)
+				 * Q = -1 (cc ff)
+				 * C[7] = Q (77)
+				 * Q = C[6] (86)
+				 * 
+				 * This seems to set C[7] to -1, and C[6] and Q to C[7]
+				 * In other words, the incoming C[7] determines which entrypoint to use.
+				 * 
+				 * ...Then it runs the variable to determine entrypoint
+				 * If the current variable is LTEZ, first entrypoint
+				 * Then, alternate between a decrement to Q (SUBTRACT_IMM) and EQZ check to see if branch off for higher values
+				 * Then if after the highest entry value is tested, we still haven't branched, insert a JUMP to the last entry
+				 */
+		//Additionally, Gerudo Valley seems to use C[3] to track the point in the song it is at.
+		//	This is probably so it can save its rough place if you go into certain loading zones then return to GV
+		//	Honestly, that's kinda cool.
+		//TODO might implement that here as well so that the game can read it if it wishes?
+		
+		if(!alt_entries.isEmpty()){
+			//put in variable movement blurb
+			bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SEQ_UNK_8x, 1);
+			bcmd.setParam(0, 7); 
+			seq_chunk.addCommand(bcmd);
+			bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SET_CH_VAR, 1);
+			bcmd.setParam(0, 6); 
+			seq_chunk.addCommand(bcmd);
+			bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SET_VAR, 1);
+			bcmd.setParam(0, -1); 
+			seq_chunk.addCommand(bcmd);
+			bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SET_CH_VAR, 1);
+			bcmd.setParam(0, 7); 
+			seq_chunk.addCommand(bcmd);
+			bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SEQ_UNK_8x, 1);
+			bcmd.setParam(0, 6); 
+			seq_chunk.addCommand(bcmd);
+			
+			//Direct to tick 0 if <= 0
+			bcmd = new BuilderReferenceCommand(NUSALSeqCmdType.BRANCH_IF_EQZ, ct_chunks[0]);
+			seq_chunk.addCommand(bcmd);
+			bcmd = new BuilderReferenceCommand(NUSALSeqCmdType.BRANCH_IF_LTZ, ct_chunks[0]);
+			seq_chunk.addCommand(bcmd);
+			
+			//Sort trigger values and map to targets.
+			Map<Integer, CommandChunk> tchunkmap = new TreeMap<Integer, CommandChunk>();
+			for(i = 0; i < chunk_count; i++) tchunkmap.put(ct_ticks[i], ct_chunks[i]);
+			List<Integer> triggerlist = new ArrayList<Integer>(alt_entries.size() + 1);
+			triggerlist.addAll(alt_entries.keySet());
+			Collections.sort(triggerlist);
+			int tcount = triggerlist.size();
+			int lastval = 0;
+			for(i = 0; i < tcount; i++){
+				int tval = triggerlist.get(i);
+				int diff = tval - lastval;
+				if(diff < 1) continue;
+				bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SUBTRACT_IMM, 2);
+				bcmd.setParam(0, diff); 
+				seq_chunk.addCommand(bcmd);
+				lastval = tval;
+				int tick = alt_entries.get(tval);
+				CommandChunk ref = tchunkmap.get(tick);
+				if(ref != null){
+					bcmd = new BuilderReferenceCommand(NUSALSeqCmdType.BRANCH_IF_EQZ, ref);
+					seq_chunk.addCommand(bcmd);
+				}
+			}
+		}
+		
+		//Flag used channels for simplicity
+		boolean[] chused = new boolean[16];
+		int chflags = 0;
+		for(i = 15; i >= 0; i++){
+			if(ch_enable[i][0]){
+				if(ch_enable[i][1] || delay_tracks[i][0] >= 0){
+					//It is enabled
+					chflags |= 0x1;
+					chused[i] = true;
+				}
+			}
+			chflags <<= 1;
+		}
+		
+		//Now build the blocks...
+		int now_tempo = 120;
+		int now_vol = 0x7f;
+		LinkedList<Integer> seq_event_times = new LinkedList<Integer>();
+		seq_event_times.addAll(seqcmds.keySet());
+		Collections.sort(seq_event_times);
+		for(int b = 0; b < chunk_count; b++){
+			CommandChunk block_chunk = ct_chunks[b];
+			if(ct_isEntry[b]){
+				//Need a channel enable command
+				//(indices of channels in bits goes lo -> hi)
+				//(ie. lowest bit is channel 0)
+				bcmd = new BuilderGenericCommand(NUSALSeqCmdType.ENABLE_CHANNELS, 3);
+				bcmd.setParam(0, chflags); 
+				block_chunk.addCommand(bcmd);
+			}
+			//Channel positioning commands
+			for(i = 0; i < 16; i++){
+				if(chused[i]){
+					CommandChunk ch_chunk = channels[i].getChannelChunk(b);
+					if(ch_chunk != null){
+						bcmd = new BuilderReferenceCommand(NUSALSeqCmdType.CHANNEL_OFFSET, i, ch_chunk);
+						block_chunk.addCommand(bcmd);	
+					}
+				}
+			}
+			
+			//Tempo & master volume updates
+			List<BuilderCommand> cmdlist = this.seqcmds.get(ct_ticks[b]);
+			boolean temposet = false;
+			boolean volset = false;
+			if(cmdlist != null){
+				for(BuilderCommand cmd : cmdlist){
+					switch(cmd.getCommand()){
+					case SET_TEMPO:
+						temposet = true;
+						now_tempo = cmd.getParam(0);
+						break;
+					case MASTER_VOLUME:
+						volset = true;
+						now_vol = cmd.getParam(0);
+						break;
+					default: break;
+					}
+					block_chunk.addCommand(cmd);
+				}
+			}
+			if(!temposet){
+				bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SET_TEMPO, 2);
+				bcmd.setParam(0, now_tempo); 
+				block_chunk.addCommand(bcmd);
+			}
+			if(!volset){
+				bcmd = new BuilderGenericCommand(NUSALSeqCmdType.MASTER_VOLUME, 2);
+				bcmd.setParam(0, now_vol); 
+				block_chunk.addCommand(bcmd);
+			}
+			
+			//Loop thru seq for anything else.
+			int lasttime = ct_ticks[b];
+			int endtime = ticklen;
+			if(b+1 < chunk_count) endtime = ct_ticks[b+1];
+			while(!seq_event_times.isEmpty()){
+				int mytime = seq_event_times.pop();
+				if(mytime == ct_ticks[b]) continue; //Already did it.
+				if(mytime >= endtime){
+					seq_event_times.push(mytime);
+					break;
+				}
+				
+				//Add wait
+				if(mytime > lasttime){
+					bcmd = new BuilderWaitCommand(mytime-lasttime, false);
+					block_chunk.addCommand(bcmd);
+				}
+				
+				//Put in commands
+				cmdlist = this.seqcmds.get(mytime);
+				for(BuilderCommand cmd : cmdlist){
+					switch(cmd.getCommand()){
+					case SET_TEMPO:
+						now_tempo = cmd.getParam(0);
+						break;
+					case MASTER_VOLUME:
+						now_vol = cmd.getParam(0);
+						break;
+					default: break;
+					}
+					block_chunk.addCommand(cmd);
+				}
+				
+				lasttime = mytime;
+			}
+			
+			//And add a wait until the next block
+			if(lasttime < endtime){
+				bcmd = new BuilderWaitCommand(endtime-lasttime, false);
+				block_chunk.addCommand(bcmd);	
+			}
+		}
+		
+		//Add loop/outro info, and read end to sequence end
+		if(loop_end >= 0){
+			//Outro expected. Loop normally at second to last block.
+			//TODO this needs to be way more complex
+			//	rn it just checks if Q <= 0 and loops if so.
+			//	It SHOULD be checking one of the C variables against the outro value.
+			//	But which one? And which one used to temporarily save Q?
+			if(ct_loop_idx >= 0){
+				CommandChunk block_chunk = ct_chunks[chunk_count-2];
+				bcmd = new BuilderReferenceCommand(NUSALSeqCmdType.BRANCH_IF_EQZ, ct_chunks[ct_loop_idx]);
+				block_chunk.addCommand(bcmd);
+				bcmd = new BuilderReferenceCommand(NUSALSeqCmdType.BRANCH_IF_LTZ, ct_chunks[ct_loop_idx]);
+				block_chunk.addCommand(bcmd);
+			}
+		}
+		else{
+			//No outro. Put a jump command to the loop start block at end of last block.
+			if(ct_loop_idx >= 0){
+				bcmd = new BuilderReferenceCommand(NUSALSeqCmdType.BRANCH_ALWAYS, ct_chunks[ct_loop_idx]);
+				ct_chunks[chunk_count-1].addCommand(bcmd);	
+			}
+		}
+		bcmd = new BuilderGenericCommand(NUSALSeqCmdType.END_READ, 1);
+		ct_chunks[chunk_count-1].addCommand(bcmd);	
+		
+		//Load everything into the main seq chunk...
+		for(i = 0; i < chunk_count; i++) seq_chunk.addCommand(ct_chunks[i]); //Sequence
+		//Channel control
+		for(i = 0; i < chunk_count; i++){
+			for(int j = 0; j < 16; j++){
+				if(chused[j]){
+					seq_chunk.addCommand(channels[j].getChannelChunk(i));
+				}
+			}
+		}
+		//Voice tracks
+		for(i = 0; i < chunk_count; i++){
+			for(int j = 0; j < 16; j++){
+				if(chused[j]){
+					CommandChunk[] charray = channels[j].getVoiceChunks(i);
+					for(int k = 0; k < 4; k++){
+						if(charray[k] != null && !charray[k].isEmpty()) seq_chunk.addCommand(charray[k]);
+					}
+				}
+			}
+		}
+		//Voice phrases
+		for(i = 0; i < chunk_count; i++){
+			for(int j = 0; j < 16; j++){
+				if(chused[j]){
+					CommandChunk[] charray = channels[j].getPhraseChunks(i);
+					for(int k = 0; k < 4; k++){
+						if(charray[k] != null && !charray[k].isEmpty()) seq_chunk.addCommand(charray[k]);
+					}
+				}
+			}
+		}
+		
+		//Everything should be linked up. Now assign addresses...
+		seq_chunk.setAddress(0);
+		
+		//And update references...
+		seq_chunk.updateParameters();
+		
+		//And serialize!
+		try{
+			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(outpath));
+			seq_chunk.serializeTo(bos);
+			bos.close();
+		}
+		catch(IOException ex){
+			ex.printStackTrace();
+			return false;
+		}
+		
+		return true;
 	}
 	
 	/*----- Seq Controls -----*/
 	
 	public void setMasterVolume(byte value){
 		NUSALSeqCmdType type = NUSALSeqCmdType.MASTER_VOLUME;
-		NUSALSeqCommand cmd = new CMD_IgnoredCommand(type, type.getBaseCommand(), 2);
+		BuilderCommand cmd = new BuilderGenericCommand(type, 2);
 		cmd.setParam(0, Byte.toUnsignedInt(value));
 		addToCmdMap(tick, cmd);
 		//mastervol_set = true;
@@ -267,7 +616,7 @@ public class NUSALSeqGenerator implements SequenceController{
 	
 	public void setTempo(int tempo_uspqn){
 		NUSALSeqCmdType type = NUSALSeqCmdType.SET_TEMPO;
-		NUSALSeqCommand cmd = new CMD_IgnoredCommand(type, type.getBaseCommand(), 2);
+		BuilderCommand cmd = new BuilderGenericCommand(type, 2);
 		cmd.setParam(0, MIDI.uspqn2bpm(tempo_uspqn, NUSALSeq.NUS_TPQN));
 		addToCmdMap(tick, cmd);
 	}
@@ -365,6 +714,7 @@ public class NUSALSeqGenerator implements SequenceController{
 	
 	//Music control
 	public void noteOn(int ch, byte note, byte vel){
+		ch_enable[ch][1] = true;
 		channels[ch].noteOn(note, vel);
 	}
 	
@@ -423,7 +773,6 @@ public class NUSALSeqGenerator implements SequenceController{
 		case SET_VAR:
 		case SUBTRACT_IMM:
 		case TRANSPOSE:
-		case VOICE_OFFSET_REL:
 			out = new byte[2];
 			out[0] = cmdb;
 			out[1] = (byte)cmd.getParam(0);
@@ -437,7 +786,6 @@ public class NUSALSeqGenerator implements SequenceController{
 		case DISABLE_CHANNELS:
 		case ENABLE_CHANNELS:
 		case SEQ_UNK_C5:
-		case VOICE_OFFSET:
 			out = new byte[3];
 			out[0] = cmdb;
 			param = cmd.getParam(0);
@@ -485,6 +833,20 @@ public class NUSALSeqGenerator implements SequenceController{
 		case SUBTRACT_CH:
 			out = new byte[1];
 			out[0] = (byte)((cmdi & 0xF0) | (cmd.getParam(0) & 0xF));
+			break;
+		//Voice layer lower nybble 1 byte param
+		case VOICE_OFFSET_REL:
+			out = new byte[2];
+			out[0] = (byte)((cmdi & 0xF0) | ((cmd.getParam(0) + 8) & 0xF));
+			out[1] = (byte)cmd.getParam(1);
+			break;
+		//Voice layer lower nybble 2 byte param
+		case VOICE_OFFSET:
+			out = new byte[3];
+			out[0] = (byte)((cmdi & 0xF0) | ((cmd.getParam(0) + 8) & 0xF));
+			param = cmd.getParam(1);
+			out[1] = (byte)((param >>> 8) & 0xFF);
+			out[2] = (byte)(param & 0xFF);
 			break;
 		//Channel lower nybble 1 byte param
 		case CHANNEL_OFFSET_REL:

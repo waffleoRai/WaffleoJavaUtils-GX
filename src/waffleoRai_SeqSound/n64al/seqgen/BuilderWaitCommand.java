@@ -12,6 +12,17 @@ class BuilderWaitCommand extends BuilderCommand{
 
 	public int getTime(){return super.getParam(0);}
 	
+	public int getSizeInTicks(){
+		return getTime();
+	}
+	
+	public void limitTicksTo(int ticks){
+		if(ticks < 1) return;
+		if(getTime() > ticks){
+			super.setParam(0, ticks);
+		}
+	}
+	
 	public int getSizeInBytes() {
 		if(getTime() < 128) return 2;
 		return 3;

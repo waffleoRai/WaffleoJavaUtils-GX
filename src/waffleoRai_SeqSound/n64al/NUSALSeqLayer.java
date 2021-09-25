@@ -13,6 +13,8 @@ public class NUSALSeqLayer {
 	private int nowpos;
 	private Deque<Integer> return_stack;
 	
+	private NUSALSeqCommandMap vox_cmds;
+	
 	private boolean noteon;
 	private int transpose;
 	private int time_remain;
@@ -66,6 +68,17 @@ public class NUSALSeqLayer {
 	public void clearError(){err_addr = -1;}
 	public int getErrorAddress(){return err_addr;}
 	//public NUSALSeqCommand getErrorCommand(){return bad_cmd;}
+	
+	public int getTranspose(){return this.transpose;}
+	
+	public NUSALSeqCommandMap getCommandTickMap(){
+		return vox_cmds;
+	}
+	
+	public void mapCommandToTick(int tick, NUSALSeqCommand cmd){
+		if(vox_cmds == null) vox_cmds = new NUSALSeqCommandMap();
+		vox_cmds.addCommand(tick, cmd);
+	}
 	
 	public boolean jumpTo(int pos, boolean push_return){
 		if(push_return) return_stack.push(nowpos+3);
@@ -170,7 +183,7 @@ public class NUSALSeqLayer {
 		target = listener;
 	}
 
-	public boolean nextTick(){
+	public boolean nextTick(boolean savecmd, int tick){
 		if(err_addr >= 0) return false;
 		if(endflag) return true;
 		
@@ -191,6 +204,7 @@ public class NUSALSeqLayer {
 				//The command wasn't a jump, so advance manually.
 				nowpos += cmd.getSizeInBytes();
 			}
+			if(savecmd) mapCommandToTick(tick, cmd);
 		}
 		
 		return true;

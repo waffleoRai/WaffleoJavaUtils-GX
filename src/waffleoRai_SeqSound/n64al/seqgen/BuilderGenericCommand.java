@@ -10,6 +10,10 @@ class BuilderGenericCommand extends BuilderCommand{
 		super(cmd, cmd.getBaseCommand());
 		byte_size = size;
 	}
+	
+	public void setSizeInBytes(int val){
+		byte_size = val;
+	}
 
 	public int getSizeInBytes() {
 		return byte_size;
