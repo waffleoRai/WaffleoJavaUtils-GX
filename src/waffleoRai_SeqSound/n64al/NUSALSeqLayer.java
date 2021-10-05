@@ -80,6 +80,10 @@ public class NUSALSeqLayer {
 		vox_cmds.addCommand(tick, cmd);
 	}
 	
+	public void clearSavedCommands(){
+		if(vox_cmds != null) vox_cmds.clearCommands();
+	}
+	
 	public boolean jumpTo(int pos, boolean push_return){
 		if(push_return) return_stack.push(nowpos+3);
 		nowpos = pos;

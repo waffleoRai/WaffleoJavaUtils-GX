@@ -23,4 +23,20 @@ public class NUSALSeqCommandMap extends MultiValMap<Integer, NUSALSeqCommand>{
 		return super.getValues(tick);
 	}
 	
+	public int addCommands(NUSALSeqCommandMap other){
+		if(other == null) return 0;
+		
+		int ct = 0;
+		List<Integer> ocoords = other.getTimeCoordinates();
+		for(Integer time : ocoords){
+			List<NUSALSeqCommand> list = other.getCommandsAt(time);
+			for(NUSALSeqCommand cmd : list){
+				super.addValue(time, cmd);
+				ct++;
+			}
+		}
+		
+		return ct;
+	}
+	
 }

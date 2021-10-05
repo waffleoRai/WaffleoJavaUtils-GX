@@ -218,6 +218,13 @@ public class NUSALSeqChannel {
 		layers[layer].mapCommandToTick(tick, cmd);
 	}
 	
+	public void clearSavedCommands(){
+		if(ch_cmds != null) ch_cmds.clearCommands();
+		for(int i = 0; i < 4; i++){
+			if(layers[i] != null) layers[i].clearSavedCommands();
+		}
+	}
+	
 	/*----- Actions -----*/
 	
 	public boolean jumpTo(int position, boolean push_return){

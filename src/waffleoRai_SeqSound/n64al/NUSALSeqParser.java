@@ -299,6 +299,7 @@ public class NUSALSeqParser implements WriterPrintable{
 								if((mask & param) != 0){
 									sequence.setChannelEnabled(i, true);
 								}
+								else sequence.setChannelEnabled(i, false);
 								mask <<= 1;
 							}
 							flagSeqUsed();

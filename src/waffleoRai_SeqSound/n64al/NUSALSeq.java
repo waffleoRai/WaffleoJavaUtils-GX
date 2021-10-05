@@ -60,6 +60,8 @@ public class NUSALSeq implements WriterPrintable{
 	private int var;
 	private boolean term_flag;
 	
+	private long tick_len = 0;
+	
 	private boolean error_flag;
 	private int error_addr;
 	private String error_msg;
@@ -111,6 +113,7 @@ public class NUSALSeq implements WriterPrintable{
 		tempo = 120;
 		master_vol = 0x7f;
 		error_msg = null; error_addr = -1; error_ch = -1;
+		tick_len = 0;
 		
 		for(int i = 0; i < 16; i++){
 			ch_enable[i] = false;
@@ -156,6 +159,17 @@ public class NUSALSeq implements WriterPrintable{
 		if(seq_cmds == null) playDummy();
 		return seq_cmds;
 	}
+	
+	public NUSALSeqCommandSource getAllCommands(){
+		if(source == null) initialize();
+		return source;
+	}
+	
+	public boolean channelEnabled(int idx){
+		return ch_enable[idx];
+	}
+	
+	public long getLengthInTicks(){return tick_len;}
 	
 	/*----- Setters -----*/
 	
@@ -404,6 +418,7 @@ public class NUSALSeq implements WriterPrintable{
 		while(nextTick(true) && (current_tick < MAX_TICKS)){
 			current_tick++;
 		}
+		tick_len = current_tick;
 	}
 	
 	public void play(SequenceController listener, boolean loop){
