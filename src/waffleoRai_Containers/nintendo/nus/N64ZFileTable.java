@@ -103,7 +103,7 @@ public class N64ZFileTable {
 		int ecount = (int)(ftsize >>> 4);
 		
 		N64ZFileTable ft = new N64ZFileTable(ecount+1);
-		table.setEndian(false);
+		table.setEndian(true);
 		table.setCurrentPosition(0L);
 		for(int i = 0; i < ecount; i++){
 			Entry e = new Entry();
@@ -199,6 +199,38 @@ public class N64ZFileTable {
 		}
 		
 		return root;
+	}
+	
+	public FileNode getFileAsNode(String rom_path, int byte_ordering, int index){
+		if(index < 0 || entries == null) return null;
+		if(index >= entries.size()) return null;
+		
+		Entry e = entries.get(index);
+		String name = String.format("f_%08x.bin", e.offset);
+		
+		FileNode fn = new FileNode(null, name);
+		fn.setSourcePath(rom_path);
+		fn.setOffset(e.getROMAddress());
+		fn.setLength(e.getSizeOnROM());
+		
+		//Compression
+		if(e.isCompressed()){
+			fn.setMetadataValue(FNMETAKEY_DECOMPSIZE, Long.toHexString(e.getSize()));
+			fn.addTypeChainNode(new CompDefNode(Yaz.getDefinition()));
+		}
+		
+		//Byte Ordering
+		//Target is BE, so we're actually doing this a bit different.
+		if(byte_ordering == N64ROMImage.ORDER_N64){
+			fn.addEncryption(new NUSDescrambler.NUS_N64_2BE_ByteswapDef());
+		}
+		else if(byte_ordering == N64ROMImage.ORDER_P64){
+			//The Z64 descrambler just reverses words, so we should be able to use
+			//	it either way.
+			fn.addEncryption(new NUSDescrambler.NUS_Z64_ByteswapDef());
+		}
+		
+		return fn;
 	}
 	
 	/*----- Setters -----*/

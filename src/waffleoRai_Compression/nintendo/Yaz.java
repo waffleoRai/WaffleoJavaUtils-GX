@@ -28,7 +28,8 @@ public class Yaz {
 	public static final String MAGIC_STR = "Yaz0";
 	public static final byte[] MAGIC_BYTES = {0x59, 0x61, 0x7a, 0x30};
 	
-	public static final int BACK_WINDOW_SIZE = 0xFFF;
+	//public static final int BACK_WINDOW_SIZE = 0xFFF;
+	public static final int BACK_WINDOW_SIZE = 0x1800;
 	public static final int MIN_RUN_SIZE_SMALL = 0x3;
 	public static final int MAX_RUN_SIZE_SMALL = 0x11;
 	public static final int MIN_RUN_SIZE_LARGE = 0x12;
@@ -165,7 +166,7 @@ public class Yaz {
 			{
 				//RLE nonsense
 				//System.err.println("\tFlag cleared. RLE time!");
-				int b0 = in.getFull();
+				int b0 = in.getFull(); if(in.isEmpty()) return read;
 				int b1 = in.getFull();
 				read+=2;
 				//Get backpos
@@ -177,6 +178,7 @@ public class Yaz {
 				{
 					if(bcount == 0)
 					{
+						if(in.isEmpty()) return read-2;
 						bcount = in.getFull() + 0x12;
 						read++;
 					}

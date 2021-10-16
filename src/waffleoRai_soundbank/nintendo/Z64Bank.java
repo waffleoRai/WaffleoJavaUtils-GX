@@ -97,6 +97,9 @@ public class Z64Bank implements WriterPrintable{
 			return true;
 		}
 		
+		public int getPredCount(){return pred.count;}
+		public int getPredOrder(){return pred.order;}
+		
 		public short[] getPredictorTable(){
 			if(pred == null) return null;
 			return pred.table;
@@ -117,6 +120,10 @@ public class Z64Bank implements WriterPrintable{
 			if(loop.count == 0) return -1;
 			if(loop.count == -1) return 0;
 			return loop.count;
+		}
+		
+		public boolean isTwoBit(){
+			return (flags & 0x30) != 0;
 		}
 		
 	}
