@@ -71,6 +71,10 @@ public class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 		if(is_relative){
 			int taddr = super.getParam(p_idx_addr);
 			int maddr = getAddress() - 1;
+			if(p_idx_addr == 1){
+				//
+				maddr = getAddress() + 3;
+			}
 			return taddr + maddr;
 		}
 		return super.getParam(p_idx_addr);
@@ -82,6 +86,10 @@ public class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 				//The parameter offset is always relative to the byte BEFORE the command for some reason
 				int taddr = reference.getAddress();
 				int maddr = getAddress() - 1;
+				if(p_idx_addr == 1){
+					//VOICE REL or CHANNEL REL
+					maddr = getAddress() + 3;
+				}
 				super.setParam(p_idx_addr, taddr - maddr);
 			}
 			else{
@@ -91,7 +99,7 @@ public class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 	}
 	
 	public int getSizeInBytes() {
-		if(is_relative) return 2;
+		if(is_relative && (p_idx_addr == 0)) return 2;
 		return 3;
 	}
 	

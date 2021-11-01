@@ -845,7 +845,7 @@ public class Z64Bank implements WriterPrintable{
 		String logpath = dirpath + "\\mm_soundbank_3_readtest.out";
 		String tblpath = dirpath + "\\n64test\\majora_bank_loc.txt";
 		String outpath = dirpath + "\\n64test\\majora_sounds.sf2";
-		String rompath = "C:\\Users\\Blythe\\Documents\\Game Stuff\\N64\\Games\\Legend of Zelda, The - Majora's Mask (U) [!].z64";
+		String rompath = "";
 		
 		try{
 			/*FileBuffer rom = FileBuffer.createBuffer(rompath, true);

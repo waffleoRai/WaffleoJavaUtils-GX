@@ -58,18 +58,19 @@ public enum NUSALSeqCmdType {
 	
 	//Channel Commands
 	
+	CH_DELTA_TIME(0x00, 1, 1), //"Command" for cases where I didn't build a time param into the previous command
 	VOICE_OFFSET_REL(0x78, 2, 2), //0x78 - 0x7b (rel)
 	VOICE_OFFSET(0x88, 2, 3), //0x88 - 0x8b (abs)
-	SET_PROGRAM(0xc1, 1, 2),
-	TRANSPOSE(0xc2, 1, 2),
-	INIT_CHANNEL(0xc4, 0, 1),
+	SET_PROGRAM(0xc1, 2, 2),
+	TRANSPOSE(0xc2, 2, 2),
+	INIT_CHANNEL(0xc4, 1, 1),
 	CH_PITCHBEND(0xd3, 2, 2), //Can take 2 param, but not sure when
 	CH_REVERB(0xd4, 2, 2),
 	CH_VIBRATO(0xd8, 2, 2),
-	CH_DRUMSET(0xdc, 1, 2),
+	CH_DRUMSET(0xdc, 2, 2),
 	CH_PAN(0xdd, 2, 2),
 	CH_VOLUME(0xdf, 2, 2), //Can take 2 param, but not sure when
-	CH_PRIORITY(0xe9, 1, 2),
+	CH_PRIORITY(0xe9, 2, 2),
 	
 	//Voice Commands
 	PLAY_NOTE_NTVG(0x00, 4, 4), //0x00 - 0x3f
@@ -77,8 +78,10 @@ public enum NUSALSeqCmdType {
 	PLAY_NOTE_NVG(0x80, 3, 3), //0x80 - 0xbf
 	REST(0xc0, 1, 2),
 	
-	CH_UNK_DA(0xda, 1, 2),
-	CH_UNK_E0(0xe0, 1, 2),
+	CH_UNK_B0(0xb0, 2, 3),
+	CH_UNK_B3(0xb3, 2, 2),
+	CH_UNK_DA(0xda, 2, 2),
+	CH_UNK_E0(0xe0, 2, 2),
 	
 	//Conversion Only
 	PSEUDO_MIDILIKE_NOTE(0x00, 4, 3), //Holds all NTVG. 

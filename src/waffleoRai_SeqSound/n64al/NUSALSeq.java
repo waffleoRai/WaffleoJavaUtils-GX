@@ -41,6 +41,8 @@ public class NUSALSeq implements WriterPrintable{
 	public static final int MIDI_NRPN_ID_LOOPEND = 0x06f7;
 	//Write vibrato to the mod wheel
 	
+	public static final int MIDI_NRPN_ID_GENERAL_HI = 0x0600;
+	
 	/*----- Static Variables -----*/
 	
 

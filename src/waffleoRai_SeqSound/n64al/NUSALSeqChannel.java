@@ -285,6 +285,12 @@ public class NUSALSeqChannel {
 		else term_flag = true;
 	}
 	
+	public void signalUnkEvent(byte cmdbyte, int value){
+		if(target == null) return;
+		int nrpn_idx = NUSALSeq.MIDI_NRPN_ID_GENERAL_HI | Byte.toUnsignedInt(cmdbyte);
+		target.addNRPNEvent(ch_idx, nrpn_idx, value, true);
+	}
+	
 	/*----- Playback -----*/
 	
 	public boolean nextTick(boolean savecmd, int tick){

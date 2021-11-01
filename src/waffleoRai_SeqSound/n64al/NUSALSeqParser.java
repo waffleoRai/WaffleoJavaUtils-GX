@@ -151,7 +151,7 @@ public class NUSALSeqParser implements WriterPrintable{
 				};
 			case 0xa:
 				//Specify channel start (rel addr)
-				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.CHANNEL_OFFSET_REL, lo, (int)data.getByte(pos+1)){
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.CHANNEL_OFFSET_REL, lo, (int)data.shortFromFile(pos+1)){
 					public boolean doCommand(NUSALSeq sequence){
 						if(sequence == null) return false;
 						flagSeqUsed();
@@ -502,13 +502,28 @@ public class NUSALSeqParser implements WriterPrintable{
 		int cmdi = Byte.toUnsignedInt(cmdb);
 		int hi = (cmdi >>> 4) & 0xf;
 		int lo = cmdi & 0xf;
-		//System.err.println("debug -- cmdi = 0x" + String.format("%02x", cmdi));
+		//System.err.println("debug -- pos = 0x" + Integer.toHexString(pos) + ", cmdi = 0x" + String.format("%02x", cmdi));
+		
+		if(cmdi < 0x78){
+			return new NUSALSeqGenericCommand(NUSALSeqCmdType.CH_DELTA_TIME){
+				protected void onInit(){
+					super.setParam(0, Byte.toUnsignedInt(getCommandByte()));
+				}
+				public boolean doCommand(NUSALSeqChannel channel){
+					if(channel == null) return false;
+					channel.setWait(super.getParam(0));
+					super.flagChannelUsed(channel.getIndex());
+					return true;
+				}
+			};
+		}
 		
 		switch(hi){
 		case 0x7: 
+			//System.err.println("VOICE REL Command found: " + String.format("0x%02x", cmdi));
 			if(lo >= 0x8 && lo <= 0xb){
 				int layer = lo - 8;
-				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.VOICE_OFFSET_REL, layer, (int)data.getByte(pos+1)){
+				return new NUSALSeqReferenceCommand(NUSALSeqCmdType.VOICE_OFFSET_REL, layer, (int)data.shortFromFile(pos+1)){
 					public boolean doCommand(NUSALSeqChannel channel){
 						if(channel == null) return false;
 						super.flagChannelUsed(channel.getIndex());
@@ -532,25 +547,59 @@ public class NUSALSeqParser implements WriterPrintable{
 				};
 			}
 			break;
+		case 0xb:
+			switch(lo){
+			case 0x0:
+				return new NUSALSeqGenericCommand(NUSALSeqCmdType.CH_UNK_B0){
+					protected void onInit(){
+						super.setParam(0, Short.toUnsignedInt(data.shortFromFile(pos+1)));
+					}
+					public boolean doCommand(NUSALSeqChannel channel){
+						super.flagChannelUsed(channel.getIndex());
+						channel.signalUnkEvent((byte)0xb0, super.getParam(0));
+						return true;
+					}
+				};
+			case 0x3:
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.CH_UNK_B3, (int)data.getByte(pos+1)){
+					protected void onInit(){
+						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
+						if(nb < 0x78){
+							//Set
+							super.setParam(1, nb);
+						}
+					}
+					protected void doChannelAction(NUSALSeqChannel channel){
+						channel.signalUnkEvent((byte)0xb3, super.getParam(0));
+					}
+				};
+			}
 		case 0xc: 
 			switch(lo){
 			case 0x1:
-				return new NUSALSeqGenericCommand(NUSALSeqCmdType.SET_PROGRAM){
-					protected void onInit(){super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-					public boolean doCommand(NUSALSeqChannel channel){
-						if(channel == null) return false;
-						super.flagChannelUsed(channel.getIndex());
-						return channel.changeProgram(super.getParam(0));
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.SET_PROGRAM, (int)data.getByte(pos+1)){
+					protected void onInit(){
+						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
+						if(nb < 0x78){
+							//Set
+							super.setParam(1, nb);
+						}
+					}
+					protected void doChannelAction(NUSALSeqChannel channel){
+						channel.changeProgram(super.getParam(0));
 					}
 				};
 			case 0x2:
-				return new NUSALSeqGenericCommand(NUSALSeqCmdType.TRANSPOSE){
-					protected void onInit(){super.setParam(0, (int)data.getByte(pos+1));}
-					public boolean doCommand(NUSALSeqChannel channel){
-						if(channel == null) return false;
-						super.flagChannelUsed(channel.getIndex());
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.TRANSPOSE, (int)data.getByte(pos+1)){
+					protected void onInit(){
+						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
+						if(nb < 0x78){
+							//Set
+							super.setParam(1, nb);
+						}
+					}
+					protected void doChannelAction(NUSALSeqChannel channel){
 						channel.setTranspose(super.getParam(0));
-						return true;
 					}
 				};
 			case 0x4:
@@ -610,16 +659,30 @@ public class NUSALSeqParser implements WriterPrintable{
 					}	
 				};
 			case 0xa:
-				return new NUSALSeqGenericCommand(NUSALSeqCmdType.CH_UNK_DA){
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.CH_UNK_DA, (int)data.getByte(pos+1)){
 					protected void onInit(){
-						super.setParam(0, (int)data.getByte(pos+1));
+						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
+						if(nb < 0x78){
+							//Set
+							super.setParam(1, nb);
+						}
 					}
+					protected void doChannelAction(NUSALSeqChannel channel){
+						channel.signalUnkEvent((byte)0xda, super.getParam(0));
+					}	
 				};
 			case 0xc:
-				return new NUSALSeqGenericCommand(NUSALSeqCmdType.CH_DRUMSET){
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.CH_DRUMSET, (int)data.getByte(pos+1)){
 					protected void onInit(){
-						super.setParam(0, (int)data.getByte(pos+1));
+						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
+						if(nb < 0x78){
+							//Set
+							super.setParam(1, nb);
+						}
 					}
+					protected void doChannelAction(NUSALSeqChannel channel){
+						channel.signalUnkEvent(getCommandByte(), super.getParam(0));
+					}	
 				};
 			case 0xd:
 				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.CH_PAN, (int)data.getByte(pos+1)){
@@ -652,20 +715,38 @@ public class NUSALSeqParser implements WriterPrintable{
 		case 0xe: 
 			switch(lo){
 			case 0x0:
-				return new NUSALSeqGenericCommand(NUSALSeqCmdType.CH_UNK_E0){
-					protected void onInit(){
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.CH_UNK_E0, (int)data.getByte(pos+1)){
+					/*protected void onInit(){
 						super.setParam(0, (int)data.getByte(pos+1));
 					}
+					public boolean doCommand(NUSALSeqChannel channel){
+						super.flagChannelUsed(channel.getIndex());
+						channel.signalUnkEvent((byte)0xe0, super.getParam(0));
+						return false;
+					}*/
+					protected void onInit(){
+						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
+						if(nb < 0x78){
+							//Set
+							super.setParam(1, nb);
+						}
+					}
+					protected void doChannelAction(NUSALSeqChannel channel){
+						channel.signalUnkEvent((byte)0xe0, super.getParam(0));
+					}	
 				};
 			case 0x9:
-				return new NUSALSeqGenericCommand(NUSALSeqCmdType.CH_PRIORITY){
-					protected void onInit(){super.setParam(0, Byte.toUnsignedInt(data.getByte(pos+1)));}
-					public boolean doCommand(NUSALSeqChannel channel){
-						if(channel == null) return false;
-						super.flagChannelUsed(channel.getIndex());
-						channel.setPriority((byte)super.getParam(0));
-						return true;
+				return new NUSALSeqTimeoptCommand(NUSALSeqCmdType.CH_PRIORITY, (int)data.getByte(pos+1)){
+					protected void onInit(){
+						int nb = Byte.toUnsignedInt(data.getByte(pos+2));
+						if(nb < 0x78){
+							//Set
+							super.setParam(1, nb);
+						}
 					}
+					protected void doChannelAction(NUSALSeqChannel channel){
+						channel.setPriority((byte)super.getParam(0));
+					}	
 				};
 			}
 			break;
@@ -1065,7 +1146,7 @@ public class NUSALSeqParser implements WriterPrintable{
 			}
 			else if(cmd.getCommand() == NUSALSeqCmdType.CHANNEL_OFFSET_REL){
 				int ch = cmd.getParam(0);
-				int off = cmd.getParam(1) + seq_pos;
+				int off = cmd.getBranchAddress();
 				list.get(ch).add(off);
 			}
 			else if(cmd.getCommand() == NUSALSeqCmdType.END_READ){
@@ -1158,7 +1239,7 @@ public class NUSALSeqParser implements WriterPrintable{
 					}
 					else if(cmd.getCommand() == NUSALSeqCmdType.VOICE_OFFSET_REL){
 						int vox = cmd.getParam(0);
-						int off = cmd.getParam(1) + ch_pos;
+						int off = cmd.getBranchAddress();
 						vlist.get(vox).add(off);
 					}
 					else if(cmd.getCommand() == NUSALSeqCmdType.END_READ) break;

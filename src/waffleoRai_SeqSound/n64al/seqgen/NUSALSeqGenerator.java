@@ -741,6 +741,11 @@ public class NUSALSeqGenerator implements SequenceController{
 		int cmdi = Byte.toUnsignedInt(cmdb);
 		int param = 0;
 		switch(cmd.getCommand()){
+		//Just command byte
+		case CH_DELTA_TIME:
+			out = new byte[1];
+			out[0] = (byte)cmd.getParam(0);
+			break;
 		//Basic no param
 		case BRANCH_TO_SEQSTART:
 		case END_READ:
@@ -834,13 +839,8 @@ public class NUSALSeqGenerator implements SequenceController{
 			out = new byte[1];
 			out[0] = (byte)((cmdi & 0xF0) | (cmd.getParam(0) & 0xF));
 			break;
-		//Voice layer lower nybble 1 byte param
-		case VOICE_OFFSET_REL:
-			out = new byte[2];
-			out[0] = (byte)((cmdi & 0xF0) | ((cmd.getParam(0) + 8) & 0xF));
-			out[1] = (byte)cmd.getParam(1);
-			break;
 		//Voice layer lower nybble 2 byte param
+		case VOICE_OFFSET_REL:
 		case VOICE_OFFSET:
 			out = new byte[3];
 			out[0] = (byte)((cmdi & 0xF0) | ((cmd.getParam(0) + 8) & 0xF));
@@ -848,13 +848,8 @@ public class NUSALSeqGenerator implements SequenceController{
 			out[1] = (byte)((param >>> 8) & 0xFF);
 			out[2] = (byte)(param & 0xFF);
 			break;
-		//Channel lower nybble 1 byte param
-		case CHANNEL_OFFSET_REL:
-			out = new byte[2];
-			out[0] = (byte)((cmdi & 0xF0) | (cmd.getParam(0) & 0xF));
-			out[1] = (byte)cmd.getParam(1);
-			break;
 		//Channel lower nybble 2 byte param
+		case CHANNEL_OFFSET_REL:
 		case CHANNEL_OFFSET:
 			out = new byte[3];
 			out[0] = (byte)((cmdi & 0xF0) | (cmd.getParam(0) & 0xF));

@@ -179,7 +179,7 @@ class BuilderReferenceCommand extends BuilderCommand{
 	}
 
 	public int getSizeInBytes() {
-		if(this.is_relative) return 2;
+		if(this.is_relative && (p_idx_addr == 0)) return 2;
 		return 3;
 	}
 

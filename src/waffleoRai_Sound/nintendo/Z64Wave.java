@@ -439,7 +439,7 @@ public class Z64Wave extends SoundAdapter{
 	/*----- Debug -----*/
 
 	public static void main(String[] args){
-		String inpath = "C:\\Users\\Blythe\\Documents\\Game Stuff\\N64\\Games\\Legend of Zelda, The - Majora's Mask (U) [!].z64";
+		String inpath = "";
 		String outdir = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\n64test\\mmsounds";
 		
 		//Soundbank offset definitions...

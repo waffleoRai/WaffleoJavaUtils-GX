@@ -758,8 +758,9 @@ public class NUSALSeqBuilderChannel {
 					ext_cmd = bcmd;
 				}
 				if(!checklist[3]){
-					bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SET_PROGRAM, 2);
-					bcmd.setParam(0, chprog);
+					/*bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SET_PROGRAM, 2);
+					bcmd.setParam(0, chprog);*/
+					bcmd = new BuilderTimeoptCommand(NUSALSeqCmdType.CH_PRIORITY, chprog);
 					chunk.addCommand(bcmd);
 					ext_cmd = null;
 				}
