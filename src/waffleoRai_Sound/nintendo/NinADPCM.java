@@ -1,10 +1,14 @@
 package waffleoRai_Sound.nintendo;
 
+import waffleoRai_Sound.ADPCMTable;
+
 public class NinADPCM {
 	
 	private ADPCMTable init_table;
 	
-	private int nowps;
+	//private int nowps;
+	private int now_shamt;
+	private int now_cidx;
 	private int olderSample;
 	private int oldSample;
 	
@@ -13,50 +17,47 @@ public class NinADPCM {
 	
 	//From: https://github.com/libertyernie/brawltools/blob/master/BrawlLib/Wii/Audio/ADPCMState.cs
 	
-	public NinADPCM(ADPCMTable table, int samplesPerBlock)
-	{
+	public NinADPCM(ADPCMTable table, int samplesPerBlock){
 		init_table = table;
-		olderSample = init_table.getHistorySample2();
-		oldSample = init_table.getHistorySample1();
-		nowps = init_table.getPS();
-		sampleIndex = 0;
 		blockSize = samplesPerBlock;
+		reset();
 	}
 	
-	public void reset()
-	{
-		olderSample = init_table.getHistorySample2();
-		oldSample = init_table.getHistorySample1();
-		nowps = init_table.getPS();
+	public void reset(){
+		olderSample = init_table.getStartBackSample(1);
+		oldSample = init_table.getStartBackSample(0);
+		//nowps = init_table.getPS();
+		now_shamt = init_table.getStartShift();
+		now_cidx = init_table.getStartCoeffIndex();
 		sampleIndex = 0;
 	}
 	
-	public void setToLoop(int loopIndex)
-	{
-		nowps = init_table.getLoopPS();
-		olderSample = init_table.getLoopHistorySample2();
-		oldSample = init_table.getLoopHistorySample1();
+	public void setToLoop(int loopIndex){
+		olderSample = init_table.getLoopBackSample(1);
+		oldSample = init_table.getLoopBackSample(0);
+		now_shamt = init_table.getLoopShift();
+		now_cidx = init_table.getLoopCoeffIndex();
 		sampleIndex = loopIndex;
 	}
 	
-	public void setPS(int val)
-	{
-		nowps = val;
+	public void setPS(int val){
+		now_shamt = val & 0xF;
+		now_cidx = (val >>> 4) & 0xF;
 	}
 	
-	public boolean newBlock()
-	{
+	public boolean newBlock(){
 		return sampleIndex % blockSize == 0;
 	}
 	
-	public int decompressNextNybble(int raw_sample)
-	{
+	public int decompressNextNybble(int raw_sample){
 		//Always make sure samples are sign extended!
 		int init = raw_sample;
 		
 		if (init >= 8) init -= 16;
-		int scale = 1 << (nowps & 0xF);
-		int cIndex = ((nowps >>> 4) & 0xF) << 1;
+		//int scale = 1 << (nowps & 0xF);
+		//int cIndex = ((nowps >>> 4) & 0xF) << 1;
+		int scale = 1 << now_shamt;
+		int cIndex = now_cidx << 1;
 		
 		//outSample = (0x400 + (scale * outSample << 11) + (_coefs[cIndex.Clamp(0, 15)] * _cyn1) + (_coefs[(cIndex + 1).Clamp(0, 15)] * _cyn2)) >> 11;
 		int out = 0x400;

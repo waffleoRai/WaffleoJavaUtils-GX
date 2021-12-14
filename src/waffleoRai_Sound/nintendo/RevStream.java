@@ -4,6 +4,7 @@ import java.util.ArrayList;
 
 import waffleoRai_Containers.nintendo.NDKRevolutionFile;
 import waffleoRai_Containers.nintendo.NDKSectionType;
+import waffleoRai_Sound.ADPCMTable;
 import waffleoRai_Sound.SampleChannel;
 import waffleoRai_Sound.SampleChannel16;
 import waffleoRai_Sound.SampleChannel4;
@@ -23,19 +24,16 @@ public class RevStream extends NinStream {
 
 	/*--- Construction/ Parsing ---*/
 	
-	public RevStream()
-	{
+	public RevStream(){
 		super.setDefaults();
 		tracks = new ArrayList<Track>(16);
 	}
 	
-	public RevStream(RevStream src, int channel)
-	{
+	public RevStream(RevStream src, int channel){
 		NinStream.copyChannel(src, this, channel);
 	}
 	
-	public static RevStream readRSTM(FileBuffer src) throws UnsupportedFileTypeException
-	{
+	public static RevStream readRSTM(FileBuffer src) throws UnsupportedFileTypeException{
 		if(src == null) return null;
 		NDKRevolutionFile rev_file = NDKRevolutionFile.readRevolutionFile(src);
 		if(rev_file == null) return null;
@@ -106,8 +104,7 @@ public class RevStream extends NinStream {
 		//System.err.println("Track Desc Type: " + trackDescType);
 		
 		wav.tracks = new ArrayList<Track>(trackCount+1);
-		for(int i = 0; i < trackCount; i++)
-		{
+		for(int i = 0; i < trackCount; i++){
 			//System.err.println("Track " + i);
 			cpos++;
 			trackDescType = Byte.toUnsignedInt(head_sec.getByte(cpos)); cpos++;
@@ -119,8 +116,7 @@ public class RevStream extends NinStream {
 			td_off += 8L;
 			long doff = td_off;
 			Track t = new Track();
-			if(trackDescType == 1)
-			{
+			if(trackDescType == 1){
 				t.volume = (int)head_sec.getByte(doff); doff++;
 				t.pan = (int)head_sec.getByte(doff); doff++;
 				doff += 6;
@@ -141,8 +137,7 @@ public class RevStream extends NinStream {
 		cpos = h3_off;
 		int nch = Byte.toUnsignedInt(head_sec.getByte(cpos)); cpos+=4;
 		//System.out.println("Channel Info Entries: " + nch);
-		for(int i = 0; i < nch; i++)
-		{
+		for(int i = 0; i < nch; i++){
 			//System.out.println("Channel " + i);
 			cpos += 4; //Marker
 			long chinfo_off = Integer.toUnsignedLong(head_sec.intFromFile(cpos)); cpos += 4;
@@ -150,7 +145,7 @@ public class RevStream extends NinStream {
 			
 			chinfo_off += 8L;
 			//Coeff seems to start at 0x8?
-			ADPCMTable tbl = ADPCMTable.readFromFile(head_sec, chinfo_off + 8L);
+			ADPCMTable tbl = NinDSPADPCMTable.readFromFile(head_sec, chinfo_off + 8L);
 			wav.channel_adpcm_info[i] = tbl;
 			//System.out.println("ADPCM Table --- ");
 			//tbl.printInfo();
@@ -161,8 +156,7 @@ public class RevStream extends NinStream {
 		long adpc_size = Integer.toUnsignedLong(adpc_sec.intFromFile(cpos)); cpos+=4;
 		int entries = (int)((adpc_size/(long)adpc_bytesPerEntry)/(long)wav.channelCount);
 		wav.adpc_table = new ADPCTable(wav.channelCount, entries);
-		for(int i = 0; i < entries; i++)
-		{
+		for(int i = 0; i < entries; i++){
 			for(int j = 0; j < wav.channelCount; j++)
 			{
 				wav.adpc_table.old[j][i] = (int)adpc_sec.shortFromFile(cpos); cpos += 2;
@@ -188,13 +182,10 @@ public class RevStream extends NinStream {
 			for(int c = 0; c < wav.channelCount; c++) wav.rawSamples[c] = new SampleChannel16(sampCount);
 			break;
 		}
-		for(int b = 0; b < blockCount-1; b++)
-		{
-			for(int c = 0; c < wav.channelCount; c++)
-			{
+		for(int b = 0; b < blockCount-1; b++){
+			for(int c = 0; c < wav.channelCount; c++){
 				//Read a block
-				for(int i = 0; i < adpcm_block_size; i++)
-				{
+				for(int i = 0; i < adpcm_block_size; i++){
 					int bi = Byte.toUnsignedInt(src.getByte(cpos)); cpos++;
 					wav.rawSamples[c].addSample((bi >>> 4) & 0xF);
 					wav.rawSamples[c].addSample(bi & 0xF);
@@ -212,14 +203,11 @@ public class RevStream extends NinStream {
 		}*/
 		
 		//Final block
-		for(int c = 0; c < wav.channelCount; c++)
-		{
+		for(int c = 0; c < wav.channelCount; c++){
 			//Read a block
-			for(int i = 0; i < finalBlockSize_withPad; i++)
-			{
+			for(int i = 0; i < finalBlockSize_withPad; i++){
 				int bi = Byte.toUnsignedInt(src.getByte(cpos)); cpos++;
-				if(i < finalBlockSize)
-				{
+				if(i < finalBlockSize){
 					wav.rawSamples[c].addSample((bi >>> 4) & 0xF);
 					wav.rawSamples[c].addSample(bi & 0xF);	
 				}
@@ -232,8 +220,7 @@ public class RevStream extends NinStream {
 	/*--- Sound ---*/
 	
 	@Override
-	public Sound getSingleChannel(int channel) 
-	{
+	public Sound getSingleChannel(int channel){
 		return new RevStream(this, channel);
 	}
 

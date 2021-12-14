@@ -103,6 +103,37 @@ public class NUSALSeqChannel {
 	public int getLoopCount(){return loopct;}
 	public boolean loopEnabled(){return loop_enabled;}
 	
+	public int getVarQ(){
+		//TODO
+		return 0;
+	}
+	
+	public int getVarP(){
+		//TODO
+		return 0;
+	}
+	
+	public int getSeqIOValue(int idx){
+		//TODO
+		return 0;
+	}
+	
+	public int getDynTableAddress(){
+		//TODO
+		return 0;
+	}
+	
+	public NUSALSeq getParent(){
+		//TODO
+		return null;
+	}
+	
+	public int getLayerStatus(int idx){
+		//TODO
+		//Returns values used in the testlayer command
+		return 0;
+	}
+	
 	public NUSALSeqCommandMap getCommandTickMap(){
 		return ch_cmds;
 	}
@@ -113,9 +144,37 @@ public class NUSALSeqChannel {
 	}
 	
 	/*----- Setters -----*/
+
+	public void resetChannel(){
+		//TODO
+	}
 	
 	public void setLoopEnabled(boolean b){loop_enabled = b;}
 	public void setVar(int value){var = value;}
+	
+	public void setSeqIOValue(int idx, int value){
+		//TODO
+	}
+	
+	public void setDynTable(int addr){
+		//TODO
+	}
+	
+	public void setFilterAddress(int addr){
+		//TODO
+	}
+	
+	public void clearFilter(){
+		//TODO
+	}
+	
+	public void setFilterGain(int value){
+		//TODO
+	}
+	
+	public void setFreqScale(int value){
+		//TODO
+	}
 	
 	public void setCommandSource(NUSALSeqCommandSource src){
 		source = src;
@@ -138,8 +197,8 @@ public class NUSALSeqChannel {
 	
 	public void setTranspose(int semis){transpose = semis;}
 	
-	public void setPitchbend(byte val){
-		pitchbend = val;
+	public void setPitchbend(int val){
+		pitchbend = (byte)val;
 		//if(time > 0) wait_remain = NUSALSeq.scaleTicks(time);
 		
 		if(target != null){
@@ -152,6 +211,10 @@ public class NUSALSeqChannel {
 		}
 	}
 	
+	public void setPitchbendAlt(int val){
+		//TODO
+	}
+	
 	public void setEffectsLevel(byte val){
 		eff = val;
 		if(target != null){
@@ -161,6 +224,7 @@ public class NUSALSeqChannel {
 		}
 	}
 	
+	//Deprecate
 	public void setVibrato(byte val){
 		vibrato = val;
 		//if(time > 0) wait_remain = NUSALSeq.scaleTicks(time);
@@ -174,6 +238,30 @@ public class NUSALSeqChannel {
 			short midval = (short)(Math.round(v));
 			target.setModWheel(ch_idx, midval);
 		}
+	}
+	
+	public void setVibratoFrequency(int val){
+		//TODO
+	}
+	
+	public void setVibratoFrequencyEnvelope(int start, int target, int time){
+		//TODO
+	}
+	
+	public void setVibratoDepth(int val){
+		//TODO
+	}
+	
+	public void setVibratoDepthEnvelope(int start, int target, int time){
+		//TODO
+	}
+	
+	public void setVibratoDelay(int val){
+		//TODO
+	}
+	
+	public void setPanMix(int val){
+		//TODO
 	}
 	
 	public void setPan(byte val){
@@ -196,6 +284,10 @@ public class NUSALSeqChannel {
 		}
 	}
 	
+	public void setExpression(byte val){
+		//TODO
+	}
+	
 	public void setPriority(byte val){
 		priority = val;
 		if(target != null){
@@ -206,6 +298,30 @@ public class NUSALSeqChannel {
 	public boolean setWait(int ticks){
 		wait_remain = NUSALSeq.scaleTicks(ticks);
 		return true;
+	}
+	
+	public void setVelocityVariance(int val){
+		//TODO
+	}
+	
+	public void setGateVariance(int val){
+		//TODO
+	}
+	
+	public void setShortNotesMode(boolean b){
+		//TODO
+	}
+	
+	public void setSustain(int val){
+		//TODO
+	}
+	
+	public void setRelease(int val){
+		//TODO
+	}
+	
+	public void setEnvelopeAddress(int addr){
+		//TODO
 	}
 	
 	public void mapCommandToTick(int tick, NUSALSeqCommand cmd){
@@ -234,6 +350,10 @@ public class NUSALSeqChannel {
 		return true;
 	}
 	
+	public void breakLoop(){
+		//TODO
+	}
+	
 	public boolean returnFromCall(){
 		if(return_stack.isEmpty()) return false;
 		pos = return_stack.pop();
@@ -243,6 +363,26 @@ public class NUSALSeqChannel {
 	public boolean pointLayerTo(int layer_idx, int position){
 		if(layer_idx < 0 || layer_idx > 3) return false;
 		return layers[layer_idx].jumpTo(position, false);
+	}
+	
+	public boolean stopLayer(int layer_idx){
+		//TODO
+		return false;
+	}
+	
+	public boolean pointChannelTo(int ch_idx, int addr){
+		//TODO
+		return false;
+	}
+	
+	public boolean changeBank(int bank_idx){
+		//TODO
+		return false;
+	}
+	
+	public boolean changeProgram(int bank_idx, int prog_idx){
+		//TODO
+		return false;
 	}
 	
 	public boolean changeProgram(int program_idx){
@@ -289,6 +429,11 @@ public class NUSALSeqChannel {
 		if(target == null) return;
 		int nrpn_idx = NUSALSeq.MIDI_NRPN_ID_GENERAL_HI | Byte.toUnsignedInt(cmdbyte);
 		target.addNRPNEvent(ch_idx, nrpn_idx, value, true);
+	}
+	
+	public boolean stopChannel(int idx){
+		//TODO
+		return false;
 	}
 	
 	/*----- Playback -----*/

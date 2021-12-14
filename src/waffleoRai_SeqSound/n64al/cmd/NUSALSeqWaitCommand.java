@@ -8,21 +8,17 @@ import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
 
 public class NUSALSeqWaitCommand extends NUSALSeqCommand{
 	
-	public NUSALSeqWaitCommand(int ticks, boolean vox_lvl){
-		super(vox_lvl?NUSALSeqCmdType.REST:NUSALSeqCmdType.WAIT, 
-				vox_lvl?NUSALSeqCmdType.REST.getBaseCommand():NUSALSeqCmdType.WAIT.getBaseCommand());
+	public NUSALSeqWaitCommand(NUSALSeqCmdType cmd, int ticks){
+		super(cmd, cmd.getBaseCommand());
+		//super(vox_lvl?NUSALSeqCmdType.REST:NUSALSeqCmdType.WAIT, 
+		//		vox_lvl?NUSALSeqCmdType.REST.getBaseCommand():NUSALSeqCmdType.WAIT.getBaseCommand());
 		super.setParam(0, ticks);
 	}
 
 	public int getTime(){return super.getParam(0);}
 
 	public int getSizeInTicks(){return super.getParam(0);}
-	
-	public int getSizeInBytes() {
-		if(super.getParam(0) > 127) return 3;
-		return 2;
-	}
-	
+		
 	public boolean doCommand(NUSALSeq sequence){
 		if(sequence == null) return false;
 		sequence.setSeqWait(super.getParam(0));

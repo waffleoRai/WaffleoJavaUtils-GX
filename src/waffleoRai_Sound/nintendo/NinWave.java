@@ -1,13 +1,13 @@
 package waffleoRai_Sound.nintendo;
 
+import waffleoRai_Sound.ADPCMTable;
 import waffleoRai_Sound.SampleChannel;
 
 public abstract class NinWave extends NinStreamableSound{
 	
 	/*--- Copy ---*/
 	
-	public static void copyChannel(NinWave src, NinWave trg, int channel)
-	{
+	public static void copyChannel(NinWave src, NinWave trg, int channel){
 		trg.encodingType = src.encodingType;
 		trg.loops = src.loops;
 		trg.channelCount = 1;

@@ -8,14 +8,19 @@ import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
 
 public class CMD_IgnoredCommand extends NUSALSeqCommand{
 
-	private int size;
+	//private int size;
 	
-	public CMD_IgnoredCommand(NUSALSeqCmdType cmd, byte cmd_byte, int bytes) {
+	public CMD_IgnoredCommand(NUSALSeqCmdType cmd, byte cmd_byte) {
 		super(cmd, cmd_byte);
-		size = bytes;
+		//size = bytes;
+	}
+	
+	public CMD_IgnoredCommand(NUSALSeqCmdType cmd) {
+		super(cmd, cmd.getBaseCommand());
+		//size = bytes;
 	}
 
-	public int getSizeInBytes() {return size;}
+	//public int getSizeInBytes() {return size;}
 	
 	public boolean doCommand(NUSALSeq sequence){
 		super.flagSeqUsed();

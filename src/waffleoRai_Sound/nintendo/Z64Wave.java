@@ -21,7 +21,6 @@ import waffleoRai_SoundSynth.soundformats.WAVWriter;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_soundbank.nintendo.Z64Bank;
-import waffleoRai_soundbank.nintendo.Z64Bank.WaveInfoBlock;
 
 public class Z64Wave extends SoundAdapter{
 
@@ -29,12 +28,28 @@ public class Z64Wave extends SoundAdapter{
 	
 	public static final String FN_METAKEY_SMALLSAMPS = "TWOBIT";
 	public static final String FN_METAKEY_ADPCMPRED = "ADPCMPRED";
+	public static final String FN_METAKEY_ADPCMORDER = "ADPCMORDER";
+	public static final String FN_METAKEY_ADPCMPCOUNT = "ADPCMPCOUNT";
 	public static final String FN_METAKEY_LOOPST = "LOOPST";
 	public static final String FN_METAKEY_LOOPED = "LOOPED";
 	
+	public static final int DEFO_SAMPLERATE = 22050;
+	
+	public static final int CODEC_ADPCM = 0;
+	public static final int CODEC_S8 = 1;
+	public static final int CODEC_S16_INMEMORY = 2;
+	public static final int CODEC_SMALL_ADPCM = 3;
+	public static final int CODEC_REVERB = 4;
+	public static final int CODEC_S16 = 5;
+	
+	public static final int MEDIUM_RAM = 0;
+	public static final int MEDIUM_UNK = 1;
+	public static final int MEDIUM_CART = 2;
+	public static final int MEDIUM_DISK_DRIVE = 3;
+	
 	/*----- Instance Variables -----*/
 	
-	private ADPCMTable adpcm_table;
+	private N64ADPCMTable adpcm_table;
 	private boolean tinySamps; //2bit samps, 5 byte blocks
 	//private Z64ADPCM adpcm;
 	
@@ -112,8 +127,9 @@ public class Z64Wave extends SoundAdapter{
 					int b = Byte.toUnsignedInt(raw_data[bytepos++]);
 					//int[] minisamps = new int[4]; //Are these signed?
 					for(int k = 0; k < 4; k++){
-						int s = (b << ((k << 1) + 24)); //Push to the left
-						s >>= 30; //Push to the right (now sign-extended)
+						int h = (3-k) << 1;
+						int s = ((0x3 << h) & b) >>> h;
+						if(s >= 2) s -= 4;
 						outBlock[j++] = state.decompressNextNybble(s);
 					}
 				}
@@ -122,8 +138,10 @@ public class Z64Wave extends SoundAdapter{
 				for(int i = 0; i < 8; i++){
 					int b = Byte.toUnsignedInt(raw_data[bytepos++]);
 					int nybble = (b >>> 4) & 0xF;
+					if(nybble >= 8) nybble -= 16;
 					outBlock[j++] = state.decompressNextNybble(nybble);
 					nybble = b & 0xF;
+					if(nybble >= 8) nybble -= 16;
 					outBlock[j++] = state.decompressNextNybble(nybble);
 				}	
 			}
@@ -188,51 +206,46 @@ public class Z64Wave extends SoundAdapter{
 	
 	/*----- Initialize -----*/
 	
- 	private Z64Wave(short[] pred_table){
-		super(22050, 16, 1);
-		
-		if(pred_table != null){
-			adpcm_table = new ADPCMTable();
-			adpcm_table.reallocCoefficientTable(pred_table.length);
-			for(int i = 0; i < pred_table.length; i++){
-				adpcm_table.setCoefficient(i, (int)pred_table[i]);
-			}
-			//adpcm = new Z64ADPCM(adpcm_table);
-		}
+ 	private Z64Wave(Z64WaveInfo info){
+		super(DEFO_SAMPLERATE, 16, 1);
+		adpcm_table = info.getADPCMBook();
 	}
 	
- 	public static Z64Wave readZ64Wave(FileBuffer data, short[] predictors){
- 		return readZ64Wave(data, predictors, -1, -1, false);
- 	}
- 	
-	public static Z64Wave readZ64Wave(FileBuffer data, short[] predictors, int loopSt, int loopEd, boolean smallSamps){
-		Z64Wave wav = new Z64Wave(predictors);
-		wav.tinySamps = smallSamps;
-		wav.loopCount = 0; //I use 0 to mean infinite and -1 to mean none. Z64 format is the opposite
-		wav.loopStart = loopSt;
-		wav.loopEnd = loopEd;
+	public static Z64Wave readZ64Wave(FileBuffer data, Z64WaveInfo info){
+		if(info.getADPCMBook() == null){
+			System.err.println("Z64Wave.readZ64Wave || Input is not an ADPCM wave!");
+			return null;
+		}
+		
+		Z64Wave wav = new Z64Wave(info);
+		wav.tinySamps = (info.getCodec() == Z64Wave.CODEC_SMALL_ADPCM);
+		wav.loopCount = info.getLoopCount(); //0 means none, -1 means infinite
+		wav.loopStart = info.getLoopStart();
+		wav.loopEnd = info.getLoopEnd();
 		
 		//Read
 		int bytelen = (int)data.getFileSize();
-		if(smallSamps) bytelen = (bytelen/5) * 5;
-		else bytelen = (bytelen/9) * 9; //Snap to block
+		int packsize = 9;
+		if(wav.tinySamps) packsize = 5;
 		//wav.raw_data = new byte[bytelen];
-		wav.raw_data = data.getBytes(0, bytelen);
+		bytelen = (bytelen/packsize) * packsize; //Snap to block
+		wav.raw_data = data.getBytes(0, bytelen); 
 		
 		//Mark states in ADPCM table at start and loop point
-		if(loopSt >= 0){
+		if(wav.loopStart >= 0){
 			if(wav.adpcm_table != null){
 				AudioSampleStream str = wav.createSampleStream(false);
 				try{
-					for(int i = 0; i < loopSt-2; i++) str.nextSample();
-					wav.adpcm_table.setLoopHistorySample2(str.nextSample()[0]);
-					wav.adpcm_table.setLoopHistorySample1(str.nextSample()[0]);
+					int order = wav.adpcm_table.getOrder();
+					for(int i = 0; i < (wav.loopStart - order); i++) str.nextSample();
+					for(int i = 0; i < order; i++){
+						wav.adpcm_table.setStartBacksample(order-1-i, str.nextSample()[0]);
+					}
 					str.close();
 				}
 				catch(Exception e){e.printStackTrace();};
 			}
 		}
-		else wav.loopCount = -1;
 		
 		return wav;
 	}
@@ -246,6 +259,16 @@ public class Z64Wave extends SoundAdapter{
 			ptbl[i] = Short.parseShort(split[i], 16);
 		}
 		
+		int order = 2; int pcount = 0;
+		String s = datanode.getMetadataValue(FN_METAKEY_ADPCMORDER);
+		if(s != null){
+			try{order = Integer.parseInt(s);}
+			catch(NumberFormatException ex){ex.printStackTrace();}
+		}
+		pcount = (ptbl.length >>> 3) / order;
+		
+		N64ADPCMTable codebook = N64ADPCMTable.fromRaw(order, pcount, ptbl);
+		
 		boolean smallsamps = (datanode.getMetadataValue(FN_METAKEY_SMALLSAMPS) != null);
 		int loopSt = -1; int loopEd = -1;
 		String val = datanode.getMetadataValue(FN_METAKEY_LOOPST);
@@ -253,7 +276,11 @@ public class Z64Wave extends SoundAdapter{
 		val = datanode.getMetadataValue(FN_METAKEY_LOOPED);
 		if(val != null) loopEd = Integer.parseInt(val);
 		
-		return Z64Wave.readZ64Wave(datanode.loadDecompressedData(), ptbl, loopSt, loopEd, smallsamps);
+		Z64WaveInfo info = new Z64WaveInfo(codebook, smallsamps);
+		info.setLoopStart(loopSt);
+		info.setLoopEnd(loopEd);
+		
+		return Z64Wave.readZ64Wave(datanode.loadDecompressedData(), info);
 	}
 	
 	/*----- Getters -----*/
@@ -467,18 +494,14 @@ public class Z64Wave extends SoundAdapter{
 				System.err.println("Reading from bank " + i);
 				FileBuffer sbnk = rom.createReadOnlyCopy(bankoffs[i], bankoffs[i+1]);
 				Z64Bank bank = Z64Bank.readBank(sbnk);
-				List<WaveInfoBlock> waves = bank.getAllWaveInfoBlocks();
-				for(WaveInfoBlock winfo: waves){
+				List<Z64WaveInfo> waves = bank.getAllWaveInfoBlocks();
+				for(Z64WaveInfo winfo: waves){
 					//Get data.
-					long wst = Integer.toUnsignedLong(warcoff + winfo.getOffset());
-					long wed = wst + winfo.getLength();
+					long wst = Integer.toUnsignedLong(warcoff + winfo.getWaveOffset());
+					long wed = wst + winfo.getWaveSize();
 					FileBuffer wdat = rom.createReadOnlyCopy(wst, wed);
-					short[] tbl = winfo.getPredictorTable();
-					int loopst = winfo.getLoopStart();
-					int looped = winfo.getLoopEnd();
-					boolean flag = (winfo.getFlags() & 0x30) != 0;
-					Z64Wave wave = Z64Wave.readZ64Wave(wdat, tbl, loopst, looped, flag);
-					wave.writeToWav(outdir + "\\majorawav_" + String.format("%08x", winfo.getOffset()) + ".wav");
+					Z64Wave wave = Z64Wave.readZ64Wave(wdat, winfo);
+					wave.writeToWav(outdir + "\\majorawav_" + String.format("%08x", wst) + ".wav");
 				}
 			}
 		}
@@ -488,7 +511,4 @@ public class Z64Wave extends SoundAdapter{
 		}
 	}
 	
-
-	
-
 }

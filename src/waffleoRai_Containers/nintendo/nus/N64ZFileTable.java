@@ -107,13 +107,15 @@ public class N64ZFileTable {
 		table.setCurrentPosition(0L);
 		for(int i = 0; i < ecount; i++){
 			Entry e = new Entry();
+			ft.entries.add(e);
+			
 			e.v_start = Integer.toUnsignedLong(table.nextInt());
 			e.v_end = Integer.toUnsignedLong(table.nextInt());
 			e.offset = Integer.toUnsignedLong(table.nextInt());
-			if(e.offset == 0xFFFFFFFFL) continue;
-			if(e.v_start == 0L && e.v_end == 0L) continue;
-			
 			long cend = Integer.toUnsignedLong(table.nextInt());
+			if(e.offset == 0xFFFFFFFFL){e.size = 0L; continue;}
+			if(e.v_start == 0L && e.v_end == 0L){e.size = 0L; continue;}
+			
 			e.size = e.v_end - e.v_start;
 			if(cend == 0L){
 				//Uncompressed.
@@ -123,7 +125,6 @@ public class N64ZFileTable {
 				//Compressed (probably Yaz0)
 				e.comp_size = cend - e.offset;
 			}
-			ft.entries.add(e);
 		}
 		
 		return ft;
@@ -212,6 +213,8 @@ public class N64ZFileTable {
 		fn.setSourcePath(rom_path);
 		fn.setOffset(e.getROMAddress());
 		fn.setLength(e.getSizeOnROM());
+		//System.err.println(String.format("DEBUG -- e.getROMAddress: %08x", e.getROMAddress()));
+		//System.err.println(String.format("DEBUG -- e.getSizeOnROM: %08x", e.getSizeOnROM()));
 		
 		//Compression
 		if(e.isCompressed()){

@@ -2,6 +2,7 @@ package waffleoRai_Sound.nintendo;
 
 import waffleoRai_Containers.nintendo.NDKRevolutionFile;
 import waffleoRai_Containers.nintendo.NDKSectionType;
+import waffleoRai_Sound.ADPCMTable;
 import waffleoRai_Sound.SampleChannel;
 import waffleoRai_Sound.SampleChannel16;
 import waffleoRai_Sound.SampleChannel4;
@@ -27,18 +28,15 @@ public class RevWave extends NinWave{
 	
 	/*--- Construction/Parsing ---*/
 	
-	public RevWave()
-	{
+	public RevWave(){
 		super.setDefaults();
 	}
 
-	private RevWave(NinWave src, int channel)
-	{
+	private RevWave(NinWave src, int channel){
 		NinWave.copyChannel(src, this, channel);
 	}
 	
-	public static RevWave readRWAV(FileBuffer src) throws UnsupportedFileTypeException
-	{
+	public static RevWave readRWAV(FileBuffer src) throws UnsupportedFileTypeException{
 		//TODO
 		//1. Not sure what to do with dataloc fields
 		//2. In RSTM files, channel data is actually interleaved.
@@ -89,8 +87,7 @@ public class RevWave extends NinWave{
 		
 		//Channel Info & DATA
 		chinfo_tbl_off += 8L;
-		for(int i = 0; i < wav.channelCount; i++)
-		{
+		for(int i = 0; i < wav.channelCount; i++){
 			//System.err.println("Channel " + i);
 			long chinfo_off = Integer.toUnsignedLong(info_sec.intFromFile(chinfo_tbl_off)); chinfo_tbl_off+=4;
 			//System.err.println("Channel Info Offset: 0x" + Long.toHexString(chinfo_off));
@@ -101,10 +98,9 @@ public class RevWave extends NinWave{
 			//System.err.println("Channel ADPCM Offset: 0x" + Long.toHexString(adpcm_off));
 			
 			//Read ADPCM table, if applicable
-			if(wav.encodingType == NinSound.ENCODING_TYPE_DSP_ADPCM)
-			{
+			if(wav.encodingType == NinSound.ENCODING_TYPE_DSP_ADPCM){
 				adpcm_off += 8L;
-				wav.channel_adpcm_info[i] = ADPCMTable.readFromFile(info_sec, adpcm_off);
+				wav.channel_adpcm_info[i] = NinDSPADPCMTable.readFromFile(info_sec, adpcm_off);
 				//wav.channel_adpcm_info[i].printInfo();
 			}
 			
@@ -114,14 +110,12 @@ public class RevWave extends NinWave{
 			long dpos = chdat_off;
 			//SampleChannel ch = SampleChannel.createArrayChannel(nybble_count);
 			SampleChannel ch = null;
-			switch(wav.encodingType)
-			{
+			switch(wav.encodingType){
 			case NinSound.ENCODING_TYPE_DSP_ADPCM:
 				SampleChannel4 ch4 = new SampleChannel4(nybble_count);
 				ch4.setNybbleOrder(true);
 				ch = ch4;
-				for(int j = 0; j < nybble_count; j+=2)
-				{
+				for(int j = 0; j < nybble_count; j+=2){
 					int bi = Byte.toUnsignedInt(data_sec.getByte(dpos)); dpos++;
 					int s1 = (bi >>> 4) & 0xF;
 					int s2 = bi & 0xF;
@@ -131,16 +125,14 @@ public class RevWave extends NinWave{
 				break;
 			case NinSound.ENCODING_TYPE_PCM8:
 				ch = new SampleChannel8(nybble_count);
-				for(int j = 0; j < nybble_count; j++)
-				{
+				for(int j = 0; j < nybble_count; j++){
 					int bi = Byte.toUnsignedInt(data_sec.getByte(dpos)); dpos++;
 					ch.addSample(bi & 0xFF);
 				}
 				break;
 			case NinSound.ENCODING_TYPE_PCM16:
 				ch = new SampleChannel16(nybble_count);
-				for(int j = 0; j < nybble_count; j++)
-				{
+				for(int j = 0; j < nybble_count; j++){
 					int si = Short.toUnsignedInt(data_sec.shortFromFile(dpos)); dpos+=2;
 					ch.addSample(si & 0xFFFF);
 				}
@@ -159,8 +151,7 @@ public class RevWave extends NinWave{
 	
 	/*--- Sound ---*/
 	
-	public Sound getSingleChannel(int channel) 
-	{
+	public Sound getSingleChannel(int channel){
 		return new RevWave(this, channel);
 	}
 	

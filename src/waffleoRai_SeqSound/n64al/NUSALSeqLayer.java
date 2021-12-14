@@ -59,6 +59,16 @@ public class NUSALSeqLayer {
 		return nowpos;
 	}
 	
+	public int getVarQ(){
+		//TODO
+		return 0;
+	}
+	
+	public int getVarP(){
+		//TODO
+		return 0;
+	}
+	
 	public int getLoopStart(){return loop_start;}
 	public int getLoopEnd(){return loop_end;}
 	public int getLoopCount(){return loop_count;}
@@ -96,6 +106,66 @@ public class NUSALSeqLayer {
 		nowpos = return_stack.pop();
 		endflag = false;
 		return true;
+	}
+	
+	public void breakLoop(){
+		//TODO
+	}
+	
+	public void setShortVel(byte value){
+		//TODO
+	}
+	
+	public void setShortVelFromTable(int idx){
+		//TODO
+	}
+	
+	public void setShortGate(byte value){
+		//TODO
+	}
+	
+	public void setShortGateFromTable(int idx){
+		//TODO
+	}
+	
+	public void setShortDelay(int value){
+		//TODO
+	}
+	
+	public void setLegato(boolean b){
+		//TODO
+	}
+	
+	public void changeProgram(int idx){
+		//TODO
+	}
+	
+	public void setPortamento(int mode, int target, int time){
+		//TODO
+	}
+	
+	public void setPortamentoOff(){
+		//TODO
+	}
+	
+	public void setPan(byte pan){
+		//TODO
+	}
+	
+	public void setEnvelopeAddress(int addr){
+		//TODO
+	}
+	
+	public void setRelease(int val){
+		//TODO
+	}
+	
+	public void drumPanOff(){
+		//TODO
+	}
+	
+	public void setPitchbendAlt(int amt){
+		//TODO
 	}
 	
 	public void signalLoopStart(int loopcount){

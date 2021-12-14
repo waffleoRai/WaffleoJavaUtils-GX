@@ -5,16 +5,33 @@ import java.io.OutputStream;
 import java.util.Set;
 import java.util.TreeSet;
 
-import waffleoRai_SeqSound.n64al.seqgen.NUSALSeqGenerator;
 import waffleoRai_Utils.FileBuffer;
 
 public abstract class NUSALSeqCommand {
-
+	
+	public static final int SERIALFMT_DUMMY = -1;
+	public static final int SERIALFMT_ = 0; //Just the command byte
+	public static final int SERIALFMT_L = 1; //Command byte only - arg0 is low nyb
+	public static final int SERIALFMT_1 = 2; //Command byte, 1 one-byte arg
+	public static final int SERIALFMT_L1 = 3; //Cmdbyte lonyb + 1 byte
+	public static final int SERIALFMT_2 = 4;
+	public static final int SERIALFMT_L2 = 5;
+	public static final int SERIALFMT_11 = 6;
+	public static final int SERIALFMT_12 = 7;
+	public static final int SERIALFMT_21 = 8;
+	public static final int SERIALFMT_L11 = 9;
+	public static final int SERIALFMT_L12 = 10;
+	public static final int SERIALFMT_111 = 11;
+	public static final int SERIALFMT_V = 12;
+	public static final int SERIALFMT_NOTE = 13;
+	public static final int SERIALFMT_CPARAMS = 14;
+	
 	private NUSALSeqCmdType command;
 	private byte cmdbyte;
 	private int[] params;
 	
 	private int address;
+	private String label;
 	
 	private boolean seq_ctx; //Has this command been called by the seq?
 	private Set<Integer> ch_ctx; //What channel/voices have called this command?
@@ -111,6 +128,25 @@ public abstract class NUSALSeqCommand {
 	public void setAddress(int addr){address = addr;}
 	public int getAddress(){return address;}
 	
+	public String getLabel(){return label;}
+	public void setLabel(String s){label = s;}
+	
+	public String genCtxLabelSuggestion(){
+		if(seq_ctx) return "seq_block";
+		for(int i = 0; i < 16; i++){
+			if(channelUsed(i)) return "ch" + String.format("%X", i) + "_block";
+		}
+		for(int i = 0; i < 16; i++){
+			for(int j = 0; j < 4; j++){
+				if(layerUsed(i,j)) {
+					return "ch" + String.format("%X", i) +
+							"l" + j + "_block";	
+				}
+			}
+		}
+		return "lbl";
+	}
+	
 	public boolean doCommand(NUSALSeq sequence){
 		throw new UnsupportedOperationException("Command 0x" + String.format("%02x", cmdbyte)
 			+ " not supported in sequence context");
@@ -126,16 +162,25 @@ public abstract class NUSALSeqCommand {
 			+ " not supported in layer context");
 	}
 	
-	public abstract int getSizeInBytes();
 	public boolean isBranch(){return false;}
 	public boolean isRelativeBranch(){return false;}
 	public int getBranchAddress(){return -1;}
 	public NUSALSeqCommand getBranchTarget(){return null;}
 	
 	public boolean isChunk(){return false;}
-	public boolean isTimeExtendable(){return false;}
+	//public boolean isTimeExtendable(){return false;}
 	public int getSizeInTicks(){return 0;}
-	public void setOptionalTime(int ticks){}
+	//public void setOptionalTime(int ticks){}
+	
+	public int getSizeInBytes(){
+		int sz = command.getMinimumSizeInBytes();
+		if(command.hasVariableLength()){
+			//Check if need one more byte.
+			int varg = params[command.getVLQIndex()];
+			if(varg > 0x7F) sz++;
+		}
+		return sz;
+	}
 	
 	protected String paramsToString(){
 		//Defaults to all decimal
@@ -158,19 +203,148 @@ public abstract class NUSALSeqCommand {
 	}
 	
 	public byte[] serializeMe(){
-		byte[] bytes = NUSALSeqGenerator.serializeCommand(this);
+		byte[] bytes = null;
+		int i = 0;
+		switch(command.getSerializationType()){
+		case SERIALFMT_DUMMY: return null;
+		case SERIALFMT_: bytes = new byte[]{command.getBaseCommand()}; break;
+		case SERIALFMT_L:
+			i = Byte.toUnsignedInt(command.getBaseCommand());
+			i += params[0];
+			bytes = new byte[]{(byte)i};
+			break;
+		case SERIALFMT_1:
+			bytes = new byte[]{command.getBaseCommand(), (byte)params[0]};
+			break;
+		case SERIALFMT_L1:
+			i = Byte.toUnsignedInt(command.getBaseCommand());
+			i += params[0];
+			bytes = new byte[]{(byte)i, (byte)params[1]};
+			break;
+		case SERIALFMT_2:
+			bytes = new byte[3];
+			bytes[0] = command.getBaseCommand();
+			bytes[1] = (byte)((params[0] >>> 8) & 0xFF);
+			bytes[2] = (byte)(params[0] & 0xFF);
+			break;
+		case SERIALFMT_L2:
+			bytes = new byte[3];
+			i = Byte.toUnsignedInt(command.getBaseCommand());
+			i += params[0];
+			bytes[0] = (byte)i;
+			bytes[1] = (byte)((params[1] >>> 8) & 0xFF);
+			bytes[2] = (byte)(params[1] & 0xFF);
+			break;
+		case SERIALFMT_11:
+			bytes = new byte[]{command.getBaseCommand(), (byte)params[0], (byte)params[1]};
+			break;
+		case SERIALFMT_12:
+			bytes = new byte[4];
+			bytes[0] = command.getBaseCommand();
+			bytes[1] = (byte)params[0];
+			bytes[2] = (byte)((params[1] >>> 8) & 0xFF);
+			bytes[3] = (byte)(params[1] & 0xFF);
+			break;
+		case SERIALFMT_21:
+			bytes = new byte[4];
+			bytes[0] = command.getBaseCommand();
+			bytes[1] = (byte)((params[0] >>> 8) & 0xFF);
+			bytes[2] = (byte)(params[0] & 0xFF);
+			bytes[3] = (byte)params[1];
+			break;
+		case SERIALFMT_L11:
+			bytes = new byte[3];
+			i = Byte.toUnsignedInt(command.getBaseCommand());
+			i += params[0];
+			bytes[0] = (byte)i;
+			bytes[1] = (byte)params[1];
+			bytes[2] = (byte)params[2];
+			break;
+		case SERIALFMT_L12:
+			bytes = new byte[4];
+			i = Byte.toUnsignedInt(command.getBaseCommand());
+			i += params[0];
+			bytes[0] = (byte)i;
+			bytes[1] = (byte)params[1];
+			bytes[2] = (byte)((params[2] >>> 8) & 0xFF);
+			bytes[3] = (byte)(params[2] & 0xFF);
+			break;
+		case SERIALFMT_111:
+			bytes = new byte[]{command.getBaseCommand(), (byte)params[0], (byte)params[1], (byte)params[2]};
+			break;
+		case SERIALFMT_V:
+			if(params[0] > 0x7f){
+				bytes = new byte[3];
+				bytes[0] = command.getBaseCommand();
+				bytes[1] = (byte)((params[0] >>> 8) | 0x80);
+				bytes[2] = (byte)(params[0] & 0xFF);
+			}
+			else{
+				bytes = new byte[]{command.getBaseCommand(), (byte)params[0]};
+			}
+			break;
+		case SERIALFMT_NOTE:
+			if(command == NUSALSeqCmdType.PLAY_NOTE_NTVG){
+				if(params[1] > 0x7f){
+					bytes = new byte[5];
+					bytes[1] = (byte)((params[1] >>> 8) | 0x80);
+					bytes[2] = (byte)(params[1] & 0xFF);
+					bytes[3] = (byte)params[2];
+					bytes[4] = (byte)params[3];
+				}
+				else{
+					bytes = new byte[4];
+					bytes[1] = (byte)params[1];
+					bytes[2] = (byte)params[2];
+					bytes[3] = (byte)params[3];
+				}
+				bytes[0] = (byte)params[0];
+			}
+			else if(command == NUSALSeqCmdType.PLAY_NOTE_NTV){
+				if(params[1] > 0x7f){
+					bytes = new byte[4];
+					bytes[1] = (byte)((params[1] >>> 8) | 0x80);
+					bytes[2] = (byte)(params[1] & 0xFF);
+					bytes[3] = (byte)params[2];
+				}
+				else{
+					bytes = new byte[3];
+					bytes[1] = (byte)params[1];
+					bytes[2] = (byte)params[2];
+				}
+				bytes[0] = (byte)(params[0] + 0x40);
+			}
+			else if(command == NUSALSeqCmdType.PLAY_NOTE_NVG){
+				bytes = new byte[3];
+				bytes[0] = (byte)(params[0] + 0x80);
+				bytes[1] = (byte)params[1];
+				bytes[2] = (byte)params[2];
+			}
+			else if(command == NUSALSeqCmdType.L_SHORTNOTE){
+				bytes = new byte[1];
+				bytes[0] = (byte)(params[0]);
+			}
+			break;
+		case SERIALFMT_CPARAMS:
+			bytes = new byte[9];
+			bytes[0] = command.getBaseCommand();
+			for(int j = 0; j < 8; j++){
+				bytes[j+1] = (byte)params[j];
+			}
+			break;
+		}
 		return bytes;
 	}
 	
 	public int serializeTo(OutputStream stream) throws IOException{
-		byte[] bytes = NUSALSeqGenerator.serializeCommand(this);
+		byte[] bytes = serializeMe();
 		if(bytes == null) return 0;
 		stream.write(bytes);
 		return bytes.length;
 	}
 	
 	public int serializeTo(FileBuffer buffer){
-		byte[] bytes = NUSALSeqGenerator.serializeCommand(this);
+		byte[] bytes = serializeMe();
 		if(bytes == null) return 0;
 		for(int i = 0; i < bytes.length; i++) buffer.addToFile(bytes[i]);
 		return bytes.length;

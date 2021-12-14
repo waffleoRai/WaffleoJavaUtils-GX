@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import waffleoRai_Sound.ADPCMTable;
 import waffleoRai_Sound.SampleChannel;
 import waffleoRai_Sound.WAV;
 import waffleoRai_Sound.WAV.LoopType;
@@ -15,8 +16,7 @@ public abstract class NinStream extends NinStreamableSound{
 	
 	/*--- Inner Classes ---*/
 	
-	public static class Track
-	{
+	public static class Track{
 		public int volume;
 		public int pan;
 		
@@ -25,19 +25,16 @@ public abstract class NinStream extends NinStreamableSound{
 		public int rightChannelID;
 	}
 	
-	public static class ADPCTable
-	{
+	public static class ADPCTable{
 		public int[][] older;
 		public int[][] old;
 		
-		public ADPCTable(int channels, int entries)
-		{
+		public ADPCTable(int channels, int entries){
 			older = new int[channels][entries];
 			old = new int[channels][entries];
 		}
 		
-		public ADPCTable copy(int channel)
-		{
+		public ADPCTable copy(int channel){
 			int entries = older[0].length;
 			ADPCTable copy = new ADPCTable(1, entries);
 			for(int i = 0; i < entries; i++)
@@ -50,8 +47,7 @@ public abstract class NinStream extends NinStreamableSound{
 		}
 	}
 	
-	public static class IMATable
-	{
+	public static class IMATable{
 		public int samples_per_block;
 		public int[][] init_samps;
 		public int[][] init_idxs;
@@ -79,8 +75,7 @@ public abstract class NinStream extends NinStreamableSound{
 	
 	/*--- Data Copy ---*/
 	
-	public static void copyChannel(NinStream src, NinStream trg, int channel)
-	{
+	public static void copyChannel(NinStream src, NinStream trg, int channel){
 		trg.encodingType = src.encodingType;
 		trg.loops = src.loops;
 		trg.channelCount = 1;
@@ -92,8 +87,7 @@ public abstract class NinStream extends NinStreamableSound{
 		//adpcm_block_size = src.adpcm_block_size;
 		//adpcm_samples_per_block = src.adpcm_samples_per_block;
 		
-		if(trg.encodingType == NinSound.ENCODING_TYPE_DSP_ADPCM)
-		{
+		if(trg.encodingType == NinSound.ENCODING_TYPE_DSP_ADPCM){
 			trg.channel_adpcm_info = new ADPCMTable[1];
 			trg.channel_adpcm_info[0] = src.channel_adpcm_info[channel];
 		}
@@ -108,18 +102,15 @@ public abstract class NinStream extends NinStreamableSound{
 	
 	/*--- Info ---*/
 	
-	public int getTrackCount()
-	{
+	public int getTrackCount(){
 		return tracks.size();
 	}
 	
-	public boolean writeTrackInformation(BufferedWriter writer)
-	{
+	public boolean writeTrackInformation(BufferedWriter writer){
 		if(writer == null) return false;
 		int i = 0;
 		try{
-		for(Track t : tracks)
-		{
+		for(Track t : tracks){
 			writer.write("---- TRACK " + i + "\n");
 			writer.write("Volume: 0x" + Integer.toHexString(t.volume) + "\n");
 			writer.write("Pan: 0x" + Integer.toHexString(t.pan) + "\n");
@@ -136,8 +127,7 @@ public abstract class NinStream extends NinStreamableSound{
 			writer.write("\n");
 		}
 		}
-		catch(Exception e)
-		{
+		catch(Exception e){
 			e.printStackTrace();
 			return false;
 		}
@@ -146,8 +136,7 @@ public abstract class NinStream extends NinStreamableSound{
 	
 	/*--- Convert ---*/
 	
-	public int getFrameAtOffset(long offset)
-	{
+	public int getFrameAtOffset(long offset){
 		int blockidx = (int)(offset/(long)block_size);
 		int blockoff = (int)(offset%(long)block_size);
 		
@@ -160,8 +149,7 @@ public abstract class NinStream extends NinStreamableSound{
 		return frame;
 	}
 	
-	public boolean writeTrackAsWAV(String path, int track)
-	{
+	public boolean writeTrackAsWAV(String path, int track){
 		Track t = null;
 		try{t = tracks.get(track);}
 		catch(Exception e){return false;}
@@ -177,12 +165,10 @@ public abstract class NinStream extends NinStreamableSound{
 		wav.copyData(0, getSamples_16Signed(t.leftChannelID));
 		if(t.chCount > 1) wav.copyData(1, getSamples_16Signed(t.rightChannelID));
 		
-		try 
-		{
+		try {
 			wav.writeFile(path);
 		} 
-		catch (IOException e) 
-		{
+		catch (IOException e) {
 			e.printStackTrace();
 			return false;
 		}
@@ -190,8 +176,7 @@ public abstract class NinStream extends NinStreamableSound{
 		return true;
 	}
 	
-	public boolean writeTrackAsWAV(String path, int track, int stFrame, int frameLen)
-	{
+	public boolean writeTrackAsWAV(String path, int track, int stFrame, int frameLen){
 		Track t = null;
 		try{t = tracks.get(track);}
 		catch(Exception e){return false;}
@@ -206,8 +191,7 @@ public abstract class NinStream extends NinStreamableSound{
 		wav.setSMPL_tune(unityNote, fineTune);
 		
 		
-		if(loops)
-		{
+		if(loops){
 			int ls = loopStart - stFrame;
 			if(ls < 0) ls = 0;
 			wav.setLoop(LoopType.Forward, ls, frameLen);
@@ -218,20 +202,17 @@ public abstract class NinStream extends NinStreamableSound{
 		for(int j = 0; j < frameLen; j++) cPart[j] = fullChannel[j+stFrame];
 		wav.copyData(0, cPart);
 		
-		if(t.chCount > 1)
-		{
+		if(t.chCount > 1){
 			fullChannel = getSamples_16Signed(t.rightChannelID);
 			cPart = new int[frameLen];
 			for(int j = 0; j < frameLen; j++) cPart[j] = fullChannel[j+stFrame];
 			wav.copyData(1, cPart);
 		}
 		
-		try 
-		{
+		try {
 			wav.writeFile(path);
 		} 
-		catch (IOException e) 
-		{
+		catch (IOException e) {
 			e.printStackTrace();
 			return false;
 		}
@@ -239,8 +220,7 @@ public abstract class NinStream extends NinStreamableSound{
 		return true;
 	}
 	
-	public boolean writePartialTrackAsWAV(String path, int track, long datOff, long datEnd)
-	{
+	public boolean writePartialTrackAsWAV(String path, int track, long datOff, long datEnd){
 		//Calculate which frame it would be...
 		int sframe = this.getFrameAtOffset(datOff);
 		int eframe = this.getFrameAtOffset(datEnd);
@@ -248,8 +228,7 @@ public abstract class NinStream extends NinStreamableSound{
 		return writeTrackAsWAV(path ,track, sframe, framediff);
 	}
 	
-	public boolean writePartialTrackAsWAV(String path, int track, long datOff)
-	{
+	public boolean writePartialTrackAsWAV(String path, int track, long datOff){
 		int sframe = this.getFrameAtOffset(datOff);
 		int eframe = this.totalFrames();
 		int framediff = eframe - sframe;
@@ -268,8 +247,7 @@ public abstract class NinStream extends NinStreamableSound{
 		return chans;
 	}
 	
-	public AudioSampleStream createSampleStream()
-	{
+	public AudioSampleStream createSampleStream(){
 		int[] tchannels = getActiveTrackChannels();
 		NAudioSampleStream str = null;
 		if(tchannels != null) str = new NAudioSampleStream(this, tchannels);
@@ -278,8 +256,7 @@ public abstract class NinStream extends NinStreamableSound{
 		return str;
 	}
 	
-	public AudioSampleStream createSampleStream(boolean loop)
-	{
+	public AudioSampleStream createSampleStream(boolean loop){
 		int[] tchannels = getActiveTrackChannels();
 		NAudioSampleStream str = null;
 		if(tchannels != null) str = new NAudioSampleStream(this, tchannels, loop);

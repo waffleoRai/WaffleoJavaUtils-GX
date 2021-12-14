@@ -3,63 +3,40 @@ package waffleoRai_SeqSound.n64al.cmd;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 
-public class NUSALSeqReferenceCommand extends NUSALSeqCommand{
+public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 	
 	private NUSALSeqCommand reference;
 	private boolean is_relative;
 	private int p_idx_addr;
 
-	public NUSALSeqReferenceCommand(NUSALSeqCmdType cmd, int value) {
+	protected NUSALSeqReferenceCommand(NUSALSeqCmdType cmd, int value, boolean rel) {
 		super(cmd, cmd.getBaseCommand());
 		reference = null;
 		super.setParam(0, value);
-		detectRelative();
+		p_idx_addr = 0;
+		is_relative = rel;
 	}
 	
-	public NUSALSeqReferenceCommand(NUSALSeqCmdType cmd, int idx, int value) {
+	protected NUSALSeqReferenceCommand(NUSALSeqCmdType cmd, int idx, int value, boolean rel) {
 		super(cmd, cmd.getBaseCommand());
 		reference = null;
 		super.setParam(0, idx);
 		super.setParam(1, value);
-		detectRelative();
+		p_idx_addr = 1;
+		is_relative = rel;
 	}
 	
-	private void detectRelative(){
-		switch(super.getCommand()){
-		case BRANCH_ALWAYS:
-		case BRANCH_IF_EQZ:
-		case BRANCH_IF_GTEZ:
-		case BRANCH_IF_LTZ:
-		case BRANCH_TO_SEQSTART:
-		case CALL:
-			p_idx_addr = 0;
-			is_relative = false;
-			break;
-		case CHANNEL_OFFSET:
-		case VOICE_OFFSET:
-			p_idx_addr = 1;
-			is_relative = false;
-			break;
-		case BRANCH_ALWAYS_REL:
-		case BRANCH_IF_EQZ_REL:
-		case BRANCH_IF_LTZ_REL:
-			p_idx_addr = 0;
-			is_relative = true;
-			break;
-		case CHANNEL_OFFSET_REL:
-		case VOICE_OFFSET_REL:
-			p_idx_addr = 1;
-			is_relative = true;
-			break;
-		default:
-			break;
-		}
-	}
-
 	public void setReference(NUSALSeqCommand target){
 		reference = target;
 		//Update param 1
 		updateAddressParameter();
+	}
+	
+	public abstract NUSALSeqCmdType getRelativeCommand();
+	public abstract NUSALSeqCmdType getAbsoluteCommand();
+	
+	protected void setAddressParamIdx(int idx){
+		p_idx_addr = idx;
 	}
 	
 	public boolean isBranch(){return true;}
@@ -97,10 +74,10 @@ public class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 			}
 		}
 	}
-	
-	public int getSizeInBytes() {
-		if(is_relative && (p_idx_addr == 0)) return 2;
-		return 3;
+
+	public byte[] serializeMe(){
+		updateAddressParameter();
+		return super.serializeMe();
 	}
 	
 	protected String paramsToString(){

@@ -7,6 +7,7 @@ import java.util.List;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 
+import waffleoRai_Sound.ADPCMTable;
 import waffleoRai_Sound.BitDepth;
 import waffleoRai_Sound.PCM16Sound;
 import waffleoRai_Sound.PCM24Sound;
@@ -52,8 +53,7 @@ public abstract class NinStreamableSound implements Sound{
 	
 	/*--- Construction/Parsing ---*/
 	
-	protected void setDefaults()
-	{
+	protected void setDefaults(){
 		encodingType = NinSound.ENCODING_TYPE_PCM16;
 		loops = false;
 		channelCount = 1;
@@ -70,14 +70,12 @@ public abstract class NinStreamableSound implements Sound{
 
 	/*--- Getters ---*/
 	
-	public BitDepth getBitDepth()
-	{
+	public BitDepth getBitDepth(){
 		if(encodingType == NinSound.ENCODING_TYPE_PCM8) return BitDepth.EIGHT_BIT_UNSIGNED;
 		else return BitDepth.SIXTEEN_BIT_SIGNED;
 	}
 	
-	public ADPCMTable getADPCMTableForChannel(int channel)
-	{
+	public ADPCMTable getADPCMTableForChannel(int channel){
 		if(encodingType != NinSound.ENCODING_TYPE_DSP_ADPCM) return null;
 		if(channel < 0 || channel >= channel_adpcm_info.length) return null;
 		return channel_adpcm_info[channel];
@@ -112,8 +110,7 @@ public abstract class NinStreamableSound implements Sound{
 	
 	/*--- Sound ---*/
 	
-	private int estimateFrames()
-	{
+	private int estimateFrames(){
 		if(totalChannels() < 1) return 0;
 		if(encodingType == NinSound.ENCODING_TYPE_DSP_ADPCM)
 		{
@@ -134,16 +131,14 @@ public abstract class NinStreamableSound implements Sound{
 		else return rawSamples[0].countSamples();
 	}
 	
-	public Iterator<Integer> getRawChannelIterator(int channel)
-	{
+	public Iterator<Integer> getRawChannelIterator(int channel){
 		if(channel < 0 || channel >= rawSamples.length) return null;
 		SampleChannel ch = rawSamples[channel];
 		if (ch == null) return null;
 		return ch.iterator();
 	}
 	
-	public AudioFormat getFormat()
-	{
+	public AudioFormat getFormat(){
 		int bitdepth = 16;
 		if(this.encodingType == NinSound.ENCODING_TYPE_PCM8) bitdepth = 8;
 		AudioFormat rwavformat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, (float)sampleRate, 
@@ -153,8 +148,7 @@ public abstract class NinStreamableSound implements Sound{
 		return rwavformat;
 	}
 	
-	public AudioInputStream getStream()
-	{
+	public AudioInputStream getStream(){
 		NinSoundStream rawis = new NinSoundStream(this);
 		AudioInputStream ais = new AudioInputStream(rawis, getFormat(), totalFrames());
 		return ais;
@@ -163,13 +157,11 @@ public abstract class NinStreamableSound implements Sound{
 	public int totalFrames(){return estimateFrames();}
 	public int totalChannels(){return this.channelCount;}
 	
-	public int[] getRawSamples(int channel)
-	{
+	public int[] getRawSamples(int channel){
 		return rawSamples[channel].toArray();
 	}
 	
-	public int[] getSamples_16Signed(int channel)
-	{
+	public int[] getSamples_16Signed(int channel){
 		//Just use the AudioSampleStream since it works...
 		AudioSampleStream me = createSampleStream();
 		int fcount = estimateFrames();
@@ -190,8 +182,7 @@ public abstract class NinStreamableSound implements Sound{
 		return samps;
 	}
 	
-	public int[] getSamples_24Signed(int channel)
-	{
+	public int[] getSamples_24Signed(int channel){
 		int[] s16 = this.getSamples_16Signed(channel);
 		if(s16 == null) return null;
 		
@@ -209,18 +200,15 @@ public abstract class NinStreamableSound implements Sound{
 	
 	public void flushBuffer(){} //Does nothing. Probably needs buffer, but I'm too lazy
 	
-	public int getRawDataPoint(int channel, int index)
-	{
+	public int getRawDataPoint(int channel, int index){
 		return rawSamples[channel].getSample(index);
 	}
 	
-	public NinADPCM generateNewADPCMState(int channel)
-	{
+	public NinADPCM generateNewADPCMState(int channel){
 		return new NinADPCM(channel_adpcm_info[channel], NinSound.DSP_ADPCM_UNIT_SAMPLES);
 	}
 	
-	public AudioSampleStream createSampleStream()
-	{
+	public AudioSampleStream createSampleStream(){
 		return new NAudioSampleStream(this);
 	}
 	
@@ -250,8 +238,7 @@ public abstract class NinStreamableSound implements Sound{
 		return snd;
 	}
 	
-	public boolean writeWAV(String path)
-	{
+	public boolean writeWAV(String path){
 		if(channelCount < 1) return false;
 		int frames = totalFrames();
 		if(frames < 1) return false;
@@ -263,12 +250,10 @@ public abstract class NinStreamableSound implements Sound{
 		//Copy data
 		for(int i = 0; i < channelCount; i++) wav.copyData(i, getSamples_16Signed(i));
 		
-		try 
-		{
+		try {
 			wav.writeFile(path);
 		} 
-		catch (IOException e) 
-		{
+		catch (IOException e) {
 			e.printStackTrace();
 			return false;
 		}
@@ -276,8 +261,7 @@ public abstract class NinStreamableSound implements Sound{
 		return true;
 	}
 	
-	public boolean writeWAV(String path, int stFrame, int frameLen)
-	{
+	public boolean writeWAV(String path, int stFrame, int frameLen){
 		if(channelCount < 1) return false;
 		int totalFrames = this.totalFrames();
 		if(totalFrames < 1) return false;
@@ -289,27 +273,23 @@ public abstract class NinStreamableSound implements Sound{
 		wav.setSMPL_tune(unityNote, fineTune);
 		
 		
-		if(loops)
-		{
+		if(loops){
 			int ls = loopStart - stFrame;
 			if(ls < 0) ls = 0;
 			wav.setLoop(LoopType.Forward, ls, frameLen);
 		}
 		
-		for(int i = 0; i < channelCount; i++)
-		{
+		for(int i = 0; i < channelCount; i++){
 			int[] fullChannel = this.getSamples_16Signed(i);
 			int[] cPart = new int[frameLen];
 			for(int j = 0; j < frameLen; j++) cPart[j] = fullChannel[j+stFrame];
 			wav.copyData(i, cPart);
 		}
 		
-		try 
-		{
+		try {
 			wav.writeFile(path);
 		} 
-		catch (IOException e) 
-		{
+		catch (IOException e) {
 			e.printStackTrace();
 			return false;
 		}

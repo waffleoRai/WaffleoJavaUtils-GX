@@ -25,9 +25,11 @@ import waffleoRai_Sound.Sound;
 import waffleoRai_Sound.SoundFileDefinition;
 import waffleoRai_Sound.WAV;
 import waffleoRai_Sound.WAV.LoopType;
+import waffleoRai_Sound.nintendo.N64ADPCMTable;
 import waffleoRai_Sound.nintendo.Z64Wave;
 import waffleoRai_Sound.nintendo.Z64Wave.NUSALADPCMWave;
 import waffleoRai_Sound.nintendo.Z64Wave.NUSWave2WAVConverter;
+import waffleoRai_Sound.nintendo.Z64WaveInfo;
 import waffleoRai_SoundSynth.SynthBank;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -70,9 +72,14 @@ public class Z64Bank implements WriterPrintable{
 		private int count;
 		
 		private short[] table;
+		
+		public N64ADPCMTable loadToTable(){
+			return N64ADPCMTable.fromRaw(order, count, table);
+		}
+		
 	}
 	
-	public static class WaveInfoBlock{
+	protected static class WaveInfoBlock{
 		
 		private int addr;
 		
@@ -124,6 +131,32 @@ public class Z64Bank implements WriterPrintable{
 		
 		public boolean isTwoBit(){
 			return (flags & 0x30) != 0;
+		}
+		
+		public Z64WaveInfo toWaveInfo(){
+			Z64WaveInfo info = new Z64WaveInfo();
+			
+			//Copy basic info
+			info.setFlagsField((byte)flags);
+			info.setWaveOffset(base);
+			info.setWaveSize(length);
+			
+			//Check codec & copy ADPCM table if needed
+			int codec = info.getCodec();
+			if(codec == Z64Wave.CODEC_ADPCM || codec == Z64Wave.CODEC_SMALL_ADPCM){
+				if(pred != null){
+					info.setADPCMBook(pred.loadToTable());
+				}
+			}
+			
+			//Copy loop
+			if(loop != null){
+				info.setLoopCount(loop.count);
+				info.setLoopEnd(loop.end);
+				info.setLoopStart(loop.start);
+			}
+			
+			return info;
 		}
 		
 	}
@@ -460,14 +493,14 @@ public class Z64Bank implements WriterPrintable{
 	
 	/*----- Getters -----*/
 	
-	public List<WaveInfoBlock> getAllWaveInfoBlocks(){
+	public List<Z64WaveInfo> getAllWaveInfoBlocks(){
 		int wcount = waveMap.size();
-		List<WaveInfoBlock> list = new ArrayList<WaveInfoBlock>(wcount+1);
+		List<Z64WaveInfo> list = new ArrayList<Z64WaveInfo>(wcount+1);
 		List<Integer> orderlist = new ArrayList<Integer>(wcount+1);
 		orderlist.addAll(waveMap.keySet());
 		Collections.sort(orderlist);
 		for(Integer k : orderlist){
-			list.add(waveMap.get(k));
+			list.add(waveMap.get(k).toWaveInfo());
 		}
 		return list;
 	}
@@ -496,14 +529,8 @@ public class Z64Bank implements WriterPrintable{
 			long wst = Integer.toUnsignedLong(winfo.getOffset());
 			long wed = wst + winfo.getLength();
 			FileBuffer wdat = sound_data.createReadOnlyCopy(wst, wed);
-			short[] tbl = winfo.getPredictorTable();
-			int loopst = winfo.getLoopStart();
-			int looped = winfo.getLoopEnd();
-			if(!winfo.loops()){
-				loopst = -1; looped = -1;
-			}
-			boolean flag = (winfo.getFlags() & 0x30) != 0;
-			Z64Wave wave = Z64Wave.readZ64Wave(wdat, tbl, loopst, looped, flag);
+			
+			Z64Wave wave = Z64Wave.readZ64Wave(wdat, winfo.toWaveInfo());
 			map.put(k, wave);
 		}
 		return map;

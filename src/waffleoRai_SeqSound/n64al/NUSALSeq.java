@@ -11,6 +11,7 @@ import java.util.Deque;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.midi.Sequence;
@@ -21,7 +22,9 @@ import waffleoRai_Files.tree.FileNode;
 import waffleoRai_SeqSound.BasicMIDIGenerator;
 import waffleoRai_SeqSound.MIDI;
 import waffleoRai_SeqSound.SoundSeqDef;
+import waffleoRai_SeqSound.n64al.cmd.NUSALSeqReader;
 import waffleoRai_SoundSynth.SequenceController;
+import waffleoRai_Utils.BufferReference;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
@@ -59,8 +62,12 @@ public class NUSALSeq implements WriterPrintable{
 	
 	private long wait_remain;
 	private long current_tick;
-	private int var;
 	private boolean term_flag;
+	
+	private Random rng;
+	private int[] seqIO; //Eventually make this more threadsafe
+	private int var_p = 0;
+	private int var_q = 0;
 	
 	private long tick_len = 0;
 	
@@ -69,8 +76,6 @@ public class NUSALSeq implements WriterPrintable{
 	private String error_msg;
 	private int error_ch;
 	
-	private byte format;
-	private byte type;
 	private int tempo; //bpm
 	private byte master_vol;
 	
@@ -95,6 +100,7 @@ public class NUSALSeq implements WriterPrintable{
 			ch_enable = new boolean[16];
 			channels = new NUSALSeqChannel[16];
 			return_stack = new LinkedList<Integer>();
+			seqIO = new int[16];
 			reset();
 			initialize();
 		}
@@ -107,11 +113,8 @@ public class NUSALSeq implements WriterPrintable{
 		master_pos = 0;
 		return_stack.clear();
 		wait_remain = 0;
-		var = 0;
 		term_flag = false;
 		error_flag = false;
-		format = (byte)0xFF;
-		type = (byte)0xFF;
 		tempo = 120;
 		master_vol = 0x7f;
 		error_msg = null; error_addr = -1; error_ch = -1;
@@ -120,8 +123,12 @@ public class NUSALSeq implements WriterPrintable{
 		for(int i = 0; i < 16; i++){
 			ch_enable[i] = false;
 			//channels[i] = new NUSALSeqChannel(i);
+			if(channels[i] != null) channels[i].reset();
+			seqIO[i] = 0;
 		}
 		
+		var_p = 0;
+		var_q = 0;
 		loop_enabled = false;
 		lcounter = 0;
 		loopst = -1;
@@ -133,22 +140,33 @@ public class NUSALSeq implements WriterPrintable{
 	public void initialize(){
 		//Creates channel objects and parses commands
 		seq_cmds = null;
-		NUSALSeqParser parser = new NUSALSeqParser(data);
-		parser.parse();
-		source = parser.getCommandSource();
+		NUSALSeqReader parser = new NUSALSeqReader(data);
+		parser.preParse();
+		source = parser;
 		for(int i = 0; i < 16; i++){
-			channels[i] = new NUSALSeqChannel(i);
+			if(channels[i] == null) channels[i] = new NUSALSeqChannel(i);
+			else channels[i].reset();
 			channels[i].setCommandSource(source);
 		}
 		master_pos = 0;
+		detectLoop();
 	}
 	
 	/*----- Getters -----*/
 	
-	public byte getFormat(){return format;}
-	public byte getType(){return type;}
+	public BufferReference getSeqDataReference(int abs_addr){
+		//TODO
+		//TODO Add write listeners to BufferReference class
+		return null;
+	}
+	
 	public int getCurrentPosition(){return master_pos;}
-	public int getSeqVar(){return var;}
+	
+	public int getVarQ(){return var_q;}
+	
+	public int getVarP(){return var_p;}
+	
+	public int getSeqIOValue(int idx){return seqIO[idx];}
 	
 	public boolean hasJumpLoop(){return jumpLoop;}
 	
@@ -173,13 +191,42 @@ public class NUSALSeq implements WriterPrintable{
 	
 	public long getLengthInTicks(){return tick_len;}
 	
+	public Random getRNG(){
+		if(rng == null) rng = new Random();
+		return rng;
+	}
+	
 	/*----- Setters -----*/
 	
-	public void setSeqVar(int value){var = value;}
-	public void setFormat(byte value){format = value;}
-	public void setType(byte value){type = value;}
+	public void setTarget(SequenceController t){target = t;}
 	public void setLoopEnabled(boolean b){loop_enabled = b;}
 	public void setAnnotationsEnabled(boolean b){anno_enable = b;}
+	
+	public void setVarQ(int value){
+		//Clamp
+		value = value>127?127:value;
+		value = value<-128?-128:value;
+		var_q = value;
+	}
+	
+	public void setVarP(int value){
+		//Clamp
+		value = value>65536?65536:value;
+		value = value<0?0:value;
+		var_p = value;
+	}
+	
+	public void setSeqIOValue(int idx, int value){
+		seqIO[idx] = value;
+	}
+	
+	public void setShortTable_Gate(int address){
+		//TODO
+	}
+	
+	public void setShortTable_Velocity(int address){
+		//TODO
+	}
 	
 	public void mapCommandToTick(int tick, NUSALSeqCommand cmd){
 		if(seq_cmds == null) seq_cmds = new NUSALSeqCommandMap();
@@ -307,11 +354,40 @@ public class NUSALSeq implements WriterPrintable{
 		}
 	}
 	
+	public void setMasterExpression(byte vol){
+		//TODO
+	}
+	
+	public void setMasterFade(int mode, int time){
+		//TODO
+	}
+	
 	public void setTempo(int bpm){
 		tempo = bpm;
 		if(target != null){
 			target.setTempo(MIDI.bpm2uspqn(tempo, NUS_TPQN));
 		}
+	}
+	
+	public void setTempoVariance(int value){
+		//TODO
+	}
+	
+	public void breakLoop(){
+		//TODO
+	}
+	
+	public void stopChannel(int channel){
+		//TODO
+	}
+	
+	public void transposeBy(int semis_change){
+		//TODO
+		//Transpose delta
+	}
+	
+	public void setTranspose(int semis){
+		//TODO
 	}
 	
 	public void signalSeqEnd(){
@@ -423,7 +499,7 @@ public class NUSALSeq implements WriterPrintable{
 		tick_len = current_tick;
 	}
 	
-	public void play(SequenceController listener, boolean loop){
+	public void playTo(SequenceController listener, boolean loop){
 		reset();
 		initialize();
 		setLoopEnabled(loop);
@@ -475,7 +551,7 @@ public class NUSALSeq implements WriterPrintable{
 	public MIDI toMidi() throws InvalidMidiDataException{
 		BasicMIDIGenerator conv = new BasicMIDIGenerator(NUS_TPQN);
 		anno_enable = true;
-		play(conv, false);
+		playTo(conv, false);
 		conv.complete();
 		Sequence seq = conv.getSequence();
 		MIDI mid = new MIDI(seq);
@@ -484,6 +560,16 @@ public class NUSALSeq implements WriterPrintable{
 	}
 	
 	/*----- Exceptions -----*/
+	
+	public static class UnrecognizedCommandException extends RuntimeException{
+
+		private static final long serialVersionUID = -901207269382175934L;
+		
+		public UnrecognizedCommandException(byte b, int pos, String ctx){
+			super("Command 0x" + String.format("%02x", b) + 
+					" @ 0x" + Integer.toHexString(pos) + " not recognized in " + ctx + " context!");
+		}
+	}
 	
 	public static class TooManyVoicesException extends RuntimeException{
 		private static final long serialVersionUID = 4940386212055346600L;
