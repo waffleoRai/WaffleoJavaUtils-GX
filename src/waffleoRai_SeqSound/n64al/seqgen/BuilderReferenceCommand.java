@@ -30,7 +30,7 @@ class BuilderReferenceCommand extends BuilderCommand{
 		case BRANCH_IF_EQZ:
 		case BRANCH_IF_GTEZ:
 		case BRANCH_IF_LTZ:
-		case BRANCH_TO_SEQSTART:
+		//case BRANCH_TO_SEQSTART:
 		case CALL:
 			p_idx_addr = 0;
 			is_relative = false;
@@ -110,7 +110,7 @@ class BuilderReferenceCommand extends BuilderCommand{
 			is_relative = true;
 			return true;
 		case BRANCH_IF_GTEZ:
-		case BRANCH_TO_SEQSTART:
+		//case BRANCH_TO_SEQSTART:
 		case CALL:
 			return false;
 		default:
@@ -159,7 +159,7 @@ class BuilderReferenceCommand extends BuilderCommand{
 		case CHANNEL_OFFSET:
 		case VOICE_OFFSET:
 		case BRANCH_IF_GTEZ:
-		case BRANCH_TO_SEQSTART:
+		//case BRANCH_TO_SEQSTART:
 		case CALL:
 			return true;
 		default:

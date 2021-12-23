@@ -259,7 +259,8 @@ public class NUSALSeqGenerator implements SequenceController{
 	}
 	
 	public boolean compressMIDI(Sequence seq, String outpath){
-		if(seq == null) return false;
+		return false;
+	/*	if(seq == null) return false;
 		for(int i = 0; i < 16; i++) ch_enable[i][1] = false;
 		
 		//Read MIDI
@@ -335,7 +336,7 @@ public class NUSALSeqGenerator implements SequenceController{
 		
 		bcmd = new BuilderGenericCommand(NUSALSeqCmdType.ENABLE_CHANNELS, 3);
 		bcmd.setParam(0, 0xffff); 
-		seq_chunk.addCommand(bcmd);
+		seq_chunk.addCommand(bcmd);*/
 		
 		
 		//Multi-entrypoint jump table (if applicable)
@@ -362,6 +363,7 @@ public class NUSALSeqGenerator implements SequenceController{
 		//	Honestly, that's kinda cool.
 		//TODO might implement that here as well so that the game can read it if it wishes?
 		
+		/*
 		if(!alt_entries.isEmpty()){
 			//put in variable movement blurb
 			bcmd = new BuilderGenericCommand(NUSALSeqCmdType.SEQ_UNK_8x, 1);
@@ -601,7 +603,7 @@ public class NUSALSeqGenerator implements SequenceController{
 			return false;
 		}
 		
-		return true;
+		return true;*/
 	}
 	
 	/*----- Seq Controls -----*/
@@ -735,7 +737,7 @@ public class NUSALSeqGenerator implements SequenceController{
 	/*----- Export -----*/
 	
 	public static byte[] serializeCommand(NUSALSeqCommand cmd){
-		if(cmd == null) return null;
+		/*if(cmd == null) return null;
 		byte[] out = null;
 		byte cmdb = cmd.getCommand().getBaseCommand();
 		int cmdi = Byte.toUnsignedInt(cmdb);
@@ -930,7 +932,8 @@ public class NUSALSeqGenerator implements SequenceController{
 			break;
 		}
 		
-		return out;
+		return out;*/
+		return null;
 	}
 	
 }

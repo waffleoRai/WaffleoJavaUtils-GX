@@ -426,9 +426,9 @@ public class NUSALSeqBuilderPhrase implements MusicEvent{
 		boolean single_pshift = (pitch_off != Integer.MAX_VALUE) && (pitch_off != 0);
 		if(single_pshift){
 			//Issue a pitch shift command
-			BuilderCommand cmd = new BuilderGenericCommand(NUSALSeqCmdType.TRANSPOSE, 2);
+			/*BuilderCommand cmd = new BuilderGenericCommand(NUSALSeqCmdType.TRANSPOSE, 2);
 			cmd.setParam(0, pitch_off);
-			chunk.addCommand(cmd);
+			chunk.addCommand(cmd);*/
 		}
 		boolean dynamic_transpose = pitch_off == Integer.MAX_VALUE;
 		if(dynamic_transpose) pitch_off = 0;
@@ -461,9 +461,9 @@ public class NUSALSeqBuilderPhrase implements MusicEvent{
 				if(changed){
 					min_note = 0x15 + pitch_off;
 					max_note = 0x54 + pitch_off;
-					BuilderCommand cmd = new BuilderGenericCommand(NUSALSeqCmdType.TRANSPOSE, 2);
+					/*BuilderCommand cmd = new BuilderGenericCommand(NUSALSeqCmdType.TRANSPOSE, 2);
 					cmd.setParam(0, pitch_off);
-					chunk.addCommand(cmd);
+					chunk.addCommand(cmd);*/
 				}
 			}
 			
@@ -489,9 +489,9 @@ public class NUSALSeqBuilderPhrase implements MusicEvent{
 		
 		//Handle end of phrase (do a transpose back to 0 if needed, then end/return command)
 		if(pitch_off != 0){
-			BuilderCommand cmd = new BuilderGenericCommand(NUSALSeqCmdType.TRANSPOSE, 2);
+			/*BuilderCommand cmd = new BuilderGenericCommand(NUSALSeqCmdType.TRANSPOSE, 2);
 			cmd.setParam(0, 0);
-			chunk.addCommand(cmd);
+			chunk.addCommand(cmd);*/
 		}
 		BuilderCommand cmd = new BuilderGenericCommand(NUSALSeqCmdType.END_READ, 1);
 		chunk.addCommand(cmd);

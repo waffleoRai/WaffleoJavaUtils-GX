@@ -162,9 +162,9 @@ public class NUSALSeqBuilderChannel {
 	}
 	
 	public void setVibrato(byte value){
-		NUSALSeqCmdType type = NUSALSeqCmdType.CH_VIBRATO;
+		/*NUSALSeqCmdType type = NUSALSeqCmdType.CH_VIBRATO;
 		BuilderCommand cmd = new BuilderTimeoptCommand(type, (int)value);
-		addToCmdMap(tick, cmd);
+		addToCmdMap(tick, cmd);*/
 	}
 	
 	public void setEffectsLevel(byte value){
@@ -543,9 +543,9 @@ public class NUSALSeqBuilderChannel {
 						if(mynote.getNote() < min || mynote.getNote() > max){
 							if(mynote.getNote() < min) transpose -= min - (int)mynote.getNote();
 							else transpose += mynote.getNote() - max;
-							BuilderCommand tcmd = new BuilderGenericCommand(NUSALSeqCmdType.TRANSPOSE, 2);
+							/*BuilderCommand tcmd = new BuilderGenericCommand(NUSALSeqCmdType.TRANSPOSE, 2);
 							tcmd.setParam(0, transpose);
-							chunk.addCommand(tcmd);
+							chunk.addCommand(tcmd);*/
 						}
 						
 						//Convert to command note and add to phrase chunk
@@ -570,9 +570,9 @@ public class NUSALSeqBuilderChannel {
 				}
 				
 				if(transpose != 0){
-					BuilderCommand tcmd = new BuilderGenericCommand(NUSALSeqCmdType.TRANSPOSE, 2);
+					/*BuilderCommand tcmd = new BuilderGenericCommand(NUSALSeqCmdType.TRANSPOSE, 2);
 					tcmd.setParam(0, 0);
-					chunk.addCommand(tcmd);
+					chunk.addCommand(tcmd);*/
 				}
 				
 				//Add "end" command to vox block.
@@ -647,7 +647,7 @@ public class NUSALSeqBuilderChannel {
 
 			//Add channel init command (If appl.)
 			if(tb.isEntry){
-				chunk.addCommand(new BuilderGenericCommand(NUSALSeqCmdType.INIT_CHANNEL, 1));	
+				//chunk.addCommand(new BuilderGenericCommand(NUSALSeqCmdType.INIT_CHANNEL, 1));	
 			}
 			//Add voice jump commands
 			List<BuilderCommand> voxjumplist = vox_cmd_map.get(start);
@@ -722,11 +722,11 @@ public class NUSALSeqBuilderChannel {
 							ext_cmd = null;
 						}
 						break;
-					case CH_VIBRATO:
+					/*case CH_VIBRATO:
 						chunk.addCommand(cmd);
 						ext_cmd = cmd;
 						ch_vib = cmd.getParam(0);
-						break;
+						break;*/
 					case CH_REVERB:
 						chunk.addCommand(cmd);
 						ext_cmd = cmd;
@@ -770,11 +770,11 @@ public class NUSALSeqBuilderChannel {
 					chunk.addCommand(bcmd);
 					ext_cmd = bcmd;
 				}
-				if(ch_vib != 0){
+				/*if(ch_vib != 0){
 					bcmd = new BuilderTimeoptCommand(NUSALSeqCmdType.CH_VIBRATO, ch_vib);
 					chunk.addCommand(bcmd);
 					ext_cmd = bcmd;
-				}
+				}*/
 				if(ch_eff != 0){
 					bcmd = new BuilderTimeoptCommand(NUSALSeqCmdType.CH_REVERB, ch_eff);
 					chunk.addCommand(bcmd);
@@ -806,7 +806,7 @@ public class NUSALSeqBuilderChannel {
 				int wait_time = t - last_time;
 				if(wait_time > 0){
 					if(wait_time < 0x78 && nxt_cmd != null){
-						ext_cmd.setOptionalTime(wait_time);
+						//ext_cmd.setOptionalTime(wait_time);
 					}
 					else{
 						//Not appended to previous command
@@ -828,9 +828,9 @@ public class NUSALSeqBuilderChannel {
 					case CH_PRIORITY:
 						chpri = nxt_cmd.getParam(0);
 						break;
-					case CH_VIBRATO:
+					/*case CH_VIBRATO:
 						ch_vib = nxt_cmd.getParam(0);
-						break;
+						break;*/
 					case CH_REVERB:
 						ch_eff = nxt_cmd.getParam(0);
 						break;
@@ -848,8 +848,8 @@ public class NUSALSeqBuilderChannel {
 				}
 				for(BuilderCommand cmd : cmdlist){
 					chunk.addCommand(cmd);
-					if(cmd.isTimeExtendable()) ext_cmd = cmd;
-					else ext_cmd = null;
+					//if(cmd.isTimeExtendable()) ext_cmd = cmd;
+					//else ext_cmd = null;
 					switch(cmd.getCommand()){
 					case CH_VOLUME:
 						chvol = cmd.getParam(0);
@@ -863,9 +863,9 @@ public class NUSALSeqBuilderChannel {
 					case SET_PROGRAM:
 						chprog = cmd.getParam(0);
 						break;
-					case CH_VIBRATO:
+					/*case CH_VIBRATO:
 						ch_vib = cmd.getParam(0);
-						break;
+						break;*/
 					case CH_REVERB:
 						ch_eff = cmd.getParam(0);
 						break;

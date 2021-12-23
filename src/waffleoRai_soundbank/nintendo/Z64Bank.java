@@ -48,9 +48,9 @@ public class Z64Bank implements WriterPrintable{
 	
 	public static final String SOUND_KEY_STEM = "wave_";
 	
-	public static final String FNMETAKEY_I0COUNT = "I0COUNT";
-	public static final String FNMETAKEY_I1COUNT = "I1COUNT";
-	public static final String FNMETAKEY_I2COUNT = "I2COUNT";
+	public static final String FNMETAKEY_I0COUNT = "INSTCOUNT";
+	public static final String FNMETAKEY_I1COUNT = "PERCCOUNT";
+	public static final String FNMETAKEY_I2COUNT = "SFXCOUNT";
 	public static final String FNMETAKEY_BNKIDKEY = "U64BNKID";
 	
 	/*----- Inner Classes -----*/

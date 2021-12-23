@@ -1,5 +1,6 @@
 package waffleoRai_Sound.nintendo;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -20,7 +21,6 @@ import waffleoRai_SoundSynth.AudioSampleStream;
 import waffleoRai_SoundSynth.soundformats.WAVWriter;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_soundbank.nintendo.Z64Bank;
 
 public class Z64Wave extends SoundAdapter{
 
@@ -33,7 +33,7 @@ public class Z64Wave extends SoundAdapter{
 	public static final String FN_METAKEY_LOOPST = "LOOPST";
 	public static final String FN_METAKEY_LOOPED = "LOOPED";
 	
-	public static final int DEFO_SAMPLERATE = 22050;
+	public static final int DEFO_SAMPLERATE = 32000;
 	
 	public static final int CODEC_ADPCM = 0;
 	public static final int CODEC_S8 = 1;
@@ -466,44 +466,36 @@ public class Z64Wave extends SoundAdapter{
 	/*----- Debug -----*/
 
 	public static void main(String[] args){
-		String inpath = "";
-		String outdir = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\n64test\\mmsounds";
+		String inpath = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\n64test\\nzlp_mq_dbg\\audiotable\\audiotable_4_4.bin";
+		String outdir = "C:\\Users\\Blythe\\Documents\\Desktop\\out\\n64test\\warc4";
 		
-		//Soundbank offset definitions...
-		//(Just the first 5)
-		int[] bankoffs = {0x20700, 0x288C0, 0x2BF90, 0x2CC70, 0x2E240, 0x2EDA0};
-		int warcoff = 0x97F70;
-		
-		/*
-		 * Okay, so the flags definitely change the reading somehow.
-		 * The wave at 0x55600 (ROM offset 0xed570) won't decomp - lookup coeff ends up
-		 * 	out of bounds. Flags 0x30
-		 * It's quite possible that the blocks are just different sizes.
-		 * I'll check my GameCube notes, might have something similar.
-		 * 
-		 * GameCube has option for 5-byte blocks instead of 9-byte
-		 * 	In this case, it looks like the samples are 2 bits, not 4!
-		 * 	Rest of the math seems to be the same tho
-		 * 	Let's try that...
-		 * 
-		 */
+		int[] guess_table = {-1850, -3250, -3900, -200, -50, 0, 0, 0,
+							 3500, 4500, 2100, 125, 950, 10, -10, -40,
+							 -1990, -3960, -5850, -7590, -9240, -10750, -12250, -13600,
+							 3900, 5890, 7700, 9400, 11000, 12500, 13800, 15000};
 		
 		try{
-			FileBuffer rom = FileBuffer.createBuffer(inpath, true);
-			for(int i = 0; i < 5; i++){
-				System.err.println("Reading from bank " + i);
-				FileBuffer sbnk = rom.createReadOnlyCopy(bankoffs[i], bankoffs[i+1]);
-				Z64Bank bank = Z64Bank.readBank(sbnk);
-				List<Z64WaveInfo> waves = bank.getAllWaveInfoBlocks();
-				for(Z64WaveInfo winfo: waves){
-					//Get data.
-					long wst = Integer.toUnsignedLong(warcoff + winfo.getWaveOffset());
-					long wed = wst + winfo.getWaveSize();
-					FileBuffer wdat = rom.createReadOnlyCopy(wst, wed);
-					Z64Wave wave = Z64Wave.readZ64Wave(wdat, winfo);
-					wave.writeToWav(outdir + "\\majorawav_" + String.format("%08x", wst) + ".wav");
-				}
-			}
+			Z64WaveInfo info = new Z64WaveInfo();
+			info.setCodec(CODEC_ADPCM);
+			
+			//Determine length
+			long filelen = FileBuffer.fileSize(inpath);
+			filelen /= 9;
+			filelen *= 9;
+			FileBuffer dat = FileBuffer.createBuffer(inpath, 0, filelen);
+			
+			//Try various books...
+			//All 0
+			info.setADPCMBook(new N64ADPCMTable(2,2));
+			
+			//Read
+			Z64Wave wave = Z64Wave.readZ64Wave(dat, info);
+			wave.writeToWav(outdir + File.separator + "sample4_4__allzero.wav");
+			
+			info.setADPCMBook(N64ADPCMTable.fromRaw(2, 2, guess_table));
+			wave = Z64Wave.readZ64Wave(dat, info);
+			wave.writeToWav(outdir + File.separator + "sample4_4__guesstbl.wav");
+			
 		}
 		catch(Exception ex){
 			ex.printStackTrace();
