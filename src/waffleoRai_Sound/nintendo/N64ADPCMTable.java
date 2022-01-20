@@ -23,14 +23,14 @@ public class N64ADPCMTable extends ADPCMTable{
 	
 	public static N64ADPCMTable readTable(BufferReference ref){
 		//Get the order and pred count
-		int o = ref.getInt(); ref.add(4);
-		int pcount = ref.getInt(); ref.add(4);
+		int o = ref.nextInt();
+		int pcount = ref.nextInt();
 		
 		N64ADPCMTable tbl = new N64ADPCMTable(o, pcount);
 		for(int p = 0; p < pcount; p++){
 			for(o = 0; o < tbl.order; o++){
 				for(int i = 0; i < 8; i++){
-					tbl.coeff_table[p][o][i] = (int)ref.getShort(); ref.add(2);
+					tbl.coeff_table[p][o][i] = (int)ref.nextShort();
 				}
 			}
 		}
@@ -105,4 +105,44 @@ public class N64ADPCMTable extends ADPCMTable{
 		return coeff_table[p][o][i];
 	}
 
+	public short[] getAsRaw(){
+		int pcount = coeff_table.length;
+		int total = order * pcount * 8;
+		short[] tbl = new short[total];
+		int j = 0;
+		for(int p = 0; p < pcount; p++){
+			for(int o = 0; o < order; o++){
+				for(int i = 0; i < 8; i++){
+					tbl[j++] = (short)coeff_table[p][o][i];
+				}
+			}
+		}
+		return tbl;
+	}
+	
+	public boolean bookEquals(N64ADPCMTable other){
+		if(other == null) return false;
+		if(other == this) return true;
+		
+		if(this.getPredictorCount() != other.getPredictorCount()) return false;
+		if(this.getOrder() != other.getOrder()) return false;
+		
+		int p = this.getPredictorCount();
+		int o = this.getOrder();
+		try{
+			for(int i = 0; i < p; i++){
+				for(int j = 0; j < o; j++){
+					for(int k = 0; k < 8; k++){
+						if(this.coeff_table[i][j][k] != other.coeff_table[i][j][k]) return false;
+					}
+				}
+			}
+		}
+		catch(ArrayIndexOutOfBoundsException ex){
+			return false;
+		}
+		
+		return true;
+	}
+	
 }

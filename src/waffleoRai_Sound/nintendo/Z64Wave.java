@@ -33,35 +33,93 @@ public class Z64Wave extends SoundAdapter{
 	public static final String FN_METAKEY_LOOPST = "LOOPST";
 	public static final String FN_METAKEY_LOOPED = "LOOPED";
 	
-	public static final int DEFO_SAMPLERATE = 32000;
-	
-	public static final int CODEC_ADPCM = 0;
-	public static final int CODEC_S8 = 1;
-	public static final int CODEC_S16_INMEMORY = 2;
-	public static final int CODEC_SMALL_ADPCM = 3;
-	public static final int CODEC_REVERB = 4;
-	public static final int CODEC_S16 = 5;
-	
-	public static final int MEDIUM_RAM = 0;
-	public static final int MEDIUM_UNK = 1;
-	public static final int MEDIUM_CART = 2;
-	public static final int MEDIUM_DISK_DRIVE = 3;
-	
 	/*----- Instance Variables -----*/
 	
 	private N64ADPCMTable adpcm_table;
-	private boolean tinySamps; //2bit samps, 5 byte blocks
-	//private Z64ADPCM adpcm;
+	private int codec;
 	
 	private int loopCount;
 	private int loopStart;
 	private int loopEnd;
 	
+	private float tuning;
+	
 	private byte[] raw_data;
 	
 	/*----- Inner Classes -----*/
 	
-	public class Z64WaveSampleStream implements AudioSampleStream{
+	public class Z64PCMSampleStream implements AudioSampleStream{
+		private boolean loopMe;
+		
+		private int pos;
+		private int loopCt;
+		private int endpos;
+		private boolean doneflag;
+		private boolean loopedflag;
+		
+		public Z64PCMSampleStream(boolean loops){
+			loopMe = loops;
+			pos = 0; loopCt = 0;
+			endpos = totalFrames();
+		}
+		
+		public float getSampleRate() {return (float)sampleRate;}
+		public int getBitDepth() {return bitDepth;}
+		public int getChannelCount() {return chCount;}
+		
+		public int[] nextSample() throws InterruptedException {
+			if(doneflag) return new int[]{0};
+			if(loopMe) {
+				//Check for loop end
+				if(pos >= loopEnd){
+					if(!loopedflag){
+						loopCt++;
+						if(loopCount > 0 && loopCt >= loopCount)loopedflag = true;
+						pos = loopStart;
+					}
+					else{
+						//Last loop, check for end.
+						if(pos >= endpos){
+							doneflag = true;
+							return new int[]{0};
+						}
+					}
+				}
+			}
+			else{
+				//Check for end
+				if(pos >= endpos){
+					doneflag = true;
+					return new int[]{0};
+				}
+			}
+			
+			int samp = 0;
+			if(codec == Z64Sound.CODEC_S8){
+				//8 bit
+				samp = Byte.toUnsignedInt(raw_data[pos++]);
+				samp -= 128;
+				float sf = (float)samp;
+				if(samp >= 0) sf/=127.0f;
+				else sf/=128.0f;
+				samp = Math.round(sf * 65535.0f);
+			}
+			else{
+				//16 bit
+				int datpos = pos << 1;
+				samp = (int)raw_data[datpos] << 8;
+				samp |= Byte.toUnsignedInt(raw_data[datpos+1]);
+				pos += 2;
+			}
+			
+			return new int[]{samp};
+		}
+		
+		public void close() {doneflag = true;}
+		public boolean done() {return doneflag;}
+	}
+	
+	public class Z64ADPCMSampleStream implements AudioSampleStream{
 
 		private boolean loopMe;
 		private Z64ADPCM state;
@@ -71,14 +129,16 @@ public class Z64Wave extends SoundAdapter{
 		private int endpos;
 		private boolean doneflag;
 		private boolean loopedflag;
+		private boolean tinySamps;
 		
 		private int[] outBlock;
 		
-		public Z64WaveSampleStream(boolean loops){
+		public Z64ADPCMSampleStream(boolean loops){
 			loopMe = loops;
 			state = new Z64ADPCM(adpcm_table);
 			pos = 0; loopCt = 0;
 			endpos = totalFrames();
+			tinySamps = (codec == Z64Sound.CODEC_SMALL_ADPCM);
 		}
 		
 		public float getSampleRate() {return (float)sampleRate;}
@@ -207,43 +267,54 @@ public class Z64Wave extends SoundAdapter{
 	/*----- Initialize -----*/
 	
  	private Z64Wave(Z64WaveInfo info){
-		super(DEFO_SAMPLERATE, 16, 1);
+		super(Z64Sound.DEFO_SAMPLERATE, 16, 1);
 		adpcm_table = info.getADPCMBook();
+		
+		codec = info.getCodec();
+		loopCount = info.getLoopCount(); //0 means none, -1 means infinite
+		loopStart = info.getLoopStart();
+		loopEnd = info.getLoopEnd();
+		setTuning(info.getTuning());
 	}
 	
 	public static Z64Wave readZ64Wave(FileBuffer data, Z64WaveInfo info){
-		if(info.getADPCMBook() == null){
-			System.err.println("Z64Wave.readZ64Wave || Input is not an ADPCM wave!");
-			return null;
-		}
-		
 		Z64Wave wav = new Z64Wave(info);
-		wav.tinySamps = (info.getCodec() == Z64Wave.CODEC_SMALL_ADPCM);
-		wav.loopCount = info.getLoopCount(); //0 means none, -1 means infinite
-		wav.loopStart = info.getLoopStart();
-		wav.loopEnd = info.getLoopEnd();
 		
 		//Read
 		int bytelen = (int)data.getFileSize();
-		int packsize = 9;
-		if(wav.tinySamps) packsize = 5;
-		//wav.raw_data = new byte[bytelen];
-		bytelen = (bytelen/packsize) * packsize; //Snap to block
-		wav.raw_data = data.getBytes(0, bytelen); 
-		
-		//Mark states in ADPCM table at start and loop point
-		if(wav.loopStart >= 0){
-			if(wav.adpcm_table != null){
-				AudioSampleStream str = wav.createSampleStream(false);
-				try{
-					int order = wav.adpcm_table.getOrder();
-					for(int i = 0; i < (wav.loopStart - order); i++) str.nextSample();
-					for(int i = 0; i < order; i++){
-						wav.adpcm_table.setStartBacksample(order-1-i, str.nextSample()[0]);
+		if(wav.codec == Z64Sound.CODEC_ADPCM || wav.codec == Z64Sound.CODEC_SMALL_ADPCM){
+			int packsize = 9;
+			if(wav.codec == Z64Sound.CODEC_SMALL_ADPCM) packsize = 5;
+			//wav.raw_data = new byte[bytelen];
+			bytelen = (bytelen/packsize) * packsize; //Snap to block
+			wav.raw_data = data.getBytes(0, bytelen); 
+			
+			//Mark states in ADPCM table at start and loop point
+			if(wav.loopStart >= 0){
+				if(wav.adpcm_table != null){
+					AudioSampleStream str = wav.createSampleStream(false);
+					try{
+						int order = wav.adpcm_table.getOrder();
+						for(int i = 0; i < (wav.loopStart - order); i++) str.nextSample();
+						for(int i = 0; i < order; i++){
+							wav.adpcm_table.setStartBacksample(order-1-i, str.nextSample()[0]);
+						}
+						str.close();
 					}
-					str.close();
+					catch(Exception e){e.printStackTrace();};
 				}
-				catch(Exception e){e.printStackTrace();};
+			}
+		}
+		else{
+			//Assume PCM.
+			if(wav.codec == Z64Sound.CODEC_S8){
+				//8 bit (assume unsigned?)
+				wav.raw_data = data.getBytes(0, bytelen); 
+			}
+			else{
+				//Assume 16 bit
+				if(bytelen % 2 != 0) bytelen--;
+				wav.raw_data = data.getBytes(0, bytelen); 
 			}
 		}
 		
@@ -286,8 +357,13 @@ public class Z64Wave extends SoundAdapter{
 	/*----- Getters -----*/
 	
 	public int totalFrames() {
-		int div = tinySamps?5:9;
-		return (raw_data.length/div) << 4;
+		switch(codec){
+		case Z64Sound.CODEC_ADPCM: return (raw_data.length/9) << 4;
+		case Z64Sound.CODEC_SMALL_ADPCM: return (raw_data.length/5) << 4;
+		case Z64Sound.CODEC_S8: return raw_data.length;
+		case Z64Sound.CODEC_S16: return raw_data.length >>> 1;
+		default: return 0;
+		}
 	}
 
 	public Sound getSingleChannel(int channel) {
@@ -301,7 +377,7 @@ public class Z64Wave extends SoundAdapter{
 		int[] samps = new int[frames];
 		int blocks = frames >>> 4;
 		int f = 0; int p = 0;
-		if(tinySamps){
+		if(codec == Z64Sound.CODEC_SMALL_ADPCM){
 			for(int b = 0; b < blocks; b++){
 				p++;
 				for(int i = 0; i < 4; i++){
@@ -314,7 +390,7 @@ public class Z64Wave extends SoundAdapter{
 				}
 			}
 		}
-		else{
+		else if(codec == Z64Sound.CODEC_ADPCM){
 			for(int b = 0; b < blocks; b++){
 				p++;
 				for(int i = 0; i < 8; i++){
@@ -324,6 +400,18 @@ public class Z64Wave extends SoundAdapter{
 					samps[f++] = by & 0xF;
 				}
 			}	
+		}
+		else if(codec == Z64Sound.CODEC_S8){
+			for(int i = 0; i < raw_data.length; i++){
+				samps[i] = Byte.toUnsignedInt(raw_data[i]);
+			}
+		}
+		else if(codec == Z64Sound.CODEC_S16){
+			for(int i = 0; i < raw_data.length; i+=2){
+				int val = (int)raw_data[i] << 8;
+				val |= Byte.toUnsignedInt(raw_data[i+1]);
+				samps[f++] = val;
+			}
 		}
 		
 		return samps;
@@ -360,6 +448,12 @@ public class Z64Wave extends SoundAdapter{
 	
 	/*----- Setters -----*/
 	
+	public void setTuning(float value){
+		if(value < 0) return; //Leave it alone.
+		tuning = value;
+		super.sampleRate = Math.round(tuning * (float)Z64Sound.DEFO_SAMPLERATE);
+	}
+	
 	/*----- Stream -----*/
 	
 	public AudioInputStream getStream() {
@@ -367,7 +461,15 @@ public class Z64Wave extends SoundAdapter{
 	}
 
 	public AudioSampleStream createSampleStream(boolean loop) {
-		return new Z64WaveSampleStream(loop);
+		switch(codec){
+		case Z64Sound.CODEC_ADPCM:
+		case Z64Sound.CODEC_SMALL_ADPCM:
+			return new Z64ADPCMSampleStream(loop);
+		case Z64Sound.CODEC_S8:
+		case Z64Sound.CODEC_S16:
+			return new Z64PCMSampleStream(loop);
+		}
+		return null;
 	}
 	
 	/*----- Write -----*/
@@ -476,7 +578,7 @@ public class Z64Wave extends SoundAdapter{
 		
 		try{
 			Z64WaveInfo info = new Z64WaveInfo();
-			info.setCodec(CODEC_ADPCM);
+			info.setCodec(Z64Sound.CODEC_ADPCM);
 			
 			//Determine length
 			long filelen = FileBuffer.fileSize(inpath);

@@ -109,12 +109,13 @@ public class Z64ADPCM implements ADPCMCoder{
 		thisBlock_raw[subidx] = in;
 		
 		int ip = 0; int order = table.getOrder();
+		int s = 0;
+		int omax = order-1;
 		//Factor in (order) samples from previous subblock
 		for(int i = 0; i < order; i++){
-			ip += lastBlock[7-i] * table.getCoefficient(pred_idx, i, subidx);
+			s = 7-(omax-i);
+			ip += lastBlock[s] * table.getCoefficient(pred_idx, i, subidx);
 		}
-		
-		int omax = order-1;
 
 		for(int i = subidx; i > 0; i--){
 			int j = i-1;
@@ -122,7 +123,7 @@ public class Z64ADPCM implements ADPCMCoder{
 		}
 		
 		//We'll div the ip before adding like in decomp.
-		ip >>>= 11;
+		ip >>= 11;
 		int out = in + ip;
 		
 		//Alt for adding ip before dividing
