@@ -268,12 +268,13 @@ class Z64BankBlocks {
 			else off_snd_hi = 0;
 			
 			buffer.addToFile(off_env);
-			buffer.addToFile(off_snd_med);
-			buffer.addToFile(Float.floatToRawIntBits(data.getTuningMiddle()));
 			
 			buffer.addToFile(off_snd_lo);
 			if(off_snd_lo != 0) buffer.addToFile(Float.floatToRawIntBits(data.getTuningLow()));
 			else buffer.addToFile(0);
+			
+			buffer.addToFile(off_snd_med);
+			buffer.addToFile(Float.floatToRawIntBits(data.getTuningMiddle()));
 			
 			buffer.addToFile(off_snd_hi);
 			if(off_snd_hi != 0) buffer.addToFile(Float.floatToRawIntBits(data.getTuningHigh()));

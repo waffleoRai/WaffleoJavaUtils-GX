@@ -44,7 +44,14 @@ public class Z64Drum extends Labelable{
 		if(midi_note != Z64Sound.MIDDLE_C){
 			int cents = 100 * (midi_note - Z64Sound.MIDDLE_C);
 			float ratio = (float)(SynthMath.cents2FreqRatio(cents));
-			return value*ratio;
+			value *= ratio;
+			
+			//Round...
+			value *= 100000f;
+			value = (float)Math.round(value);
+			value /= 100000f;
+			
+			return value;
 		}
 		else return value;
 	}

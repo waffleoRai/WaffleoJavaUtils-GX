@@ -195,6 +195,7 @@ public class Z64Bank implements WriterPrintable{
 			bank.inst_presets[idx++] = inst;
 			instMap.put(i_off, inst);
 			bank.inst_pool.put(i_off, inst.data);
+			//System.err.println("Inst read @: 0x" + Integer.toHexString(i_off));
 
 			//Read child blocks
 			if(inst.off_env > 0){
@@ -708,7 +709,7 @@ public class Z64Bank implements WriterPrintable{
 		
 		for(int i = 0; i < pcount; i++){
 			PercBlock dblock = perc_slots[i];
-			if(dblock.data == null) continue;
+			if(dblock == null || dblock.data == null) continue;
 			if(!dblock.flag){
 				drum_blocks.add(dblock);
 				dblock.flag = true;
@@ -749,7 +750,7 @@ public class Z64Bank implements WriterPrintable{
 		itbl[0] = ptbl.addr = current_pos; //Drum table offset.
 		for(int i = 0; i < pcount; i++){
 			PercBlock dblock = perc_slots[i];
-			if(dblock.data == null) ptbl.offsets.add(0);
+			if(dblock == null || dblock.data == null) ptbl.offsets.add(0);
 			else{
 				ptbl.offsets.add(dblock.addr);
 			}
@@ -798,13 +799,15 @@ public class Z64Bank implements WriterPrintable{
 			if(xblock == null || xblock.data == null) target.addToFile(0L);
 			else{
 				xblock.serializeTo(target, samples_by_uid); xblock.flag = false;
-				while((target.getFileSize() & 0xf) != 0) target.addToFile(FileBuffer.ZERO_BYTE);
 			}
 		}
+		while((target.getFileSize() & 0xf) != 0) target.addToFile(FileBuffer.ZERO_BYTE);
 		
 	}
 	
 	private void serializeDrumUBNK(Z64Drum drum, int min, int max, FileBuffer target){
+		//System.err.println("drum is null: " + (drum == null));
+		//System.err.println("target is null: " + (target == null));
 		target.addToFile(drum.getDecay());
 		target.addToFile(drum.getPan());
 		target.addToFile((byte)min);
@@ -893,6 +896,7 @@ public class Z64Bank implements WriterPrintable{
 		ilist.addAll(inst_pool.keySet());
 		int pos = (int)ch_inst.getFileSize();
 		Collections.sort(ilist);
+		//System.err.println("inst_pool size before: " + inst_pool.size());
 		Map<Integer, Z64Instrument> old_pool = inst_pool;
 		inst_pool = new HashMap<Integer, Z64Instrument>();
 		for(Integer k : ilist){
@@ -948,8 +952,10 @@ public class Z64Bank implements WriterPrintable{
 			labels.add(inst.getName());
 			inst.id = pos;
 			inst_pool.put(pos, inst);
+			pos = (int)ch_inst.getFileSize();
 		}
 		old_pool.clear();
+		//System.err.println("inst_pool size after: " + inst_pool.size());
 		
 		//	Add chunk size and offset table.
 		ch_inst.replaceInt((int)ch_inst.getFileSize() - 8, 4L);
@@ -976,10 +982,12 @@ public class Z64Bank implements WriterPrintable{
 			PercBlock block = perc_slots[i];
 			if(block == null){
 				//End of range. Put last block.
-				serializeDrumUBNK(last_drum, r_min, i-1, ch_perc);
-				labels.add(last_drum.getName());
+				if(last_drum != null){
+					serializeDrumUBNK(last_drum, r_min, i-1, ch_perc);
+					labels.add(last_drum.getName());
+					last_drum = null;
+				}
 				r_min = i;
-				last_drum = null;
 			}
 			else{
 				//Figure out envelope...
@@ -1021,6 +1029,7 @@ public class Z64Bank implements WriterPrintable{
 		FileBuffer ch_envl = new FileBuffer(12 + (ecount * 48), true);
 		ch_envl.printASCIIToFile("ENVL");
 		ch_envl.addToFile(0);
+		ch_envl.addToFile((short)ecount);
 		ival = ecount << 1;
 		for(int i = 0; i < ival; i++) ch_envl.addToFile(FileBuffer.ZERO_BYTE);
 		long tpos = 8L;
@@ -1061,8 +1070,8 @@ public class Z64Bank implements WriterPrintable{
 		}
 		
 		//Finish header
-		header.addToFile(file_sz + HEADER_SIZE - 8);
-		header.addToFile((short)HEADER_SIZE - 8);
+		header.addToFile(file_sz + HEADER_SIZE);
+		header.addToFile((short)(HEADER_SIZE));
 		header.addToFile((short)chunk_count);
 		
 		//Write to file
@@ -1127,9 +1136,9 @@ public class Z64Bank implements WriterPrintable{
 			file_sz += ch_data.getFileSize();
 			
 			//Output
-			header.addToFile(file_sz);
-			header.addToFile(HEADER_SIZE - 8);
-			header.addToFile(2);
+			header.addToFile(file_sz + HEADER_SIZE);
+			header.addToFile((short)HEADER_SIZE);
+			header.addToFile((short)2);
 			
 			bos = new BufferedOutputStream(new FileOutputStream(pathstem + ".buwsd"));
 			header.writeToStream(bos);
@@ -1165,6 +1174,12 @@ public class Z64Bank implements WriterPrintable{
 	public Collection<Z64Instrument> getAllInstruments(){
 		List<Z64Instrument> list = new ArrayList<Z64Instrument>(inst_pool.size()+1);
 		list.addAll(inst_pool.values());
+		return list;
+	}
+	
+	public Collection<Z64Drum> getAllDrums(){
+		List<Z64Drum> list = new ArrayList<Z64Drum>(perc_pool.size()+1);
+		list.addAll(perc_pool.values());
 		return list;
 	}
 	
@@ -1219,10 +1234,16 @@ public class Z64Bank implements WriterPrintable{
 		}
 	}
 	
+	public void setMedium(int val){this.medium = val;}
+	public void setCachePolicy(int val){this.cachePolicy = val;}
+	public void setPrimaryWaveArchiveIndex(int val){warc1 = val;}
+	public void setSecondaryWaveArchiveIndex(int val){warc2 = val;}
+	
 	/*----- Linking -----*/
 	
 	private void updateAllReferences(){
 		Set<Integer> iset = new TreeSet<Integer>();
+		//System.err.println("Inst count before: " + inst_pool.size());
 		for(int i = 0; i < icount; i++){
 			InstBlock block = inst_presets[i];
 			if(block == null) continue;
@@ -1235,9 +1256,12 @@ public class Z64Bank implements WriterPrintable{
 			//Look for merges?
 			for(int j = i-1; j >= 0; j--){
 				InstBlock other = inst_presets[j];
+				if(block == other) continue;
 				if(other == null) continue;
 				if(iset.contains(other.data.id)) continue;
 				if(block.data.instEquals(other.data)){
+					//System.err.println("Z64Bank DEBUG: Inst merge detected -- preset " + i + " to " + j);
+					//System.err.println("Removing 0x" + Integer.toHexString(block.data.id) + " replacing with 0x" + Integer.toHexString(other.data.id));
 					inst_pool.remove(block.data.id);
 					inst_presets[i] = other;
 					break;
@@ -1246,6 +1270,7 @@ public class Z64Bank implements WriterPrintable{
 			}
 			iset.clear();
 		}
+		//System.err.println("Inst count after: " + inst_pool.size());
 		
 		for(int i = 0; i < pcount; i++){
 			PercBlock block = perc_slots[i];
@@ -1257,8 +1282,10 @@ public class Z64Bank implements WriterPrintable{
 			for(int j = i-1; j >= 0; j--){
 				PercBlock other = perc_slots[j];
 				if(other == null) continue;
+				if(block.data == other.data) continue;
 				if(iset.contains(other.data.id)) continue;
 				if(block.data.drumEquals(other.data)){
+					//System.err.println("Z64Bank DEBUG: Drum merge detected -- slot " + i + " to " + j);
 					perc_pool.remove(block.data.id);
 					block.data = other.data;
 					block.updateLocalTuning();
