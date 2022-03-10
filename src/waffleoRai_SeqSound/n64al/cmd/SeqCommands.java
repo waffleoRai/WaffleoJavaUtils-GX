@@ -7,7 +7,7 @@ import waffleoRai_Utils.BufferReference;
 
 import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
 
-class SeqCommands {
+public class SeqCommands {
 	
 	/*--- Parser ---*/
 	public static NUSALSeqCommand parseSequenceCommand(BufferReference dat){
@@ -468,6 +468,9 @@ class SeqCommands {
 			}
 			return true;
 		}
+		protected String paramsToString(){
+			return String.format("0x%04x", super.getParam(0));
+		};
 	}
 	
 	/*--- 0xd7 initchan ---*/
@@ -489,6 +492,9 @@ class SeqCommands {
 			}
 			return true;
 		}
+		protected String paramsToString(){
+			return String.format("0x%04x", super.getParam(0));
+		};
 	}
 	
 	/*--- 0xd9 sexp ---*/

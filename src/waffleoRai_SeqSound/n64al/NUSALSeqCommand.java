@@ -202,6 +202,14 @@ public abstract class NUSALSeqCommand {
 		return cmdname;
 	}
 	
+	public String toMMLCommand(){
+		String cmdname = "<NULL>";
+		if(command != null) cmdname = command.toString();
+		String params = paramsToString();
+		if(params != null && !params.isEmpty()) return cmdname + " " + params;
+		return cmdname;
+	}
+	
 	public byte[] serializeMe(){
 		byte[] bytes = null;
 		int i = 0;

@@ -3,7 +3,7 @@ package waffleoRai_PSXMDEC;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import waffleoRai_Image.psx.PSXImages;
-import waffleoRai_Utils.Arunnable;
+import waffleoRai_Threads.Arunnable;
 
 public class PSXMDEC {
 	

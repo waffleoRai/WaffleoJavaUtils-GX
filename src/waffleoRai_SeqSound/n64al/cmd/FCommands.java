@@ -5,7 +5,7 @@ import waffleoRai_SeqSound.n64al.NUSALSeqChannel;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
 
-class FCommands {
+public class FCommands {
 	
 	/*--- ABCs ---*/
 	public static abstract class BranchCommand extends NUSALSeqReferenceCommand{

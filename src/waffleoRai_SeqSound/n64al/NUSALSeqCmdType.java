@@ -105,7 +105,7 @@ public enum NUSALSeqCmdType {
 	C_UNK_BB(0xbb, 2, 4, 0x2, NUSALSeqCommand.SERIALFMT_12, "unk_BB"),
 	ADD_IMM_P(0xbc, 1, 3, 0x2, NUSALSeqCommand.SERIALFMT_2, "addp"),
 	ADD_RAND_IMM_P(0xbd, 2, 4, 0x2, NUSALSeqCommand.SERIALFMT_12, "randaddp"),
-	SET_PROGRAM(0xc1, 2, 2, 0x2, NUSALSeqCommand.SERIALFMT_1, "instr"),
+	SET_PROGRAM(0xc1, 1, 2, 0x2, NUSALSeqCommand.SERIALFMT_1, "instr"),
 	SET_DYNTABLE(0xc2, 2, 3, 0x2, NUSALSeqCommand.SERIALFMT_2, "dyntable"),
 	SHORTNOTE_ON(0xc3, 0, 1, 0x2, NUSALSeqCommand.SERIALFMT_, "shorton"),
 	SHORTNOTE_OFF(0xc4, 0, 1, 0x2, NUSALSeqCommand.SERIALFMT_, "shortoff"),

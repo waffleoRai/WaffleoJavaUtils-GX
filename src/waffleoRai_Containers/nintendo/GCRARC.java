@@ -10,10 +10,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 
+import waffleoRai_Containers.ArchiveDef;
 import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -89,13 +91,9 @@ public class GCRARC {
 	
 	/*----- Construction -----*/
 	
-	private GCRARC()
-	{
-		//Nothing
-	}
+	private GCRARC(){}
 	
-	public static GCRARC openRARC(String filePath) throws UnsupportedFileTypeException, IOException
-	{
+	public static GCRARC openRARC(String filePath) throws UnsupportedFileTypeException, IOException{
 		if(filePath == null || filePath.isEmpty()) return null;
 		FileBuffer file = FileBuffer.createBuffer(filePath, true);
 		GCRARC arc = new GCRARC();
@@ -104,8 +102,16 @@ public class GCRARC {
 		return arc;
 	}
 	
-	public static GCRARC createRARC(String rootDirName)
-	{
+	public static GCRARC readRARC(FileNode source) throws UnsupportedFileTypeException, IOException{
+		if(source == null) return null;
+		FileBuffer file = source.loadDecompressedData();
+		GCRARC arc = new GCRARC();
+		arc.parseRARC(file, source.getSourcePath());
+		
+		return arc;
+	}
+	
+	public static GCRARC createRARC(String rootDirName){
 		GCRARC arc = new GCRARC();
 		arc.root = new DirectoryNode(null, rootDirName);
 		return arc;
@@ -122,8 +128,7 @@ public class GCRARC {
 	
 	/*----- Utility -----*/
 	
-	public static int getStringHash(String str)
-	{
+	public static int getStringHash(String str){
 		int hash = 0;
 		int strlen = str.length();
 		for(int i = 0; i < strlen; i++)
@@ -148,8 +153,7 @@ public class GCRARC {
 		public int strtbl_off;
 	}
 	
-	private class FDNode
-	{
+	private class FDNode{
 		public boolean isDir;
 		public int index;
 		public String name;
@@ -687,5 +691,44 @@ public class GCRARC {
 		printDir(root, stream, 0);
 	}
 	
+	/* ----- File Def ----- */
+	
+	private static RArchiveDef static_def;
+	
+	public static RArchiveDef getDefinition(){
+		static_def = new RArchiveDef();
+		return static_def;
+	}
+	
+	public static class RArchiveDef extends ArchiveDef{
+		
+		private static String DEFO_ENG_DESC = "Nintendo RARC Archive";
+		public static int TYPE_ID = 0x52415243;
+
+		private String desc;
+		
+		public RArchiveDef(){
+			desc = DEFO_ENG_DESC;
+		}
+
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(2);
+			list.add("arc");
+			list.add("rarc");
+			return list;
+		}
+
+		public String getDescription() {return desc;}
+		public void setDescriptionString(String s) {desc = s;}
+		public int getTypeID() {return TYPE_ID;}
+		public String getDefaultExtension() {return "arc";}
+
+		public DirectoryNode getContents(FileNode node) throws IOException, UnsupportedFileTypeException {
+			if(node == null) return null;
+			GCRARC arc = GCRARC.readRARC(node);
+			return arc.getRoot();
+		}
+		
+	}
 	
 }

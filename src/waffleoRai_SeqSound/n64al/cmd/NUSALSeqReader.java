@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -19,7 +20,7 @@ import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandSource;
 import waffleoRai_Utils.BufferReference;
-import waffleoRai_Utils.CoverageMap1D;
+import waffleoRai_DataContainers.CoverageMap1D;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.StackStack;
 
@@ -292,6 +293,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		int tick = 0;
 		NUSALSeqCommand cmd = null, prev_cmd = null;
 		LinkedList<int[]> branches = new LinkedList<int[]>();
+		LinkedList<Integer> opbranches = new LinkedList<Integer>();
 		if(starts != null && !starts.isEmpty()) branches.addAll(starts);
 		int[] pp = null;
 		if(!branches.isEmpty()){
@@ -310,11 +312,13 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		//	voices then need to check mode.
 		boolean l_shortnotes = false;
 		int sn_starttick = -1; 
+		boolean suppress_nullcheck = false;
+		boolean popflag = false;
 		if(!branch_stack.loadState(pos)) branch_stack.clear();
 		branch_stack.push(pos);
 		while(true){
 			//Has this command already been seen?
-			if(cmdmap.containsKey(pos)){
+			if(cmdmap.containsKey(pos) || popflag){
 				if(!branches.isEmpty()){
 					//Pop branch
 					prev_cmd = null;
@@ -324,6 +328,20 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 					//Does the branch stack have a stack for this one already?
 					if(!branch_stack.loadState(pos)) branch_stack.clear();
 					branch_stack.push(pos);
+					popflag = false;
+					suppress_nullcheck = false;
+					
+					continue;
+				}
+				else if(!opbranches.isEmpty()){
+					suppress_nullcheck = true;
+					prev_cmd = null;
+					pos = opbranches.pop();
+					tick = -1;
+					
+					if(!branch_stack.loadState(pos)) branch_stack.clear();
+					branch_stack.push(pos);
+					popflag = false;
 					
 					continue;
 				}
@@ -346,11 +364,18 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 				cmd.flagLayerUsed(chidx, lidx);
 				break;
 			}
-			if(cmd == null) throw new NUSALSeq.UnrecognizedCommandException(data.getByte(pos), pos, modestr);
+			if(cmd == null){
+				if(!suppress_nullcheck) throw new NUSALSeq.UnrecognizedCommandException(data.getByte(pos), pos, modestr);
+				else{
+					popflag = true;
+					continue;
+				}
+			}
 			cmdmap.put(pos, cmd);
 			cmd_coverage.addBlock(pos, pos + cmd.getSizeInBytes());
 			cmd.setAddress(pos);
-			tickmap.put(pos, tick);
+			if(tick >= 0) tickmap.put(pos, tick);
+			//System.err.println("added to map: 0x" + Integer.toHexString(pos) + " -- " + cmd.toString());
 			
 			//Analyze logic
 			if(prev_cmd != null) prev_cmd.setSubsequentCommand(cmd);
@@ -390,7 +415,12 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 						pos += cmd.getSizeInBytes();
 					}
 					else{
-						//Take jump.
+						//Take jump, but save current position
+						pos += cmd.getSizeInBytes();
+						if(!opbranches.contains(pos)){
+							opbranches.add(pos);
+							branch_stack.saveState(pos);
+						}
 						pos = addr;
 					}
 					tick += cmd.getSizeInTicks();
@@ -405,8 +435,23 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 						pp = branches.pop();
 						pos = pp[0]; tick = pp[1];
 						
+						//Does the branch stack have a stack for this one already?
 						if(!branch_stack.loadState(pos)) branch_stack.clear();
 						branch_stack.push(pos);
+						popflag = false;
+						suppress_nullcheck = false;
+						
+						continue;
+					}
+					else if(!opbranches.isEmpty()){
+						suppress_nullcheck = true;
+						prev_cmd = null;
+						pos = opbranches.pop();
+						tick = -1;
+						
+						if(!branch_stack.loadState(pos)) branch_stack.clear();
+						branch_stack.push(pos);
+						popflag = false;
 						
 						continue;
 					}
@@ -461,6 +506,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		branch_stack.clear();
 		
 		List<List<int[]>> clists = new ArrayList<List<int[]>>(16);
+		for(int i = 0; i < 16; i++) clists.add(new LinkedList<int[]>());
 		readTrack(null, clists, null, PARSEMODE_SEQ, -1, -1);
 		
 		linkReferences();
@@ -516,8 +562,13 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	}
 	
 	public Map<Integer, NUSALSeqCommand> getSeqLevelCommands() {
-		// TODO Auto-generated method stub
-		return null;
+		Map<Integer, NUSALSeqCommand> outmap = new HashMap<Integer, NUSALSeqCommand>();
+		for(Entry<Integer, NUSALSeqCommand> e : cmdmap.entrySet()){
+			if(e.getValue().seqUsed()){
+				outmap.put(e.getKey(), e.getValue());
+			}
+		}
+		return outmap;
 	}
 	
 	public List<Integer> getAllAddresses() {
@@ -527,7 +578,21 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		return list;
 	}
 	
+	public List<NUSALSeqCommand> getOrderedCommands(){
+		List<NUSALSeqCommand> list = new ArrayList<NUSALSeqCommand>(cmdmap.size()+1);
+		List<Integer> alist = getAllAddresses();
+		for(Integer k : alist){
+			list.add(cmdmap.get(k));
+		}
+		return list;
+	}
+	
 	/*--- Setters ---*/
+	
+	public boolean reparseRegion(int pos, int len){
+		clearCachedCommandsBetween(pos, len);
+		return true;
+	}
 	
 	public void clearCachedCommandsBetween(int stAddr, int len){
 		LinkedList<Integer> list = new LinkedList<Integer>();
@@ -558,7 +623,6 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		return b0;
 	}
 
-	
 	public void printMeTo(Writer out) throws IOException {
 		// TODO Auto-generated method stub
 		

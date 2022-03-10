@@ -447,7 +447,7 @@ class ChannelCommands {
 	/*--- 0x88:0x8b startlayer ---*/
 	public static class C_C_StartLayer extends NUSALSeqReferenceCommand{
 		public C_C_StartLayer(int layer, int addr) {
-			super(NUSALSeqCmdType.VOICE_OFFSET_REL, layer, addr, false);
+			super(NUSALSeqCmdType.VOICE_OFFSET, layer, addr, false);
 		}
 		public NUSALSeqCmdType getRelativeCommand(){return NUSALSeqCmdType.VOICE_OFFSET_REL;}
 		public NUSALSeqCmdType getAbsoluteCommand(){return NUSALSeqCmdType.VOICE_OFFSET;}

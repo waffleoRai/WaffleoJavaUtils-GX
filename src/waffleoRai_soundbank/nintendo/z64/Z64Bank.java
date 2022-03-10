@@ -370,7 +370,6 @@ public class Z64Bank implements WriterPrintable{
 	public static Z64Bank readUBNK(FileBuffer data) throws UnsupportedFileTypeException{
 		if(data == null) return null;
 		data.setEndian(true);
-		
 		//Read header block
 		long mpos = data.findString(0, 0x4, UBNK_MAGIC);
 		if(mpos != 0) throw new FileBuffer.UnsupportedFileTypeException("Z64Bank.readUBNK -- Expecting UBNK magic number at offset 0!");
@@ -1171,6 +1170,52 @@ public class Z64Bank implements WriterPrintable{
 		return list;
 	}
 	
+	public Collection<Z64Envelope> getAllEnvelopes(){
+		//It is assumed the envelopes are already merged.
+		//	Merged in UBNK, native format already
+		//	Make it so merges when add new instrument
+		
+		List<Z64Envelope> list = new LinkedList<Z64Envelope>();
+		Z64Envelope e = null;
+		boolean match = false;
+		
+		for(Z64Instrument inst : inst_pool.values()){
+			e = inst.getEnvelope();
+			match = false;
+			if(e != null){
+				for(Z64Envelope other : list){
+					if(other.envEquals(e)){
+						match = true;
+						break;
+					}
+				}
+				if(!match) list.add(e);
+			}
+		}
+		
+		for(Z64Drum drum : perc_pool.values()){
+			e = drum.getEnvelope();
+			match = false;
+			if(e != null){
+				for(Z64Envelope other : list){
+					if(other.envEquals(e)){
+						match = true;
+						break;
+					}
+				}
+				if(!match) list.add(e);
+			}
+		}
+		
+		return list;
+	}
+	
+	public Collection<Integer> getAllWaveUIDs(){
+		Set<Integer> col = new TreeSet<Integer>();
+		col.addAll(sound_samples.keySet());
+		return col;
+	}
+	
 	public Collection<Z64Instrument> getAllInstruments(){
 		List<Z64Instrument> list = new ArrayList<Z64Instrument>(inst_pool.size()+1);
 		list.addAll(inst_pool.values());
@@ -1181,6 +1226,17 @@ public class Z64Bank implements WriterPrintable{
 		List<Z64Drum> list = new ArrayList<Z64Drum>(perc_pool.size()+1);
 		list.addAll(perc_pool.values());
 		return list;
+	}
+	
+	public Z64Instrument[] getInstrumentPresets(){
+		Z64Instrument[] presets = new Z64Instrument[126];
+		for(int i = 0; i < inst_presets.length; i++){
+			InstBlock block = inst_presets[i];
+			if(block != null){
+				presets[i] = block.data;
+			}
+		}
+		return presets;
 	}
 	
 	public Z64Drum[] getPercussionSet(){
@@ -1203,6 +1259,33 @@ public class Z64Bank implements WriterPrintable{
 			}
 		}
 		return out;
+	}
+	
+	public int usedInstSlots(){
+		if(inst_presets == null) return 0;
+		int c = 0;
+		for(int i = 0; i < inst_presets.length; i++){
+			if(inst_presets[i] != null) c = i+1;
+		}
+		return c;
+	}
+	
+	public int usedPercSlots(){
+		if(perc_slots == null) return 0;
+		int c = 0;
+		for(int i = 0; i < perc_slots.length; i++){
+			if(perc_slots[i] != null) c = i+1;
+		}
+		return c;
+	}
+	
+	public int usedSFXSlots(){
+		if(sfx_slots == null) return 0;
+		int c = 0;
+		for(int i = 0; i < sfx_slots.length; i++){
+			if(sfx_slots[i] != null) c = i+1;
+		}
+		return c;
 	}
 	
 	/*----- Setters -----*/

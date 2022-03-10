@@ -47,7 +47,8 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 	public int getBranchAddress(){
 		if(is_relative){
 			int taddr = super.getParam(p_idx_addr);
-			int maddr = getAddress() - 1;
+			//int maddr = getAddress() - 1;
+			int maddr = getAddress() + getSizeInBytes();
 			if(p_idx_addr == 1){
 				//
 				maddr = getAddress() + 3;
@@ -87,6 +88,25 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 		else{
 			return String.format("0x%04x", getBranchAddress());
 		}
+	}
+	
+	public String toMMLCommand(){
+		StringBuilder sb = new StringBuilder(256);
+		sb.append(super.getCommand().toString());
+		sb.append(' ');
+		if(p_idx_addr > 0){
+			//Param 0
+			sb.append(getParam(0));
+			sb.append(' ');
+		}
+		if(reference != null){
+			if(reference.getLabel() != null){
+				sb.append(reference.getLabel());
+			}
+			else sb.append(paramsToString());
+		}
+		else sb.append(paramsToString());
+		return sb.toString();
 	}
 	
 }

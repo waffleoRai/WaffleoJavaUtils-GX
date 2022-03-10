@@ -20,6 +20,15 @@ public class NUSALSeqLayer {
 	private int time_remain;
 	private boolean endflag;
 	
+	private boolean legato;
+	private int program = -1;
+	private byte pan = 0x40;
+	
+	//Short notes
+	private byte sn_gate = 0;
+	private byte sn_vel = 0;
+	private int sn_delay = 0;
+	
 	private int err_addr = -1;
 	//private NUSALSeqCommand bad_cmd;
 	
@@ -41,6 +50,9 @@ public class NUSALSeqLayer {
 		return_stack = new LinkedList<Integer>();
 		nowpos = 0;
 		endflag = true;
+		
+		//var_p = new SyncedInt(0);
+		//var_q = new SyncedInt(0);
 	}
 	
 	public int getChannelIndex(){
@@ -60,13 +72,13 @@ public class NUSALSeqLayer {
 	}
 	
 	public int getVarQ(){
-		//TODO
-		return 0;
+		//Not sure if this means layer has its own, or use the sequence's...
+		return channel.getVarQ();
 	}
 	
 	public int getVarP(){
-		//TODO
-		return 0;
+		//Not sure if this means layer has its own, or use the sequence's...
+		return channel.getVarP();
 	}
 	
 	public int getLoopStart(){return loop_start;}
@@ -109,47 +121,76 @@ public class NUSALSeqLayer {
 	}
 	
 	public void breakLoop(){
-		//TODO
+		//According to Saurean, pops the return stack basically so that if a jump comes next, it doesn't jump there
+		//He also says it's only valid on channels, but I'll just put this here in case
+		if(return_stack.isEmpty()) return;
+		return_stack.pop();
 	}
 	
 	public void setShortVel(byte value){
-		//TODO
+		sn_vel = value;
 	}
 	
 	public void setShortVelFromTable(int idx){
-		//TODO
+		sn_vel = channel.getParent().getShortTableVelocityAt(idx);
 	}
 	
 	public void setShortGate(byte value){
-		//TODO
+		sn_gate = value;
 	}
 	
 	public void setShortGateFromTable(int idx){
-		//TODO
+		sn_gate = channel.getParent().getShortTableGateAt(idx);
 	}
 	
 	public void setShortDelay(int value){
-		//TODO
+		sn_delay = value;
 	}
 	
 	public void setLegato(boolean b){
-		//TODO
+		legato = b;
+		if(target != null){
+			System.err.println("NUSALSeqLayer.setLegato || WARNING: Setting legato " + b + " for whole channel " + 
+					channel.getIndex() + " on behalf of layer " + my_idx);
+			target.setControllerValue(
+					channel.getIndex(), NUSALSeq.MIDI_CTRLR_ID_LEGATO, legato?127:0, true);
+		}
 	}
 	
 	public void changeProgram(int idx){
-		//TODO
+		program = idx;
+		if(target != null){
+			System.err.println("NUSALSeqLayer.changeProgram || WARNING: Setting program " + program + " for whole channel " + 
+					channel.getIndex() + " on behalf of layer " + my_idx);
+			target.setProgram(channel.getIndex(), program);
+		}
 	}
 	
-	public void setPortamento(int mode, int target, int time){
-		//TODO
+	public void setPortamento(int mode, int trg, int time){
+		if(target != null){
+			System.err.println("NUSALSeqLayer.setPortamento || WARNING: Setting portamento on for whole channel " + 
+					channel.getIndex() + " on behalf of layer " + my_idx);
+			target.setPortamentoTime(channel.getIndex(), (short)time);
+			target.setPortamentoAmount(channel.getIndex(), (byte)trg);
+			target.setPortamentoOn(channel.getIndex(), true);
+		}
 	}
 	
 	public void setPortamentoOff(){
-		//TODO
+		if(target != null){
+			System.err.println("NUSALSeqLayer.setPortamento || WARNING: Setting portamento off for whole channel " + 
+					channel.getIndex() + " on behalf of layer " + my_idx);
+			target.setPortamentoOn(channel.getIndex(), false);
+		}
 	}
 	
-	public void setPan(byte pan){
-		//TODO
+	public void setPan(byte val){
+		pan = val;
+		if(target != null){
+			System.err.println("NUSALSeqLayer.changeProgram || WARNING: Setting pan " + pan + " for whole channel " + 
+					channel.getIndex() + " on behalf of layer " + my_idx);
+			target.setChannelPan(channel.getIndex(), pan);
+		}
 	}
 	
 	public void setEnvelopeAddress(int addr){
@@ -233,6 +274,10 @@ public class NUSALSeqLayer {
 	
 	public boolean playNote(byte note, byte vel, byte gate){
 		return playNote(note, vel, gate, last_time);
+	}
+	
+	public boolean playNote(byte note){
+		return playNote(note, sn_vel, sn_gate, sn_delay);
 	}
 	
 	public boolean rest(int time){

@@ -29,8 +29,7 @@ public class YazDecodeStream extends InputStream{
 	
 	/*--- Construction ---*/
 	
-	private YazDecodeStream()
-	{
+	private YazDecodeStream(){
 		bytesRead = 0;
 		//buffer = ByteBuffer.allocate(Yaz.MAX_RUN_SIZE_LARGE * 16); //Up to 2 groups
 		buffer = new LinkedBytesStreamer();

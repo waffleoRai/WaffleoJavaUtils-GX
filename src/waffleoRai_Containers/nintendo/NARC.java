@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-import waffleoRai_Compression.nintendo.NinLZ;
 import waffleoRai_Containers.ArchiveDef;
 import waffleoRai_Files.Converter;
 import waffleoRai_Files.tree.DirectoryNode;

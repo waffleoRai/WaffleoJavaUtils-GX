@@ -2,262 +2,89 @@ package waffleoRai_Containers.nintendo;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Enumeration;
-import java.util.HashSet;
+import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
-import javax.swing.tree.TreeNode;
-
+import waffleoRai_Containers.ArchiveDef;
+import waffleoRai_Files.tree.DirectoryNode;
+import waffleoRai_Files.tree.FileNode;
+import waffleoRai_Utils.BufferReference;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
-import waffleoRai_Utils.Treenumeration;
 
-public class U8Arc 
-{
+public class U8Arc {
 	
 	/* ----- Constant ----- */
 	
 	public static final int MAGIC = 0x55AA382D;
 	
-	/* ----- Inner Classes ----- */
-	
-	public static class FileNode implements TreeNode, Comparable<FileNode>
-	{
-		/* --- Instance Variables --- */
-		
-		protected DirectoryNode parent;
-		
-		private String fileName;
-		private long offset;
-		private long length;
-		
-		/* --- Construction --- */
-		
-		public FileNode(DirectoryNode parent, String name)
-		{
-			this.parent = parent;
-			fileName = name;
-			offset = -1;
-			length = 0;
-			if(parent != null) parent.addChild(this);
-		}
-		
-		/* --- Getters --- */
-		
-		public String getFileName(){return fileName;}
-		public long getOffset(){return offset;}
-		public long getLength(){return length;}
-		public DirectoryNode getParent(){return parent;}
-		
-		/* --- Setters --- */
-		
-		public void setFileName(String name){fileName = name;}
-		public void setOffset(long off){offset = off;}
-		public void setLength(long len){length = len;}
-		public void setParent(DirectoryNode p){parent = p; if(p != null) p.addChild(this);}
-	
-		/* --- Comparable --- */
-		
-		public boolean isDirectory()
-		{
-			return false;
-		}
-		
-		public boolean equals(Object o)
-		{
-			if(o == this) return true;
-			if(o == null) return false;
-			if(!(o instanceof FileNode)) return false;
-			FileNode fn = (FileNode)o;
-			if(this.isDirectory() != fn.isDirectory()) return false;
-			return fileName.equals(fn.fileName);
-		}
-		
-		public int hashCode()
-		{
-			return fileName.hashCode() ^ (int)offset;
-		}
-		
-		public int compareTo(FileNode other)
-		{
-			if(other == this) return 0;
-			if(other == null) return 1;
-			
-			if(this.isDirectory() && !other.isDirectory()) return -1;
-			if(!this.isDirectory() && other.isDirectory()) return 1;
-			
-			return this.fileName.compareTo(other.fileName);
-		}
-		
-		/* --- TreeNode --- */
-		
-		@Override
-		public TreeNode getChildAt(int childIndex) {return null;}
-
-		@Override
-		public int getChildCount() {return 0;}
-
-		@Override
-		public int getIndex(TreeNode node) {return -1;}
-
-		@Override
-		public boolean getAllowsChildren() {return false;}
-
-		@Override
-		public boolean isLeaf() {return true;}
-
-		@Override
-		public Enumeration<TreeNode> children() 
-		{
-			TreeNode[] n = null;
-			return new Treenumeration(n);
-		}
-		
-	}
-	
-	public static class DirectoryNode extends FileNode
-	{
-		/* --- Instance Variables --- */
-		
-		private Set<FileNode> children;
-		private int endIndex;
-		
-		/* --- Construction --- */
-		
-		public DirectoryNode(DirectoryNode parent, String name)
-		{
-			super(parent, name);
-			children = new HashSet<FileNode>();
-			endIndex = -1;
-		}
-		
-		/* --- Getters --- */
-		
-		public int getEndIndex(){return endIndex;}
-		
-		public List<FileNode> getChildren()
-		{
-			List<FileNode> list = new ArrayList<FileNode>(children.size() + 1);
-			list.addAll(children);
-			Collections.sort(list);
-			return list;
-		}
-		
-		public boolean isDirectory()
-		{
-			return true;
-		}
-		
-		/* --- Setters --- */
-		
-		protected void addChild(FileNode node){children.add(node);}
-		public void clearChildren(){children.clear();}
-		public void setEndIndex(int i){endIndex = i;}
-		
-		/* --- TreeNode --- */
-		
-		@Override
-		public TreeNode getChildAt(int childIndex) 
-		{
-			List<FileNode> childlist = this.getChildren();
-			return childlist.get(childIndex);
-		}
-
-		@Override
-		public int getChildCount() {return children.size();}
-
-		@Override
-		public int getIndex(TreeNode node) 
-		{
-			if(children.contains(node))
-			{
-				List<FileNode> clist = this.getChildren();
-				int ccount = clist.size();
-				for(int i = 0; i < ccount; i++)
-				{
-					if(clist.get(i).equals(node)) return i;
-				}
-			}
-			return -1;
-		}
-
-		@Override
-		public boolean getAllowsChildren() {return true;}
-
-		@Override
-		public boolean isLeaf() 
-		{
-			return (children.isEmpty());
-		}
-
-		@Override
-		public Enumeration<TreeNode> children() 
-		{
-			List<TreeNode> list = new ArrayList<TreeNode>(children.size()+1);
-			list.addAll(getChildren());
-			return new Treenumeration(list);
-		}
-	
-	}
-	
 	/* ----- Instance Variables ----- */
 	
-	private String sourceFile;
+	private FileNode source;
 	private DirectoryNode root;
 	
-	private FileBuffer openFile;
+	//private FileBuffer openFile;
 	
 	/* ----- Construction/Parsing ----- */
 	
-	public U8Arc(String filepath, long stpos) throws IOException, UnsupportedFileTypeException
-	{
-		sourceFile = filepath;
-		parseArchive(stpos);
+	private U8Arc(){}
+
+	public static U8Arc readArchive(String filepath) throws IOException, UnsupportedFileTypeException{
+		return readArchive(filepath, 0L, FileBuffer.fileSize(filepath));
 	}
 	
-	private void parseArchive(long stpos) throws IOException, UnsupportedFileTypeException
-	{
-		System.err.println("U8Arc.parseArchive || Archive file exists: " + FileBuffer.fileExists(sourceFile));
-		FileBuffer arc = FileBuffer.createBuffer(sourceFile, true);
-		long cpos = stpos;
-		
+	public static U8Arc readArchive(String filepath, long stoff, long len) throws IOException, UnsupportedFileTypeException{
+		String fn = filepath.substring(filepath.lastIndexOf(File.separator));
+		FileNode srcnode = new FileNode(null, fn);
+		srcnode.setSourcePath(filepath);
+		srcnode.setOffset(stoff);
+		srcnode.setLength(len);
+		return readArchive(srcnode);
+	}
+	
+	public static U8Arc readArchive(FileNode src) throws IOException, UnsupportedFileTypeException{
+		FileBuffer dat = src.loadDecompressedData();
+		U8Arc arc = readArchive(dat.getReferenceAt(0L));
+		arc.setSource(src);
+		return arc;
+	}
+	
+	public static U8Arc readArchive(FileBuffer src, long stoff) throws UnsupportedFileTypeException{
+		return readArchive(src.getReferenceAt(stoff));
+	}
+	
+	public static U8Arc readArchive(BufferReference data) throws UnsupportedFileTypeException{
 		//Header
-		int magic = arc.intFromFile(cpos); cpos += 4;
-		if(magic != MAGIC) throw new FileBuffer.UnsupportedFileTypeException("Mismatching magic numbers for Wii U8 archive!");
-		long rootOff = Integer.toUnsignedLong(arc.intFromFile(cpos)); cpos+=4;
-		//long headerSize = Integer.toUnsignedLong(arc.intFromFile(cpos)); cpos+=4;
-		//long dataOff = Integer.toUnsignedLong(arc.intFromFile(cpos)); cpos+=4;
+		int magic = data.nextInt();
+		if(magic != MAGIC) throw new FileBuffer.UnsupportedFileTypeException("U8Arc.readArchive || Mismatching magic numbers for Wii U8 archive!");
+		long rootOff = Integer.toUnsignedLong(data.nextInt());
 		
 		//Otherwise, it reads the same as a GCN/Wii fst
-		cpos = rootOff + 8;
-		int num_entries = arc.intFromFile(cpos);
+		data = data.getBuffer().getReferenceAt(rootOff + 8);
+		int num_entries = data.nextInt();
 		long stbl_off = rootOff + (0xC * (num_entries));
 		
-		root = new DirectoryNode(null, "root");
-		DirectoryNode activeDir = root;
-		root.setEndIndex(num_entries);
+		U8Arc arc = new U8Arc();
+		arc.root = new DirectoryNode(null, "root");
+		DirectoryNode activeDir = arc.root;
+		//root.setEndIndex(num_entries);
+		arc.root.setScratchValue(num_entries);
 		
-		cpos = rootOff + 0xC;
-		for(int i = 1; i < num_entries; i++)
-		{
+		for(int i = 1; i < num_entries; i++){
 			int node_index = i+1;
 			//System.err.println("GCWiiDisc.readFileSystem || -DEBUG- Reading Node: " + node_index);
 			
-			byte type = arc.getByte(cpos); cpos++;
-			int nameOff = arc.shortishFromFile(cpos); cpos += 3;
-			int offsetRaw = arc.intFromFile(cpos); cpos += 4;
-			int sizeRaw = arc.intFromFile(cpos); cpos += 4;
+			byte type = data.nextByte();
+			int nameOff = data.next24Bits();
+			int offsetRaw = data.nextInt();
+			int sizeRaw = data.nextInt();
 			//Get name
-			String node_name = arc.getASCII_string((int)stbl_off + nameOff, '\0');
+			String node_name = data.getBuffer().getASCII_string(stbl_off + nameOff, '\0');
+			//String node_name = arc.getASCII_string((int)stbl_off + nameOff, '\0');
 			
 			//Interpret according to type
-			if(type == 0)
-			{
+			if(type == 0){
 				//It's a file
 				//System.err.println("\tNode is a file!");
 				FileNode node = new FileNode(activeDir, node_name);
@@ -265,11 +92,11 @@ public class U8Arc
 				node.setLength(Integer.toUnsignedLong(sizeRaw));
 				//System.err.println(node_index + "\tF\t" + node_name + "\t0x" + Long.toHexString(offsetRaw) + "\t0x" + Long.toHexString(sizeRaw));
 			}
-			else
-			{
+			else{
 				//It's a directory
 				DirectoryNode node = new DirectoryNode(activeDir, node_name);
-				node.setEndIndex(sizeRaw);
+				//node.setEndIndex(sizeRaw);
+				node.setScratchValue(sizeRaw);
 				node.setOffset(offsetRaw);
 				//System.err.println("\tNode is a directory! End Node: " + sizeRaw);
 				activeDir = node;
@@ -277,100 +104,72 @@ public class U8Arc
 			}
 			
 			//Back up a directory if this directory is done
-			while(node_index >= activeDir.getEndIndex())
-			{
+			while(node_index >= activeDir.getScratchValue()){
 				activeDir = activeDir.getParent();
 				if(activeDir == null) break;
 			}
 		}
 		
+		return arc;
+	}
+	
+	/* ----- Getters ----- */
+	
+	public FileNode getSource(){
+		return source;
+	}
+	
+	public DirectoryNode getRoot(){
+		return root;
+	}
+	
+	/* ----- Setters ----- */
+	
+	public void setSource(FileNode src){
+		source = src;
+		if(src != null) root.setSourcePathForTree(src.getSourcePath());
 	}
 	
 	/* ----- Writing ----- */
 	
-	private boolean dumpRootDirectoryTo(String parentPath, DirectoryNode root) throws IOException
-	{
-		if (root == null) return false;
-		List<FileNode> children = root.getChildren();
-		boolean b = true;
-		for(FileNode child : children)
-		{
-			if(child instanceof DirectoryNode)
-			{
-				DirectoryNode dir = (DirectoryNode)child;
-				b = b && dumpDirectoryTo(parentPath, dir);
-			}
-			else b = b && dumpFileTo(parentPath, child);
-		}
-		
-		return b;
+	/* ----- File Def ----- */
+	
+	private static U8ArchiveDef static_def;
+	
+	public static U8ArchiveDef getDefinition(){
+		static_def = new U8ArchiveDef();
+		return static_def;
 	}
 	
-	private boolean dumpDirectoryTo(String parentPath, DirectoryNode dn) throws IOException
-	{
-		if (dn == null) return false;
-		//This version adds the dir name to the path!
-		String mypath = parentPath + File.separator + dn.getFileName();
-		if(!FileBuffer.directoryExists(mypath)) Files.createDirectory(Paths.get(mypath));
-		System.err.println("U8Arc.dumpDirectoryTo || Dumping " + mypath);
-		System.err.println("U8Arc.dumpDirectoryTo || Directory Offset: 0x" + Long.toHexString(dn.getOffset()));
+	public static class U8ArchiveDef extends ArchiveDef{
 		
-		List<FileNode> children = dn.getChildren();
-		boolean b = true;
-		for(FileNode child : children)
-		{
-			if(child instanceof DirectoryNode)
-			{
-				DirectoryNode dir = (DirectoryNode)child;
-				b = b && dumpDirectoryTo(mypath, dir);
-			}
-			else b = b && dumpFileTo(mypath, child);
-		}
+		private static String DEFO_ENG_DESC = "Nintendo Wii Standard Archive";
+		public static int TYPE_ID = 0x55aa382d;
+
+		private String desc;
 		
-		return b;
-	}
-	
-	private boolean dumpFileTo(String parentPath, FileNode fn) throws IOException
-	{
-		if(fn == null) return false;
-		String mypath = parentPath + File.separator + fn.getFileName();
-		System.err.println("U8Arc.dumpFileTo || Dumping " + mypath);
-		if(fn.length < 1){
-			Files.createFile(Paths.get(mypath));
-			System.err.println("U8Arc.dumpFileTo || (Empty file!)");
-			return true; //It's just an empty file.
-		}
-		//System.err.println("GCWiiDisc.dumpFileTo || File Offset: 0x" + Long.toHexString(fn.getOffset()));
-		
-		/*long offsector = fn.getOffset()/0x7C00L;
-		long offoff = fn.getOffset()%0x7C00L;
-		long offset = (offsector << WBFSImage.WII_SEC_SZ_S) + 0x400L + offoff;*/
-		//long offset = fn.getOffset() << 2; //Is offset shifted?
-		long offset = fn.getOffset();
-		//System.err.println("GCWiiDisc.dumpFileTo || File Offset: 0x" + Long.toHexString(offset));
-		//System.err.println("GCWiiDisc.dumpFileTo || File Size: 0x" + Long.toHexString(fn.getLength()));
-		FileBuffer myfile = openFile.createReadOnlyCopy(offset, offset + fn.getLength());
-		myfile.writeFile(mypath);
-		
-		return true;
-	}
-	
-	public boolean dumpArchive(String directory) throws IOException
-	{
-		//Reopen file
-		openFile = FileBuffer.createBuffer(sourceFile, true);
-		
-		//I dunno what the offsets are relative to, so try a few guesses
-		//I also dunno if the offsets need to be left shifted
-		if(!FileBuffer.directoryExists(directory))
-		{
-			Files.createDirectories(Paths.get(directory));
+		public U8ArchiveDef(){
+			desc = DEFO_ENG_DESC;
 		}
 
-		boolean b = dumpRootDirectoryTo(directory, root);
-		openFile = null;
-		return b;
+		public Collection<String> getExtensions() {
+			List<String> list = new ArrayList<String>(2);
+			list.add("arc");
+			list.add("rarc");
+			return list;
+		}
+
+		public String getDescription() {return desc;}
+		public void setDescriptionString(String s) {desc = s;}
+		public int getTypeID() {return TYPE_ID;}
+		public String getDefaultExtension() {return "arc";}
+
+		public DirectoryNode getContents(FileNode node) throws IOException, UnsupportedFileTypeException {
+			if(node == null) return null;
+			U8Arc arc = U8Arc.readArchive(node);
+			return arc.getRoot();
+		}
+		
 	}
-	
 	
 }

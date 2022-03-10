@@ -4,6 +4,7 @@ import java.util.Deque;
 import java.util.LinkedList;
 
 import waffleoRai_SoundSynth.SequenceController;
+import waffleoRai_Threads.SyncedInt;
 
 public class NUSALSeqChannel {
 	
@@ -12,6 +13,10 @@ public class NUSALSeqChannel {
 	private int pos;
 	private Deque<Integer> return_stack;
 	private int ch_idx;
+	
+	private SyncedInt[] seqIO;
+	private int dyntable_addr = -1;
+	private int filter_addr = -1;
 	
 	private int var;
 	private int transpose;
@@ -28,15 +33,21 @@ public class NUSALSeqChannel {
 	
 	private NUSALSeqCommandMap ch_cmds;
 	
+	private NUSALSeq parent_seq;
 	private NUSALSeqLayer[] layers;
 	
+	private int bank;
 	private int program;
+	
 	private byte pitchbend;
 	private byte eff;
 	private byte vibrato;
 	private byte pan;
 	private byte volume;
+	private byte expression;
 	private byte priority;
+	
+	private byte filter_gain;
 	
 	private boolean loop_enabled;
 	private int lcounter; //Keeps track of how many times loop has occured
@@ -46,12 +57,15 @@ public class NUSALSeqChannel {
 	
 	/*----- Initialization -----*/
 	
-	public NUSALSeqChannel(int index){
+	public NUSALSeqChannel(int index, NUSALSeq parent){
 		//pos = startpos;
 		ch_idx = index;
 		//pending_notes = new TreeMap<Byte, Integer>();
 		layers = new NUSALSeqLayer[4];
 		return_stack = new LinkedList<Integer>();
+		parent_seq = parent;
+		seqIO = new SyncedInt[8];
+		for(int i = 0; i < 8; i++) seqIO[i] = new SyncedInt(0);
 		reset();
 	}
 	
@@ -64,16 +78,23 @@ public class NUSALSeqChannel {
 		for(int i = 0; i < 4; i++){
 			layers[i] = new NUSALSeqLayer(this, i);
 		}
+		for(int i = 0; i < 8; i++) seqIO[i].set(0);
 		init_flag = false;
 		lcounter = 0;
 		pos = -1;
 		
+		bank = 0;
 		program = 0;
 		pitchbend = 0;
 		eff = 0;
 		vibrato = 0;
 		pan = 0x3f;
 		volume = 0x7f;
+		expression = 0x7f;
+		filter_gain = 0x00;
+		
+		dyntable_addr = -1;
+		filter_addr = -1;
 		
 		loop_enabled = false;
 		loopst = -1;
@@ -104,34 +125,30 @@ public class NUSALSeqChannel {
 	public boolean loopEnabled(){return loop_enabled;}
 	
 	public int getVarQ(){
-		//TODO
-		return 0;
+		return parent_seq.getVarQ();
 	}
 	
 	public int getVarP(){
-		//TODO
-		return 0;
+		return parent_seq.getVarP();
 	}
 	
 	public int getSeqIOValue(int idx){
-		//TODO
-		return 0;
+		return seqIO[idx].get();
 	}
 	
 	public int getDynTableAddress(){
-		//TODO
-		return 0;
+		return dyntable_addr;
 	}
 	
 	public NUSALSeq getParent(){
-		//TODO
-		return null;
+		return parent_seq;
 	}
 	
 	public int getLayerStatus(int idx){
-		//TODO
 		//Returns values used in the testlayer command
-		return 0;
+		if(layers[idx] == null) return -1;
+		if(layers[idx].isActive()) return 0;
+		return 1;
 	}
 	
 	public NUSALSeqCommandMap getCommandTickMap(){
@@ -146,30 +163,30 @@ public class NUSALSeqChannel {
 	/*----- Setters -----*/
 
 	public void resetChannel(){
-		//TODO
+		reset();
 	}
 	
 	public void setLoopEnabled(boolean b){loop_enabled = b;}
 	public void setVar(int value){var = value;}
 	
 	public void setSeqIOValue(int idx, int value){
-		//TODO
+		seqIO[idx].set(value);
 	}
 	
 	public void setDynTable(int addr){
-		//TODO
+		dyntable_addr = addr;
 	}
 	
 	public void setFilterAddress(int addr){
-		//TODO
+		filter_addr = addr;
 	}
 	
 	public void clearFilter(){
-		//TODO
+		filter_addr = 0;
 	}
 	
 	public void setFilterGain(int value){
-		//TODO
+		filter_gain = (byte)value;
 	}
 	
 	public void setFreqScale(int value){
@@ -220,7 +237,8 @@ public class NUSALSeqChannel {
 		if(target != null){
 			//NRPN
 			//target.addNRPNEvent(ch_idx, NUSALSeq.EFFECT_ID_REVERB, (int)val, true);
-			target.setEffect1(ch_idx, val);
+			//target.setEffect1(ch_idx, val);
+			target.setReverbSend(ch_idx, val);
 		}
 	}
 	
@@ -285,7 +303,10 @@ public class NUSALSeqChannel {
 	}
 	
 	public void setExpression(byte val){
-		//TODO
+		expression = val;
+		if(target != null){
+			target.setChannelExpression(ch_idx, expression);
+		}
 	}
 	
 	public void setPriority(byte val){
@@ -351,7 +372,9 @@ public class NUSALSeqChannel {
 	}
 	
 	public void breakLoop(){
-		//TODO
+		if(!return_stack.isEmpty()){
+			return_stack.pop();
+		}
 	}
 	
 	public boolean returnFromCall(){
@@ -366,23 +389,32 @@ public class NUSALSeqChannel {
 	}
 	
 	public boolean stopLayer(int layer_idx){
-		//TODO
+		if(layers[layer_idx] != null){
+			layers[layer_idx].signalReadEnd();
+			return true;
+		}
 		return false;
 	}
 	
 	public boolean pointChannelTo(int ch_idx, int addr){
-		//TODO
-		return false;
+		return parent_seq.pointChannelTo(ch_idx, addr);
 	}
 	
 	public boolean changeBank(int bank_idx){
-		//TODO
-		return false;
+		bank = bank_idx;
+		if(target != null){
+			target.setProgram(ch_idx, bank, program);
+		}
+		return true;
 	}
 	
 	public boolean changeProgram(int bank_idx, int prog_idx){
-		//TODO
-		return false;
+		bank = bank_idx;
+		program = prog_idx;
+		if(target != null){
+			target.setProgram(ch_idx, bank, program);
+		}
+		return true;
 	}
 	
 	public boolean changeProgram(int program_idx){
@@ -430,10 +462,10 @@ public class NUSALSeqChannel {
 		int nrpn_idx = NUSALSeq.MIDI_NRPN_ID_GENERAL_HI | Byte.toUnsignedInt(cmdbyte);
 		target.addNRPNEvent(ch_idx, nrpn_idx, value, true);
 	}
-	
+
 	public boolean stopChannel(int idx){
-		//TODO
-		return false;
+		parent_seq.stopChannel(idx);
+		return true;
 	}
 	
 	/*----- Playback -----*/

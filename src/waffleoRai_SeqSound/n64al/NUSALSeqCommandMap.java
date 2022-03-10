@@ -2,7 +2,7 @@ package waffleoRai_SeqSound.n64al;
 
 import java.util.List;
 
-import waffleoRai_Utils.MultiValMap;
+import waffleoRai_DataContainers.MultiValMap;
 
 public class NUSALSeqCommandMap extends MultiValMap<Integer, NUSALSeqCommand>{
 	

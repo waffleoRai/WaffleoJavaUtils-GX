@@ -38,6 +38,15 @@ public class BasicCommandMap implements NUSALSeqCommandSource{
 		return list;
 	}
 	
+	public List<NUSALSeqCommand> getOrderedCommands(){
+		List<NUSALSeqCommand> list = new ArrayList<NUSALSeqCommand>(map.size()+1);
+		List<Integer> alist = getAllAddresses();
+		for(Integer k : alist){
+			list.add(map.get(k));
+		}
+		return list;
+	}
+	
 	public Map<Integer, NUSALSeqCommand> getSeqLevelCommands(){
 		Map<Integer, NUSALSeqCommand> smap = new HashMap<Integer, NUSALSeqCommand>();
 		List<Integer> addrs = getAllAddresses();
@@ -48,6 +57,8 @@ public class BasicCommandMap implements NUSALSeqCommandSource{
 		}
 		return smap;
 	}
+	
+	public boolean reparseRegion(int pos, int len){return false;}
 
 	public void printMeTo(Writer out) throws IOException{
 		if(map.isEmpty()){

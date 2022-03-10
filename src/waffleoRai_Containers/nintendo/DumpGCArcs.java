@@ -128,8 +128,10 @@ public class DumpGCArcs {
 		Files.createDirectories(Paths.get(arcdir));
 				
 		//Read & Extract
-		U8Arc arc = new U8Arc(arcpath, 0);
-		arc.dumpArchive(arcdir);
+		//U8Arc arc = new U8Arc(arcpath, 0);
+		//arc.dumpArchive(arcdir);
+		U8Arc arc = U8Arc.readArchive(arcpath);
+		arc.getRoot().dumpTo(arcdir);
 				
 		//Now we have an internal directory to scan
 		scanDirectory(Paths.get(arcdir));

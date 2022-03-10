@@ -7,7 +7,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-import waffleoRai_Utils.Arunnable;
+import waffleoRai_Threads.Arunnable;
 
 public class NinSoundStream extends InputStream{
 	

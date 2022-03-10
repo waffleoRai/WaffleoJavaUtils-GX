@@ -10,5 +10,7 @@ public interface NUSALSeqCommandSource extends WriterPrintable{
 	public NUSALSeqCommand getCommandAt(int address);
 	public Map<Integer, NUSALSeqCommand> getSeqLevelCommands();
 	public List<Integer> getAllAddresses();
+	public boolean reparseRegion(int pos, int len);
+	List<NUSALSeqCommand> getOrderedCommands();
 	
 }

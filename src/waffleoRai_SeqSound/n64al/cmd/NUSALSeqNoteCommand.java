@@ -24,7 +24,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		super.setParam(0, Byte.toUnsignedInt(super.getCommandByte()));
 		super.setParam(1, time); idx_time = 1;
 		super.setParam(2, velocity); idx_vel = 2;
-		super.setParam(3, gate); idx_gate = 3;
+		super.setParam(3, Byte.toUnsignedInt(gate)); idx_gate = 3;
 		tru_midi = midi_note;
 		p_shamt = pitch_shift;
 	}
@@ -44,7 +44,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		super.setParam(0, Byte.toUnsignedInt(super.getCommandByte()));
 		idx_time = -1;
 		super.setParam(1, velocity); idx_vel = 1;
-		super.setParam(2, gate); idx_gate = 2;
+		super.setParam(2, Byte.toUnsignedInt(gate)); idx_gate = 2;
 		tru_midi = midi_note;
 		p_shamt = pitch_shift;
 	}
@@ -56,7 +56,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		cmd.setParam(0, nusal_note);
 		cmd.setParam(1, time); cmd.idx_time = 1;
 		cmd.setParam(2, velocity); cmd.idx_vel = 2;
-		cmd.setParam(3, gate); cmd.idx_gate = 3;
+		cmd.setParam(3, Byte.toUnsignedInt(gate)); cmd.idx_gate = 3;
 		cmd.tru_midi = midi_note;
 		cmd.p_shamt = pitch_shift;
 		
@@ -84,7 +84,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		cmd.setParam(0, nusal_note);
 		cmd.idx_time = -1;
 		cmd.setParam(1, velocity); cmd.idx_vel = 1;
-		cmd.setParam(2, gate); cmd.idx_gate = 2;
+		cmd.setParam(2, Byte.toUnsignedInt(gate)); cmd.idx_gate = 2;
 		cmd.tru_midi = midi_note;
 		cmd.p_shamt = pitch_shift;
 		
@@ -96,7 +96,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		cmd.setParam(0, (int)cmd_byte);
 		cmd.setParam(1, time); cmd.idx_time = 1;
 		cmd.setParam(2, velocity); cmd.idx_vel = 2;
-		cmd.setParam(3, gate); cmd.idx_gate = 3;
+		cmd.setParam(3, Byte.toUnsignedInt(gate)); cmd.idx_gate = 3;
 		cmd.getMidiNote();
 		return cmd;
 	}
@@ -120,7 +120,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		cmd.setParam(0, cmdnote);
 		cmd.idx_time = -1;
 		cmd.setParam(1, velocity); cmd.idx_vel = 1;
-		cmd.setParam(2, gate); cmd.idx_gate = 2;
+		cmd.setParam(2, Byte.toUnsignedInt(gate)); cmd.idx_gate = 2;
 		cmd.getMidiNote();
 		return cmd;
 	}
@@ -187,8 +187,30 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		return true;
 	}
 	
+	public String toMMLCommand(){
+		StringBuilder sb = new StringBuilder(64);
+		sb.append(super.getCommand().toString());
+		sb.append(' ');
+		sb.append(super.getParam(0));
+		
+		if(idx_time >= 0){
+			sb.append(", ");
+			sb.append(getTime());
+		}
+		
+		sb.append(", ");
+		sb.append(getVelocity());
+		
+		if(idx_gate >= 0){
+			sb.append(", ");
+			sb.append(Byte.toUnsignedInt(getGate()));
+		}
+		
+		return sb.toString();
+	}
+	
 	protected String paramsToString(){
-		StringBuilder sb = new StringBuilder(128);
+		StringBuilder sb = new StringBuilder(64);
 		sb.append("0x");
 		sb.append(String.format("%02x, ", super.getParam(0)));
 		
