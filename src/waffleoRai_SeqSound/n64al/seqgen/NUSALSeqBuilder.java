@@ -34,6 +34,18 @@ public class NUSALSeqBuilder {
 		//TODO
 	}
 	
+	public void addChannelCommandAtTick(int tick, int ch, NUSALSeqCommand cmd){
+		//TODO
+	}
+	
+	public void addLayerCommandAtTick(int tick, int ch, int ly, NUSALSeqCommand cmd){
+		//TODO
+	}
+	
+	public void addLayerNoteAtTick(int tick, int ch, int ly, byte note, byte vel, int len){
+		//TODO
+	}
+	
 	public void addSequenceSubroutine(NUSALSeqCommandMap tickmap){
 		//TODO
 	}

@@ -354,7 +354,7 @@ public class Jseq2Useq {
 		}
 		
 		//Generate block.
-		//TODO Split by layer for tracks
+		//Split by layer for tracks
 		CommandBlock block = new CommandBlock(cmds.size() - dcount + 4);
 		block.block_tick = current_tick;
 		
@@ -362,9 +362,30 @@ public class Jseq2Useq {
 			if(cmd instanceof JSC_Wait){
 				block.addDelay(tickScale(cmd.getArg(0)));
 			}
+			else if(cmd instanceof JSC_NoteOn){
+				int vox = cmd.getArg(1) - 1;
+				if(block.voices[vox] == null){
+					block.voices[vox] = new CommandBlock(cmds.size() - dcount);
+					block.voices[vox].block_tick = block.len_ticks;
+				}
+				block.voices[vox].len_ticks = block.len_ticks - block.voices[vox].block_tick;
+				block.voices[vox].addCommand(cmd);
+			}
+			else if(cmd instanceof JSC_NoteOff){
+				int vox = cmd.getArg(0) - 1;
+				if(block.voices[vox] != null){
+					block.voices[vox].len_ticks = block.len_ticks - block.voices[vox].block_tick;
+					block.voices[vox].addCommand(cmd);
+				}
+			}
 			else{
 				block.addCommand(cmd);
-				//TODO: if subroutine, add time too.
+				if(cmd instanceof JSC_Call){
+					CommandBlock sub = subroutines.get(cmd.getAddress());
+					if(sub != null){
+						block.addDelay(sub.len_ticks);
+					}
+				}
 			}
 		}
 		
@@ -381,10 +402,22 @@ public class Jseq2Useq {
 		LinkedList<JaiseqCommand> stack = new LinkedList<JaiseqCommand>();
 		while(!headlist.isEmpty()){
 			head = headlist.pop();
+			CommandBlock block = nextBlock();
+			while(block != null){
+				//TODO
+				
+				
+				//Add block
+				
+				//Next
+				block = nextBlock();
+			}
 			
-			
+			//Add branches to headlist
 			
 		}
+		
+		//Subroutines
 		
 	}
 	
