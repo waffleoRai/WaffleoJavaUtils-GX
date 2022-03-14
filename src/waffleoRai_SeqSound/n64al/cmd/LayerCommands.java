@@ -6,7 +6,7 @@ import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
 import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
 import waffleoRai_Utils.BufferReference;
 
-class LayerCommands {
+public class LayerCommands {
 	
 	/*--- Parser ---*/
 	public static NUSALSeqCommand parseLayerCommand(BufferReference dat, boolean shortMode){

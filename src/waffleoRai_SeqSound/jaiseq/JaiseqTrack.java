@@ -230,8 +230,8 @@ public class JaiseqTrack {
 			if(vol == val) return;
 			vol = val;
 			if(targ != null){
-				byte v = (byte)Math.round(vol * 127.0);
-				if(v == last_vol) return; //No channge in target
+				byte v = Jaiseq.toMIDIVolume(vol);
+				if(v == last_vol) return; //No change in target
 				targ.setChannelVolume(ch_idx, v);
 				last_vol = v;
 			}
@@ -260,17 +260,7 @@ public class JaiseqTrack {
 			if(pan == val) return; //No need to make a change.
 			pan = val;
 			if(targ != null){
-				byte p = 0x40;
-				if(pan < 0.0){
-					val += 1.0;
-					val *= 64.0;
-					p = (byte)Math.round(val);
-				}
-				else if(pan > 0.0){
-					val *= 63.0;
-					val += 64.0;
-					p = (byte)Math.round(val);
-				}
+				byte p = Jaiseq.toMIDIPan(pan);
 				if(p == last_pan) return; //No change in target.
 				targ.setChannelPan(ch_idx, p);
 				last_pan = p;
@@ -299,7 +289,7 @@ public class JaiseqTrack {
 		if(time <= 0){
 			reverb = val;
 			if(targ != null){
-				byte v = (byte)Math.round(reverb * 127.0);
+				byte v = Jaiseq.to8BitReverb(reverb);
 				targ.setReverbSend(ch_idx, v);
 			}	
 		}
@@ -325,9 +315,7 @@ public class JaiseqTrack {
 		if(time <= 0){
 			pitchbend = val;
 			if(targ != null){
-				//short pb = (short)Math.round(pitchbend * 32787.0);
-				short pb = (short)Math.round(pitchbend * (double)0x1fff);
-				pb += 0x2000;
+				short pb = Jaiseq.toMIDIPitchbend(pitchbend);
 				targ.setPitchWheel(ch_idx, pb); //Expects a MIDI value!!!
 				//System.err.println("pitchwheel set: ch " + ch_idx + " to " + String.format("0x%04x", pb));
 			}

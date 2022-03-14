@@ -8,7 +8,7 @@ import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
 
 import waffleoRai_Utils.BufferReference;
 
-class ChannelCommands {
+public class ChannelCommands {
 
 	/*--- Parser ---*/
 	

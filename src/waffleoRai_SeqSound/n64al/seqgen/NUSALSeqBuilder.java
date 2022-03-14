@@ -2,6 +2,7 @@ package waffleoRai_SeqSound.n64al.seqgen;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandMap;
+import waffleoRai_SeqSound.n64al.cmd.NUSALSeqNoteCommand;
 
 public class NUSALSeqBuilder {
 
@@ -10,6 +11,10 @@ public class NUSALSeqBuilder {
 	/*--- Instance Variables ---*/
 	
 	private NUSALSeqInitValues init_val;
+	
+	//Optimization options...
+	private boolean clean;
+	private boolean compress;
 	
 	private NUSALSeqBuilderChannel[] channels;
 	
@@ -42,11 +47,25 @@ public class NUSALSeqBuilder {
 		//TODO
 	}
 	
-	public void addLayerNoteAtTick(int tick, int ch, int ly, byte note, byte vel, int len){
+	public NUSALSeqNoteCommand addLayerNoteAtTick(int tick, int ch, int ly, byte note, byte vel, int len){
 		//TODO
+		return null;
+	}
+	
+	public NUSALSeqNoteCommand generateLayerNote(byte midinote, byte vel, int len) {
+		//TODO
+		return null;
 	}
 	
 	public void addSequenceSubroutine(NUSALSeqCommandMap tickmap){
+		//TODO
+	}
+	
+	public void addChannelSubroutine(NUSALSeqCommandMap tickmap, int ch){
+		//TODO
+	}
+	
+	public void addLayerSubroutine(NUSALSeqCommandMap tickmap, int ch, int ly){
 		//TODO
 	}
 	

@@ -337,6 +337,41 @@ public class Jaiseq {
 		}
 	}
 	
+	/*----- Value Conversion -----*/
+	
+	public static byte toMIDIPan(double val) {
+		byte p = 0x40;
+		if(val < 0.0){
+			val += 1.0;
+			val *= 64.0;
+			p = (byte)Math.round(val);
+		}
+		else if(val > 0.0){
+			val *= 63.0;
+			val += 64.0;
+			p = (byte)Math.round(val);
+		}
+		return p;
+	}
+	
+	public static byte toMIDIVolume(double val) {
+		return (byte)Math.round(val * 127.0);
+	}
+	
+	public static short toMIDIPitchbend(double val) {
+		short pb = (short)Math.round(val * (double)0x1fff);
+		pb += 0x2000;
+		return pb;
+	}
+	
+	public static byte to8BitPitchbend(double val) {
+		return (byte)Math.round(val * 127.0);
+	}
+	
+	public static byte to8BitReverb(double val) {
+		return (byte)Math.round(val * 127.0);
+	}
+	
 	/*----- Output/Conversion -----*/
 	
 	public MIDI toMIDI() throws InvalidMidiDataException{

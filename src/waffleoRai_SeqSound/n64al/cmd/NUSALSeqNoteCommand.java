@@ -172,6 +172,17 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		return tru_midi;
 	}
 	
+	public void setTime(int ticks) {
+		if(idx_time < 0) return;
+		super.setParam(idx_time, ticks);
+	}
+	
+	public void shortenTimeBy(int ticks) {
+		if(idx_time < 0) return;
+		int nowtime = super.getParam(idx_time);
+		super.setParam(idx_time, nowtime - ticks);
+	}
+	
 	public boolean doCommand(NUSALSeqLayer voice){
 		if(voice == null) return false;
 		if(idx_time < 0){
