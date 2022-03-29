@@ -88,10 +88,11 @@ public class NUSALSeqChannel {
 		pitchbend = 0;
 		eff = 0;
 		vibrato = 0;
-		pan = 0x3f;
+		pan = 0x40;
 		volume = 0x7f;
 		expression = 0x7f;
 		filter_gain = 0x00;
+		transpose = 0;
 		
 		dyntable_addr = -1;
 		filter_addr = -1;
@@ -212,7 +213,13 @@ public class NUSALSeqChannel {
 		//Layers work different
 	}
 	
-	public void setTranspose(int semis){transpose = semis;}
+	public void setTranspose(int semis){
+		transpose = semis;
+		
+		if(NUSALSeq.dbg_w_mode){
+			parent_seq.dbgtt_writeln(ch_idx, "ctp " + transpose);
+		}
+	}
 	
 	public void setPitchbend(int val){
 		pitchbend = (byte)val;
@@ -479,12 +486,18 @@ public class NUSALSeqChannel {
 		while(wait_remain <= 0 && !term_flag){
 			if(source == null) return false;
 			NUSALSeqCommand cmd = source.getCommandAt(pos);
-			if(cmd == null) return false;
+			if(cmd == null) {
+				err_addr = pos;
+				err_layer = -1;
+				System.err.println("NUSALSeqChannel.nextTick || Command @ 0x" + Integer.toHexString(err_addr) + " -- not found.");
+				return false;
+			}
 			int mypos = pos;
 			if(!cmd.doCommand(this)){
 				err_addr = mypos;
 				//bad_cmd = cmd;
 				err_layer = -1;
+				System.err.println("NUSALSeqChannel.nextTick || Command @ 0x" + Integer.toHexString(err_addr) + " -- " + cmd.toMMLCommand() + " returned error.");
 				return false;
 			}
 			if(pos == mypos){
@@ -502,6 +515,7 @@ public class NUSALSeqChannel {
 					err_addr = layers[i].getErrorAddress();
 					//bad_cmd = layers[i].getErrorCommand();
 					err_layer = i;
+					System.err.println("NUSALSeqChannel.nextTick || Command @ 0x" + Integer.toHexString(err_addr) + " -- returned error.");
 					return false;
 				}
 			}

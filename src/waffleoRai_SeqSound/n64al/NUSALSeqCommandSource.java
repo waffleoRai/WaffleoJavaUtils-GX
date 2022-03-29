@@ -13,4 +13,6 @@ public interface NUSALSeqCommandSource extends WriterPrintable{
 	public boolean reparseRegion(int pos, int len);
 	List<NUSALSeqCommand> getOrderedCommands();
 	
+	public int getMinimumSizeInBytes();
+	
 }

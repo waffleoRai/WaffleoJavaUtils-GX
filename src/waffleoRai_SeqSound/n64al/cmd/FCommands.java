@@ -3,6 +3,7 @@ package waffleoRai_SeqSound.n64al.cmd;
 import waffleoRai_SeqSound.n64al.NUSALSeq;
 import waffleoRai_SeqSound.n64al.NUSALSeqChannel;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
 
 public class FCommands {
@@ -220,6 +221,15 @@ public class FCommands {
 		
 		public NUSALSeqCmdType getRelativeCommand(){return null;}
 		public NUSALSeqCmdType getAbsoluteCommand(){return NUSALSeqCmdType.CALL;}
+		
+		public int getSizeInTicks(){
+			NUSALSeqCommand ref = getBranchTarget();
+			if(ref != null){
+				//System.err.println("ref size: " + (ref.getSizeInTicks()));
+				return ref.getSizeInTicks();
+			}
+			return 0;
+		}
 	}
 	
 	/*--- fd: delay ---*/
@@ -239,6 +249,7 @@ public class FCommands {
 	/*--- ff: end ---*/
 	public static class C_EndRead extends NUSALSeqGenericCommand{
 		public C_EndRead() {super(NUSALSeqCmdType.END_READ);}
+		public boolean isEndCommand(){return true;}		
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
 			sequence.signalSeqEnd();

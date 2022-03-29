@@ -235,13 +235,17 @@ public class NUSALSeqLayer {
 		else endflag = true;
 	}
 	
-	private void noteOff(){
+	private void noteOff(){	
 		if(target != null){
 			target.noteOff(channel.getIndex(), note);
 		}
 		time_remain = 0;
 		
 		noteon = false;
+		
+		if(NUSALSeq.dbg_w_mode){
+			channel.getParent().dbgtt_writeln(channel.getIndex(), "noteoff ly" + my_idx);
+		}
 	}
 	
 	public boolean playNote(byte note, byte vel, byte gate, int time){
@@ -263,6 +267,12 @@ public class NUSALSeqLayer {
 		
 		if(target != null){
 			target.noteOn(channel.getIndex(), this.note, velocity);
+		}
+		
+		if(NUSALSeq.dbg_w_mode){
+			String notestr = note + "->" + notei;
+			channel.getParent().dbgtt_writeln(channel.getIndex(), 
+					"noteon " + notestr + " " + time + " " + vel + " " + Byte.toUnsignedInt(gate) + " ly" + my_idx);
 		}
 		
 		return true;
@@ -312,11 +322,16 @@ public class NUSALSeqLayer {
 			if(noteon) noteOff();
 			if(source == null) return false;
 			NUSALSeqCommand cmd = source.getCommandAt(nowpos);
-			if(cmd == null) return false;
+			if(cmd == null){
+				err_addr = nowpos;
+				System.err.println("NUSALSeqLayer.nextTick || Command @ 0x" + Integer.toHexString(err_addr) + " -- not found.");
+				return false;
+			}
 			int mypos = nowpos;
 			if(!cmd.doCommand(this)){
 				err_addr = mypos;
 				//bad_cmd = cmd;
+				System.err.println("NUSALSeqLayer.nextTick || Command @ 0x" + Integer.toHexString(err_addr) + " -- " + cmd.toMMLCommand() + " returned error.");
 				return false;
 			}
 			if(nowpos == mypos){

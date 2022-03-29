@@ -338,22 +338,24 @@ public class JaiseqTrack {
 	}
 	
 	public void setBank(int val){
+		//System.err.println("JaiseqTrack.setBank || Setting track "  + ch_idx + " bank to: " + val);
 		bank_idx = val;
+		/*if(targ != null){
+			if(prog_idx > 127){
+				targ.setProgram(ch_idx, bank_idx, 127);
+			}
+			else targ.setProgram(ch_idx, bank_idx, prog_idx);
+		}*/
+	}
+	
+	public void setProgram(int val){
+		//System.err.println("JaiseqTrack.setProgram || Setting track "  + ch_idx + " program to: " + val);
+		prog_idx = val;
 		if(targ != null){
 			if(prog_idx > 127){
 				targ.setProgram(ch_idx, bank_idx, 127);
 			}
 			else targ.setProgram(ch_idx, bank_idx, prog_idx);
-		}
-	}
-	
-	public void setProgram(int val){
-		prog_idx = val;
-		if(targ != null){
-			if(prog_idx > 127){
-				targ.setProgram(ch_idx, 127);
-			}
-			else targ.setProgram(ch_idx, prog_idx);
 		}
 	}
 	

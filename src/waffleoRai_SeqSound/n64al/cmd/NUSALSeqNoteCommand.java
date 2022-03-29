@@ -50,7 +50,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 	}
 	
 	public static NUSALSeqNoteCommand fromMidiNote(byte midi_note, int pitch_shift, int time, byte velocity, byte gate){
-		int nusal_note = (int)midi_note + pitch_shift;
+		int nusal_note = (int)midi_note - pitch_shift;
 		nusal_note -= 0x15;
 		NUSALSeqNoteCommand cmd = new NUSALSeqNoteCommand(NUSALSeqCmdType.PLAY_NOTE_NTVG, (byte)nusal_note);
 		cmd.setParam(0, nusal_note);
@@ -64,7 +64,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 	}
 	
 	public static NUSALSeqNoteCommand fromMidiNote(byte midi_note, int pitch_shift, int time, byte velocity){
-		int nusal_note = (int)midi_note + pitch_shift;
+		int nusal_note = (int)midi_note - pitch_shift;
 		nusal_note -= 0x15;
 		NUSALSeqNoteCommand cmd = new NUSALSeqNoteCommand(NUSALSeqCmdType.PLAY_NOTE_NTV, (byte)nusal_note);
 		cmd.setParam(0, nusal_note);
@@ -78,7 +78,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 	}
 	
 	public static NUSALSeqNoteCommand fromMidiNote(byte midi_note, int pitch_shift, byte velocity, byte gate){
-		int nusal_note = (int)midi_note + pitch_shift;
+		int nusal_note = (int)midi_note - pitch_shift;
 		nusal_note -= 0x15;
 		NUSALSeqNoteCommand cmd = new NUSALSeqNoteCommand(NUSALSeqCmdType.PLAY_NOTE_NVG, (byte)nusal_note);
 		cmd.setParam(0, nusal_note);
@@ -129,16 +129,60 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 	public int getSetPitchShift(){return p_shamt;}
 	public byte getVelocity(){return (byte)super.getParam(idx_vel);}
 	
+	public void setEnvironmentalPitchShift(int val){
+		//Update the NUSAL note & command byte
+		p_shamt = val;
+		int nusal_note = (int)tru_midi - p_shamt;
+		nusal_note -= 0x15;
+		super.setParam(0, nusal_note);
+		super.setCommandByte((byte)nusal_note);
+	}
+	
 	public byte getCommandNote(){
 		return (byte)(super.getParam(0));
 	}
 	
 	public int getTime(){
-		if(idx_time < 0) return -1;
+		int itr = 0; //Break if it gets ridiculous
+		if(idx_time < 0){
+			NUSALSeqCommand prev = getPreviousCommand();
+			while(prev != null){
+				if(prev instanceof NUSALSeqNoteCommand){
+					return ((NUSALSeqNoteCommand) prev).getTime();
+				}
+				//System.err.println("prev = " + prev.toMMLCommand());
+				prev = prev.getPreviousCommand();
+				if(++itr >= 100000){
+					System.err.println("NUSALSeqNoteCommand.getTime || WARNING! Could not find time for notevg - "
+							+ "either time command is too far back or there's circular references in the command linked list!");
+					return 0;
+				}
+			}
+			//System.err.println("???");
+			return 0;
+		}
 		return super.getParam(idx_time);
 	}
 	
 	public byte getGate(){return (byte)super.getParam(idx_gate);}
+	
+	public boolean ntvg2ntv(){
+		if(super.getCommand() != NUSALSeqCmdType.PLAY_NOTE_NTVG) return false;
+		int[] oldargs = super.restructureCommand(NUSALSeqCmdType.PLAY_NOTE_NTV, (byte)(super.getCommandByte() + 0x40));
+		for(int i = 0; i < 3; i++) super.setParam(i, oldargs[i]);
+		idx_gate = -1;
+		return true;
+	}
+	
+	public boolean ntvg2nvg(){
+		if(super.getCommand() != NUSALSeqCmdType.PLAY_NOTE_NTVG) return false;
+		int[] oldargs = super.restructureCommand(NUSALSeqCmdType.PLAY_NOTE_NVG, (byte)(super.getCommandByte() + 0x80));
+		super.setParam(0, oldargs[0]);
+		super.setParam(1, oldargs[2]);
+		super.setParam(2, oldargs[3]);
+		idx_time = -1; idx_vel = 1; idx_gate = 2;
+		return true;
+	}
 	
 	public int getSizeInTicks(){
 		return getTime();

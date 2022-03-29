@@ -30,6 +30,7 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 		reference = target;
 		//Update param 1
 		updateAddressParameter();
+		target.addReferee(this);
 	}
 	
 	public abstract NUSALSeqCmdType getRelativeCommand();

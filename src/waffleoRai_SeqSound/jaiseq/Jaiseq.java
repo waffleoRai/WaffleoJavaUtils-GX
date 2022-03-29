@@ -11,8 +11,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 import javax.sound.midi.InvalidMidiDataException;
 
@@ -40,7 +42,7 @@ public class Jaiseq {
 	
 	public static final int ARTIC_TYPE_TIMEBASE = 0x62;
 	
-	protected static final boolean PERFTIME_MODE_LINEARINC = true;
+	public static final boolean PERFTIME_MODE_LINEARINC = true;
 	
 	/*----- Instance Variables -----*/
 	
@@ -49,6 +51,8 @@ public class Jaiseq {
 	private boolean block_back_jumps = true;
 	private int loop_pos = -1;
 	private int loop_end = -1;
+	
+	private Map<Integer, Integer> addr_to_ticks;
 	
 	private int pos;
 	private int tick;
@@ -105,6 +109,27 @@ public class Jaiseq {
 	public boolean backjumpsBlocked(){return block_back_jumps;}
 	public double getMasterReverb(){return reverb;}
 	public JaiseqCommand getHead(){return src.getCommandTreeHead();}
+	public int getLoopStartAddr(){return loop_pos;}
+	public int getLoopEndAddr(){return loop_end;}
+	public int getInitTimebase(){return this.init_ppqn;}
+	
+	public int[] getLoopPointsTicks(){
+		if(addr_to_ticks == null || addr_to_ticks.isEmpty()) return null;
+		int[] points = new int[2];
+		if(loop_pos >= 0){
+			Integer n = addr_to_ticks.get(loop_pos);
+			if(n == null) points[0] = -1;
+			else points[0] = n;
+		}
+		else points[0] = -1;
+		if(loop_end >= 0){
+			Integer n = addr_to_ticks.get(loop_end);
+			if(n == null) points[1] = -1;
+			else points[1] = n;
+		}
+		else points[1] = -1;
+		return points;
+	}
 	
 	public List<JaiseqCommand> linearize(){
 		JaiseqWriter w = new JaiseqWriter(src.getCommandTreeHead());
@@ -152,9 +177,16 @@ public class Jaiseq {
 					error_addr = pos;
 					return;
 				}
+				//System.err.println("Jaiseq.onTick || Command: " + cmd.toMML());
 				
 				if(targ != null){
 					if(pos == loop_pos) targ.addMarkerNote("loop");
+				}
+				
+				if(addr_to_ticks != null){
+					if(!addr_to_ticks.containsKey(pos)){
+						addr_to_ticks.put(pos, tick);
+					}
 				}
 				
 				int cpos = pos;
@@ -203,6 +235,7 @@ public class Jaiseq {
 		seqonly_mode = true;
 		
 		reset();
+		addr_to_ticks = new HashMap<Integer, Integer>();
 		playThroughTo(null);
 		
 		block_back_jumps = back;
@@ -212,6 +245,7 @@ public class Jaiseq {
 	}
 	
 	public void playThroughTo(SequenceController target){
+		reset();
 		targ = target;
 		end_flag = false;
 		
@@ -240,10 +274,12 @@ public class Jaiseq {
 	}
 	
 	public void jumpTo(int addr){
+		//System.err.println("Jaiseq.jumpTo");
 		if(block_back_jumps){
 			if(addr <= pos){
 				loop_end = pos;
 				loop_pos = addr;
+				//System.err.println("Jaiseq.jumpTo || Loop detected: 0x" + Integer.toHexString(loop_pos) + " - 0x" + Integer.toHexString(loop_end));
 				//signalEndTrack();
 				return;
 			}

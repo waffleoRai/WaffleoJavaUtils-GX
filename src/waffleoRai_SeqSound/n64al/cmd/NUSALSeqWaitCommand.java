@@ -39,5 +39,9 @@ public class NUSALSeqWaitCommand extends NUSALSeqCommand{
 		super.flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 		return true;
 	}
+	
+	public void toChannelDelta(){
+		super.setCommand(NUSALSeqCmdType.CH_DELTA_TIME);
+	}
 
 }

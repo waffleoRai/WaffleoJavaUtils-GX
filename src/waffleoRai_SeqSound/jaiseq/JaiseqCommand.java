@@ -17,6 +17,7 @@ public abstract class JaiseqCommand {
 	protected boolean flag = false;
 	
 	protected JaiseqCommand ref;
+	protected JaiseqCommand prev;
 	protected JaiseqCommand next;
 	protected String label;
 	
@@ -39,6 +40,11 @@ public abstract class JaiseqCommand {
 		return args[index];
 	}
 	
+	public int getArgCount(){
+		if(args == null) return 0;
+		return args.length;
+	}
+	
 	public int getSize(){
 		int ssize = cmd_enum.getSerialType().getSerSize();
 		if(ssize > 0) return ssize;
@@ -52,6 +58,7 @@ public abstract class JaiseqCommand {
 	public int getAddress(){return address;}
 	public JaiseqCommand getReferencedCommand(){return ref;}
 	public JaiseqCommand getNextCommand(){return next;}
+	public JaiseqCommand getPreviousCommand(){return prev;}
 	public String getLabel(){return label;}
 	public int getTrack(){return track;}
 	
@@ -65,7 +72,12 @@ public abstract class JaiseqCommand {
 	
 	public void setAddress(int val){address = val;}
 	public void setReferencedCommand(JaiseqCommand cmd){ref = cmd;}
-	public void setNextCommand(JaiseqCommand cmd){next = cmd;}
+	
+	public void setNextCommand(JaiseqCommand cmd){
+		next = cmd;
+		if(cmd != null) cmd.prev = this;
+	}
+	
 	public void setLabel(String str){label = str;}
 	public void setTrack(int val){track = val;}
 	

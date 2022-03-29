@@ -60,6 +60,18 @@ public class BasicCommandMap implements NUSALSeqCommandSource{
 	
 	public boolean reparseRegion(int pos, int len){return false;}
 
+	public int getMinimumSizeInBytes(){
+		if(map == null || map.isEmpty()) return 0;
+		int maxaddr = Collections.max(map.keySet());
+		NUSALSeqCommand lastcmd = map.get(maxaddr);
+		return maxaddr + lastcmd.getSizeInBytes();
+	}
+	
+	public void loadIntoMap(NUSALSeqCommand cmd){
+		cmd.mapByAddress(map);
+		cmd.dechunkReference();
+	}
+	
 	public void printMeTo(Writer out) throws IOException{
 		if(map.isEmpty()){
 			out.write("<Command map is empty>\n");

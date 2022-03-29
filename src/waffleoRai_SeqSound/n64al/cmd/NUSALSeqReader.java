@@ -587,6 +587,10 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		return list;
 	}
 	
+	public int getMinimumSizeInBytes(){
+		return (int)data.getFileSize();
+	}
+	
 	/*--- Setters ---*/
 	
 	public boolean reparseRegion(int pos, int len){

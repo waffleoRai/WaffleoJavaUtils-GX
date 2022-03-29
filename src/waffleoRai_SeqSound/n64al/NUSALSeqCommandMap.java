@@ -1,5 +1,6 @@
 package waffleoRai_SeqSound.n64al;
 
+import java.util.Collections;
 import java.util.List;
 
 import waffleoRai_DataContainers.MultiValMap;
@@ -32,11 +33,16 @@ public class NUSALSeqCommandMap extends MultiValMap<Integer, NUSALSeqCommand>{
 			List<NUSALSeqCommand> list = other.getCommandsAt(time);
 			for(NUSALSeqCommand cmd : list){
 				super.addValue(time, cmd);
+				//System.err.println("NUSALSeqCommandMap.addCommands || Added " + cmd.toMMLCommand() + " @ " + time);
 				ct++;
 			}
 		}
 		
 		return ct;
+	}
+	
+	public int getLastEventTime(){
+		return Collections.max(super.getBackingMap().keySet());
 	}
 	
 }

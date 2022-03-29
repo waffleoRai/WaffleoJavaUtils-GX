@@ -2,6 +2,9 @@ package waffleoRai_SeqSound.n64al;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -32,6 +35,7 @@ public abstract class NUSALSeqCommand {
 	
 	private int address;
 	private String label;
+	private int tick_addr = -1; //Optional
 	
 	private boolean seq_ctx; //Has this command been called by the seq?
 	private Set<Integer> ch_ctx; //What channel/voices have called this command?
@@ -39,8 +43,9 @@ public abstract class NUSALSeqCommand {
 	//If channel itself, the low nyb is 0xf
 	
 	//Linked list
-	private NUSALSeqCommand next_cmd;
-	private NUSALSeqCommand prev_cmd;
+	private NUSALSeqCommand next_cmd = null;
+	private NUSALSeqCommand prev_cmd = null;
+	private List<NUSALSeqCommand> referees;
 	
 	public NUSALSeqCommand(NUSALSeqCmdType cmd, byte cmd_byte){
 		cmdbyte = cmd_byte;
@@ -53,6 +58,15 @@ public abstract class NUSALSeqCommand {
 	
 	protected void onInit(){}
 	
+	protected int[] restructureCommand(NUSALSeqCmdType newtype, byte cmd_byte){
+		int[] oldparams = params;
+		cmdbyte = cmd_byte;
+		command = newtype;
+		if(newtype.getParameterCount() > 0) params = new int[newtype.getParameterCount()];
+		else params = null;
+		return oldparams;
+	}
+	
 	public NUSALSeqCmdType getCommand(){return command;}
 	public byte getCommandByte(){return cmdbyte;}
 	protected void setCommand(NUSALSeqCmdType cmd){command = cmd;}
@@ -61,6 +75,20 @@ public abstract class NUSALSeqCommand {
 	public NUSALSeqCommand getSubsequentCommand(){return next_cmd;}
 	public NUSALSeqCommand getPreviousCommand(){return prev_cmd;}
 	public void setReference(NUSALSeqCommand target){}
+	
+	public List<NUSALSeqCommand> getReferees(){
+		if(referees == null) return null;
+		List<NUSALSeqCommand> list = new LinkedList<NUSALSeqCommand>();
+		list.addAll(referees);
+		return list;
+	}
+	
+	public void addReferee(NUSALSeqCommand ref){
+		if(referees == null){
+			referees = new LinkedList<NUSALSeqCommand>();
+		}
+		referees.add(ref);
+	}
 	
 	public void setSubsequentCommand(NUSALSeqCommand next){
 		next_cmd = next;
@@ -128,6 +156,9 @@ public abstract class NUSALSeqCommand {
 	public void setAddress(int addr){address = addr;}
 	public int getAddress(){return address;}
 	
+	public int getTickAddress(){return tick_addr;}
+	public void setTickAddress(int t){tick_addr = t;}
+	
 	public String getLabel(){return label;}
 	public void setLabel(String s){label = s;}
 	
@@ -168,6 +199,8 @@ public abstract class NUSALSeqCommand {
 	public NUSALSeqCommand getBranchTarget(){return null;}
 	
 	public boolean isChunk(){return false;}
+	public NUSALSeqCommand getChunkHead(){return this;}
+	public boolean isEndCommand(){return false;}
 	//public boolean isTimeExtendable(){return false;}
 	public int getSizeInTicks(){return 0;}
 	//public void setOptionalTime(int ticks){}
@@ -180,6 +213,21 @@ public abstract class NUSALSeqCommand {
 			if(varg > 0x7F) sz++;
 		}
 		return sz;
+	}
+	
+	public void mapByAddress(Map<Integer, NUSALSeqCommand> map){
+		if(map == null) return;
+		map.put(this.getAddress(), this);
+	}
+
+	public void dechunkReference(){
+		NUSALSeqCommand ref = getBranchTarget();
+		if(ref == null) return;
+		if(ref.isChunk()){
+			NUSALSeqCommand head = ref.getChunkHead();
+			setReference(head);
+			if(head.getLabel() == null) head.setLabel(ref.getLabel());
+		}
 	}
 	
 	protected String paramsToString(){
@@ -356,6 +404,10 @@ public abstract class NUSALSeqCommand {
 		if(bytes == null) return 0;
 		for(int i = 0; i < bytes.length; i++) buffer.addToFile(bytes[i]);
 		return bytes.length;
+	}
+	
+	public boolean equals(Object o){
+		return this == o;
 	}
 	
 }

@@ -5,9 +5,11 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
 import waffleoRai_Utils.FileBuffer;
 
 public class NUSALSeqCommandChunk extends NUSALSeqCommand{
@@ -21,6 +23,16 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 
 	public boolean isChunk(){return true;}
 	public boolean isEmpty(){return commands.isEmpty();}
+	
+	public NUSALSeqCommand getChunkHead(){
+		if(commands.isEmpty()) return null;
+		return commands.getFirst();
+	}
+	
+	public NUSALSeqCommand getChunkTail(){
+		if(commands.isEmpty()) return null;
+		return commands.getLast();
+	}
 
 	public void setAddress(int addr){
 		super.setAddress(addr);
@@ -31,8 +43,65 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		}
 	}
 
+	public void slideReferencesToChunkHeads(){
+		for(NUSALSeqCommand cmd : commands){
+			if(cmd.isChunk()){
+				((NUSALSeqCommandChunk)cmd).slideReferencesToChunkHeads();
+			}
+			else{
+				NUSALSeqCommand ref = cmd.getBranchTarget();
+				if(ref != null){
+					//Look backwards for label.
+					while(ref != null && (ref.getLabel() == null)){
+						ref = ref.getPreviousCommand();
+					}
+					if(ref != null) cmd.setReference(ref);
+				}
+			}
+		}
+	}
+	
+	public void dechunkReference(){
+		for(NUSALSeqCommand cmd : commands){
+			cmd.dechunkReference();
+		}
+	}
+	
 	public void addCommand(NUSALSeqCommand cmd){
+		if(cmd == null) return;
+		if(commands.isEmpty()){
+			String clbl = cmd.getLabel();
+			if(clbl != null){super.setLabel(clbl);}
+			else{
+				if(super.getLabel() != null){
+					cmd.setLabel(super.getLabel());
+				}
+				/*else{
+					//Gen new label for both.
+					Random r = new Random();
+					clbl = "lbl_" + Integer.toHexString(r.nextInt());
+					super.setLabel(clbl);
+					cmd.setLabel(clbl);
+				}*/
+			}
+		}
 		commands.add(cmd);
+	}
+	
+	public int getChildCount(){
+		return commands.size();
+	}
+	
+	public int getTotalCommandCount(){
+		//Counts commands within chunk children recursively
+		int count = 0;
+		for(NUSALSeqCommand cmd : commands){
+			if(cmd instanceof NUSALSeqCommandChunk){
+				count += ((NUSALSeqCommandChunk)cmd).getTotalCommandCount();
+			}
+			else count++;
+		}
+		return count;
 	}
 	
 	public int getSizeInBytes() {
@@ -43,7 +112,12 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 	
 	public int getSizeInTicks(){
 		int total = 0;
-		for(NUSALSeqCommand cmd : commands) total += cmd.getSizeInTicks();
+		//System.err.println("NUSALSeqCommandChunk.getSizeInTicks || Called");
+		for(NUSALSeqCommand cmd : commands){
+			//System.err.println("NUSALSeqCommandChunk.getSizeInTicks || Command: " + cmd.toMMLCommand());
+			total += cmd.getSizeInTicks();
+		}
+		//System.err.println("NUSALSeqCommandChunk.getSizeInTicks || Returning " + total);
 		return total;
 	}
 		
@@ -51,6 +125,41 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		List<NUSALSeqCommand> copy = new ArrayList<NUSALSeqCommand>(commands.size()+1);
 		copy.addAll(commands);
 		return copy;
+	}
+	
+	public void linearizeTo(List<NUSALSeqCommand> cmdlist){
+		if(cmdlist == null) return;
+		//Expands calls and chunks
+		for(NUSALSeqCommand cmd : commands){
+			if(cmd instanceof NUSALSeqCommandChunk){
+				((NUSALSeqCommandChunk)cmd).linearizeTo(cmdlist);
+			}
+			else if(cmd.getCommand().flagSet(NUSALSeqCommands.FLAG_CALL)){
+				//TODO Maybe I'll do this eventually, but it would require duplication and eh.
+				cmdlist.add(cmd);
+			}
+			else cmdlist.add(cmd);
+		}
+	}
+	
+	public void linkSequentialCommands(){
+		NUSALSeqCommand last = null;
+		for(NUSALSeqCommand cmd : commands){
+			if(last != null) last.setSubsequentCommand(cmd);
+			last = cmd;
+		}
+	}
+	
+	public void mapByAddress(Map<Integer, NUSALSeqCommand> map){
+		for(NUSALSeqCommand cmd : commands) cmd.mapByAddress(map);
+	}
+	
+	public String toMMLCommand(){
+		String out = "";
+		for(NUSALSeqCommand cmd : commands){
+			out += cmd.toMMLCommand() + "\n";
+		}
+		return out;
 	}
 	
 	public byte[] serializeMe(){

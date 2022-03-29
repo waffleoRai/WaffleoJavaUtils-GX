@@ -3,6 +3,7 @@ package waffleoRai_SeqSound.n64al;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -46,6 +47,9 @@ public class NUSALSeq implements WriterPrintable{
 	public static final int MIDI_NRPN_ID_LOOPEND = 0x06f7;
 	//Write vibrato to the mod wheel
 	
+	public static final int MIN_NOTE_MIDI = 0x15;
+	public static final int MAX_NOTE_MIDI = 0x15 + 0x3F;
+	
 	public static final int MIDI_CTRLR_ID_LEGATO = 68;
 	
 	public static final int MIDI_NRPN_ID_GENERAL_HI = 0x0600;
@@ -58,7 +62,8 @@ public class NUSALSeq implements WriterPrintable{
 	
 	/*----- Static Variables -----*/
 	
-
+	protected static boolean dbg_w_mode;
+	
 	/*----- Instance Variables -----*/
 	
 	private FileBuffer data;
@@ -105,26 +110,23 @@ public class NUSALSeq implements WriterPrintable{
 	
 	private boolean anno_enable;
 	
+	private Writer[] dbg_ch_w;
+	
 	/*----- Init -----*/
 	
-	public NUSALSeq(FileBuffer srcdat){
-		try{
-			data = srcdat.createCopy(0, srcdat.getFileSize());
-			data.setEndian(true);
-			ch_enable = new boolean[16];
-			channels = new NUSALSeqChannel[16];
-			return_stack = new LinkedList<Integer>();
-			seqIO = new SyncedInt[16];
-			for(int i = 0; i < 16; i++) seqIO[i] = new SyncedInt(0);
-			rng = new Random();
-			reset();
-			initialize();
-		}
-		catch(IOException ex){
-			ex.printStackTrace();
-		}
+	private NUSALSeq(){
+		//data = srcdat.createCopy(0, srcdat.getFileSize());
+		//data.setEndian(true);
+		ch_enable = new boolean[16];
+		channels = new NUSALSeqChannel[16];
+		return_stack = new LinkedList<Integer>();
+		seqIO = new SyncedInt[16];
+		for(int i = 0; i < 16; i++) seqIO[i] = new SyncedInt(0);
+		rng = new Random();
+		reset();
+		//initialize();
 	}
-	
+		
 	public void reset(){
 		master_pos = 0;
 		return_stack.clear();
@@ -157,9 +159,6 @@ public class NUSALSeq implements WriterPrintable{
 	public void initialize(){
 		//Creates channel objects and parses commands
 		seq_cmds = null;
-		NUSALSeqReader parser = new NUSALSeqReader(data);
-		parser.preParse();
-		source = parser;
 		for(int i = 0; i < 16; i++){
 			if(channels[i] == null) channels[i] = new NUSALSeqChannel(i, this);
 			else channels[i].reset();
@@ -167,6 +166,45 @@ public class NUSALSeq implements WriterPrintable{
 		}
 		master_pos = 0;
 		detectLoop();
+	}
+	
+	private void parseDataForCommands(){
+		NUSALSeqReader parser = new NUSALSeqReader(data);
+		parser.preParse();
+		source = parser;
+	}
+	
+	private void serializeCommandsToData(){
+		if(source == null) return;
+		data = new FileBuffer(source.getMinimumSizeInBytes() + 64, true);
+		List<NUSALSeqCommand> commands = source.getOrderedCommands();
+		for(NUSALSeqCommand cmd : commands){
+			cmd.serializeTo(data);
+		}
+	}
+	
+	public static NUSALSeq readNUSALSeq(FileBuffer srcdat){
+		NUSALSeq seq = new NUSALSeq();
+		try{
+			seq.data = srcdat.createCopy(0, srcdat.getFileSize());
+			seq.data.setEndian(true);
+		}
+		catch(IOException ex){
+			ex.printStackTrace();
+			return null;
+		}
+		seq.parseDataForCommands();
+		seq.initialize();
+		return seq;
+	}
+	
+	public static NUSALSeq newNUSALSeq(NUSALSeqCommandSource cmdsrc){
+		NUSALSeq seq = new NUSALSeq();
+		seq.source = cmdsrc;
+		seq.serializeCommandsToData();
+		seq.initialize();
+		
+		return seq;
 	}
 	
 	/*----- Getters -----*/
@@ -224,6 +262,15 @@ public class NUSALSeq implements WriterPrintable{
 	public byte getShortTableGateAt(int idx){
 		if(addr_shortgate_tbl <= 0) return DEFO_SHORTTBL_GATE[idx];
 		return data.getByte(addr_shortgate_tbl + idx);
+	}
+	
+	public byte[] generateVoiceUsageTable(){
+		//TODO
+		return null;
+	}
+	
+	public void generateVoiceUsageTable(Writer csv_writer){
+		//TODO
 	}
 	
 	/*----- Setters -----*/
@@ -477,7 +524,7 @@ public class NUSALSeq implements WriterPrintable{
 		if(wait_remain > 0) wait_remain--;
 		while(wait_remain <= 0 && !term_flag){
 			if(source == null) return false;
-			if(anno_enable && jumpLoop && (master_pos == loopst)){
+			if(anno_enable && jumpLoop && (master_pos == loopst) && (target != null)){
 				//Mark loop point
 				target.addMarkerNote("Loop Start [SEQ] (AUTOJUMP)");
 				target.addNRPNEvent(0, MIDI_NRPN_ID_LOOPSTART, -1, true);
@@ -517,6 +564,7 @@ public class NUSALSeq implements WriterPrintable{
 				error_flag = true;
 				error_addr = -1;
 				error_ch = i;
+				error_msg = "Error encountered on channel " + i;
 				return false;
 			}
 		}
@@ -554,7 +602,7 @@ public class NUSALSeq implements WriterPrintable{
 		current_tick = 0;
 		while(nextTick(false) && (!loop || (current_tick < MAX_TICKS))){
 			current_tick++;
-			listener.advanceTick();
+			if(listener != null) listener.advanceTick();
 			//System.err.println("ticks = " + ticks);
 		}
 		
@@ -616,6 +664,16 @@ public class NUSALSeq implements WriterPrintable{
 			writer.write(cmd.toMMLCommand());
 			writer.write("\n");
 		}
+	}
+	
+	public void writeTo(OutputStream out) throws IOException{
+		if(out == null) return;
+		data.writeToStream(out);
+	}
+	
+	public void writeTo(String filepath) throws IOException{
+		if(filepath == null) return;
+		data.writeFile(filepath);
 	}
 	
 	/*----- Exceptions -----*/
@@ -692,7 +750,7 @@ public class NUSALSeq implements WriterPrintable{
 				throws IOException, UnsupportedFileTypeException {
 			if (input == null) throw new UnsupportedFileTypeException("Input is null");
 			input.setEndian(true);
-			NUSALSeq nusseq = new NUSALSeq(input);
+			NUSALSeq nusseq = NUSALSeq.readNUSALSeq(input);
 			try{
 				MIDI mid = nusseq.toMidi();
 				mid.writeMIDI(outpath);
@@ -710,6 +768,42 @@ public class NUSALSeq implements WriterPrintable{
 	}
 	
 	/*--- DEBUG ---*/
+	
+	protected void dbgtt_writeln(int ch, String str){
+		if(!NUSALSeq.dbg_w_mode) return;
+		try{
+			dbg_ch_w[ch].write(Long.toString(this.current_tick));
+			dbg_ch_w[ch].write("\t");
+			dbg_ch_w[ch].write(str);
+			dbg_ch_w[ch].write("\n");
+		}
+		catch(Exception ex){
+			ex.printStackTrace();
+		}
+	}
+	
+	protected void openDebugTickTables(String pathstem) throws IOException{
+		dbg_ch_w = new Writer[16];
+		for(int i = 0; i < 16; i++){
+			dbg_ch_w[i] = new BufferedWriter(new FileWriter(pathstem + "_dbgtt_ch" + String.format("%02d", i) + ".tsv"));
+		}
+		NUSALSeq.dbg_w_mode = true;
+	}
+	
+	protected void closeDebugTickTables() throws IOException{
+		if(dbg_ch_w == null) return;
+		for(int i = 0; i < 16; i++){
+			if(dbg_ch_w[i] != null) dbg_ch_w[i].close();
+		}
+		dbg_ch_w = null;
+		NUSALSeq.dbg_w_mode = false;
+	}
+	
+	public void writeDebugTickTables(String pathstem) throws IOException{
+		openDebugTickTables(pathstem);
+		playTo(null, false);
+		closeDebugTickTables();
+	}
 	
 	public void printMeTo(Writer out) throws IOException{
 		if(source == null) {out.write("<Seq empty>"); return;}
@@ -732,7 +826,7 @@ public class NUSALSeq implements WriterPrintable{
 			bw.close();*/
 			
 			FileBuffer dat = FileBuffer.createBuffer(inpath, true);
-			NUSALSeq seq = new NUSALSeq(dat);
+			NUSALSeq seq = NUSALSeq.readNUSALSeq(dat);
 			
 			BufferedWriter bw = new BufferedWriter(new FileWriter(muspath));
 			//seq.printMeTo(bw);
