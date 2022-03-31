@@ -5,7 +5,6 @@ import waffleoRai_SeqSound.n64al.NUSALSeqChannel;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
-
 import waffleoRai_Utils.BufferReference;
 
 public class ChannelCommands {
@@ -289,6 +288,296 @@ public class ChannelCommands {
 			case 0xf: return new C_EndRead();
 			}
 			break;
+		}
+		
+		return null;
+	}
+	
+	public static NUSALSeqCommand parseChannelCommand(String cmd, String[] args){
+		NUSALSeqCommand command = FCommands.parseFCommand(cmd, args);
+		if(command != null) return command;
+		
+		/*
+		 * The following commands are not currently supported:
+		 * 	dynstartlayer
+		 * 	setfilter
+		 * 	clearfilter
+		 * 	ldptbl
+		 * 	copyfilter
+		 * 	p2dyntable
+		 * 	dyntable2p
+		 * 	lddyn
+		 * 	unk_BB
+		 * 	dyntable
+		 * 	dynsetdyntable
+		 * 	sts
+		 * 	lds
+		 * 	stps
+		 * 	cenvelope
+		 * 	dyncall
+		 * 	ldcparams
+		 */
+		
+		//References resolved by caller.
+		cmd = cmd.toLowerCase();
+		if(cmd.equals("cdelay")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_DeltaTime(n);
+		}
+		else if(cmd.equals("startlayer")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_StartLayer(n,-1);
+		}
+		else if(cmd.equals("rstartlayer")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_StartLayerRel(n,-1);
+		}
+		else if(cmd.equals("cpan")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_Pan(n);
+		}
+		else if(cmd.equals("cvol")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_Volume(n);
+		}
+		else if(cmd.equals("instr")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_ChangeProgram(n);
+		}
+		else if(cmd.equals("pitchbend")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_PitchBend(n);
+		}
+		else if(cmd.equals("reverb")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_Reverb(n);
+		}
+		else if(cmd.equals("ctp")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_Transpose(n);
+		}
+		else if(cmd.equals("shortoff")){return new C_C_SetShortNotesOff();}
+		else if(cmd.equals("shorton")){return new C_C_SetShortNotesOn();}
+		else if(cmd.equals("mutebhv")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_MuteBehavior(n);
+		}
+		else if(cmd.equals("notepriority")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_Priority(n);
+		}
+		else if(cmd.equals("ldi")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_LoadImm(n);
+		}
+		else if(cmd.equals("sub")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_SubtractImm(n);
+		}
+		else if(cmd.equals("and")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_AndImm(n);
+		}
+		else if(cmd.equals("stio")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_StoreIO(n);
+		}
+		else if(cmd.equals("ldio")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_LoadIO(n);
+		}
+		else if(cmd.equals("subio")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_SubIO(n);
+		}
+		else if(cmd.equals("stcio")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return new C_C_StoreChIO(n[0],n[1]);
+		}
+		else if(cmd.equals("ldcio")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return new C_C_LoadChIO(n[0],n[1]);
+		}
+		else if(cmd.equals("bankinstr")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return new C_C_SetBankProgram(n[0],n[1]);
+		}
+		else if(cmd.equals("bank")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_ChangeBank(n);
+		}
+		else if(cmd.equals("addp")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_AddPImmediate(n);
+		}
+		else if(cmd.equals("ldpi")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_LoadPImm(n);
+		}
+		else if(cmd.equals("rand")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_RandomQ(n);
+		}
+		else if(cmd.equals("randp")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_RandomP(n);
+		}
+		else if(cmd.equals("randaddp")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return new C_C_AddPRandom(n[0],n[1]);
+		}
+		else if(cmd.equals("vibfreq")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_VibratoFreq(n);
+		}
+		else if(cmd.equals("vibdepth")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_VibratoDepth(n);
+		}
+		else if(cmd.equals("vibdelay")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_VibratoDelay(n);
+		}
+		else if(cmd.equals("sustain")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_Sustain(n);
+		}
+		else if(cmd.equals("release")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_Release(n);
+		}
+		else if(cmd.equals("velrand")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_SetVelocityRand(n);
+		}
+		else if(cmd.equals("gaterand")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_SetGateRand(n);
+		}
+		else if(cmd.equals("panmix")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_PanMix(n);
+		}
+		else if(cmd.equals("cexp")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_Expression(n);
+		}
+		else if(cmd.equals("freqscale")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_FreqScale(n);
+		}
+		else if(cmd.equals("filgain")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_FilterGain(n);
+		}
+		else if(cmd.equals("reverbidx")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_ReverbIndex(n);
+		}
+		else if(cmd.equals("cbend2")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_PitchBendAlt(n);
+		}
+		else if(cmd.equals("testlayer")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_TestLayer(n);
+		}
+		else if(cmd.equals("stoplayer")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_StopLayer(n);
+		}
+		else if(cmd.equals("vibfreqenv")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return new C_C_VibFreqEnvelope(n[0],n[1],n[2]);
+		}
+		else if(cmd.equals("vibdepthenv")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return new C_C_VibDepthEnvelope(n[0],n[1],n[2]);
+		}
+		else if(cmd.equals("loadspl")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_LoadSample(n);
+		}
+		else if(cmd.equals("loadsplp")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_LoadSampleP(n);
+		}
+		else if(cmd.equals("startchan")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_StartChannel(n, -1);
+		}
+		else if(cmd.equals("stopchan")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_StopChannel(n);
+		}
+		else if(cmd.equals("chanreset")){return new C_C_ResetChannel();}
+		else if(cmd.equals("halt")){return new C_C_Halt();}
+		else if(cmd.equals("splvari")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_SampleVariation(n);
+		}
+		else if(cmd.equals("stereoheadseteffects")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_StereoEffects(n);
+		}
+		else if(cmd.equals("noteallocpolicy")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_C_NoteAllocPolicy(n);
+		}
+		else if(cmd.equals("cparams")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return new C_C_SetChannelParams(n);
 		}
 		
 		return null;

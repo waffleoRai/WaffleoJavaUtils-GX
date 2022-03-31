@@ -1,6 +1,8 @@
 package waffleoRai_SeqSound.n64al;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -22,6 +24,7 @@ import waffleoRai_Files.WriterPrintable;
 import waffleoRai_Files.tree.FileNode;
 import waffleoRai_SeqSound.BasicMIDIGenerator;
 import waffleoRai_SeqSound.MIDI;
+import waffleoRai_SeqSound.SeqVoiceCounter;
 import waffleoRai_SeqSound.SoundSeqDef;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqReader;
 import waffleoRai_SoundSynth.SequenceController;
@@ -181,6 +184,11 @@ public class NUSALSeq implements WriterPrintable{
 		for(NUSALSeqCommand cmd : commands){
 			cmd.serializeTo(data);
 		}
+		int mod = (int)data.getFileSize() & 0xf;
+		if(mod != 0){
+			int pad = 16 - mod;
+			for(int i = 0; i < pad; i++) data.addToFile(FileBuffer.ZERO_BYTE);
+		}
 	}
 	
 	public static NUSALSeq readNUSALSeq(FileBuffer srcdat){
@@ -194,6 +202,15 @@ public class NUSALSeq implements WriterPrintable{
 			return null;
 		}
 		seq.parseDataForCommands();
+		seq.initialize();
+		return seq;
+	}
+	
+	public static NUSALSeq readMMLScript(BufferedReader reader) throws UnsupportedFileTypeException, IOException{
+		NUSALSeq seq = new NUSALSeq();
+		NUSALSeqReader rdr = NUSALSeqReader.readMMLScript(reader);
+		seq.data = rdr.getData();
+		seq.source = rdr;
 		seq.initialize();
 		return seq;
 	}
@@ -265,12 +282,20 @@ public class NUSALSeq implements WriterPrintable{
 	}
 	
 	public byte[] generateVoiceUsageTable(){
-		//TODO
-		return null;
+		SeqVoiceCounter vc = new SeqVoiceCounter();
+		playTo(vc, false);
+		return vc.getVoiceUsageTotal();
 	}
 	
-	public void generateVoiceUsageTable(Writer csv_writer){
-		//TODO
+	public void generateVoiceUsageTable(Writer csv_writer) throws IOException{
+		byte[] usage_tbl = generateVoiceUsageTable();
+		csv_writer.write("TICK,VOXCOUNT\n");
+		for(int i = 0; i < usage_tbl.length; i++){
+			csv_writer.write(Integer.toString(i));
+			csv_writer.write(",");
+			csv_writer.write(Integer.toString(Byte.toUnsignedInt(usage_tbl[i])));
+			csv_writer.write("\n");
+		}
 	}
 	
 	/*----- Setters -----*/
@@ -498,7 +523,7 @@ public class NUSALSeq implements WriterPrintable{
 		
 		if(push_return) return_stack.push(master_pos+3);
 		master_pos = pos;
-		System.err.println("seq jumped to 0x" + Integer.toHexString(master_pos));
+		//System.err.println("seq jumped to 0x" + Integer.toHexString(master_pos));
 		
 		return true;
 	}
@@ -669,6 +694,11 @@ public class NUSALSeq implements WriterPrintable{
 	public void writeTo(OutputStream out) throws IOException{
 		if(out == null) return;
 		data.writeToStream(out);
+		int mod = (int)data.getFileSize() & 0xF;
+		if(mod != 0){
+			int pad = 16 - mod;
+			for(int i = 0; i < pad; i++) out.write(0);
+		}
 	}
 	
 	public void writeTo(String filepath) throws IOException{
@@ -811,9 +841,15 @@ public class NUSALSeq implements WriterPrintable{
 	}
 	
 	public static void main(String[] args){
+		
 		String inpath = args[0];
-		String muspath = args[1];
-		String outpath = args[2];
+		String outstem = args[1];
+		//String muspath = args[1];
+		//String outpath = args[2];
+		
+		String muspath = outstem + ".mus";
+		String midpath = outstem + ".mid";
+		String checkpath = outstem + "_mmlcheck.useq";
 		
 		try{
 			
@@ -833,11 +869,16 @@ public class NUSALSeq implements WriterPrintable{
 			seq.exportMMLScript(bw);
 			bw.close();
 			
-			/*seq.initialize();
-			seq.detectLoop();
-			System.err.println("DEBUG || Loop: 0x" + Integer.toHexString(seq.loopst) + " - 0x" + Integer.toHexString(seq.looped));*/
 			MIDI m = seq.toMidi();
-			m.writeMIDI(outpath);
+			m.writeMIDI(midpath);
+			
+			//Try reading MML script back in
+			BufferedReader mmlrdr = new BufferedReader(new FileReader(muspath));
+			seq = NUSALSeq.readMMLScript(mmlrdr);
+			mmlrdr.close();
+			seq.writeTo(checkpath);
+			
+			//Try reading midi back in?
 		}
 		catch(Exception ex){
 			ex.printStackTrace();

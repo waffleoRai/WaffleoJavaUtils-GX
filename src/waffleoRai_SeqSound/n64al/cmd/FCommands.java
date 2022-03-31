@@ -8,6 +8,45 @@ import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
 
 public class FCommands {
 	
+	/*--- Command Reader ---*/
+	
+	public static NUSALSeqCommand parseFCommand(String cmd, String[] args){
+		//References handled by outer functions
+		cmd = cmd.toLowerCase();
+		if(cmd.equals("end")) return new C_EndRead();
+		else if(cmd.equals("delay")){
+			int n = 0;
+			try{n = Integer.parseInt(args[0]);}
+			catch(NumberFormatException ex){ex.printStackTrace(); return null;}
+			return new C_Wait(n);
+		}
+		else if(cmd.equals("call")){return new C_Call(-1);}
+		else if(cmd.equals("jump")){return new C_Jump(-1);}
+		else if(cmd.equals("yield")){return new C_Yield();}
+		else if(cmd.equals("bltz")){return new C_bltz(-1);}
+		else if(cmd.equals("beqz")){return new C_beqz(-1);}
+		else if(cmd.equals("bgez")){return new C_bgez(-1);}
+		else if(cmd.equals("rbltz")){return new C_rbltz(-1);}
+		else if(cmd.equals("rbeqz")){return new C_rbeqz(-1);}
+		else if(cmd.equals("rjump")){return new C_rjump(-1);}
+		else if(cmd.equals("break")){return new C_Break();}
+		else if(cmd.equals("loop")){
+			int n = 0;
+			try{n = Integer.parseInt(args[0]);}
+			catch(NumberFormatException ex){ex.printStackTrace(); return null;}
+			return new C_LoopStart(n);
+		}
+		else if(cmd.equals("loopend")){return new C_LoopEnd();}
+		else if(cmd.equals("unreservenotes")){return new C_UnreserveNotes();}
+		else if(cmd.equals("reservenotes")){
+			int n = 0;
+			try{n = Integer.parseInt(args[0]);}
+			catch(NumberFormatException ex){ex.printStackTrace(); return null;}
+			return new C_ReserveNotes(n);
+		}
+		return null;
+	}
+	
 	/*--- ABCs ---*/
 	public static abstract class BranchCommand extends NUSALSeqReferenceCommand{
 		protected BranchCommand(NUSALSeqCmdType cmd, int value, boolean rel) {

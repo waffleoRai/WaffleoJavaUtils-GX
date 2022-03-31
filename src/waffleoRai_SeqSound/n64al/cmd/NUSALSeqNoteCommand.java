@@ -184,6 +184,18 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		return true;
 	}
 	
+	public boolean nvg2ntvg(){
+		if(super.getCommand() != NUSALSeqCmdType.PLAY_NOTE_NVG) return false;
+		int time = getTime(); //Try to get time
+		int[] oldargs = super.restructureCommand(NUSALSeqCmdType.PLAY_NOTE_NTVG, (byte)(super.getCommandByte() & 0x3F));
+		super.setParam(0, oldargs[0]);
+		super.setParam(1, time);
+		super.setParam(2, oldargs[1]);
+		super.setParam(3, oldargs[2]);
+		idx_time = 1; idx_vel = 2; idx_gate = 3;
+		return true;
+	}
+	
 	public int getSizeInTicks(){
 		return getTime();
 	}

@@ -1,7 +1,7 @@
 package waffleoRai_SeqSound.n64al.cmd;
 
+import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.Reader;
 import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,9 +19,11 @@ import waffleoRai_SeqSound.n64al.NUSALSeq.UnrecognizedCommandException;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandSource;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
 import waffleoRai_Utils.BufferReference;
 import waffleoRai_DataContainers.CoverageMap1D;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_Utils.StackStack;
 
 public class NUSALSeqReader implements NUSALSeqCommandSource{
@@ -44,7 +46,18 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	
 	private StackStack<Integer> branch_stack;
 	
+	private List<MMLBlock> rdr_blocks;
+	private Map<String, MMLBlock> rdr_lbl_map;
+	
 	/*--- Initialization ---*/
+	
+	private NUSALSeqReader(){
+		cmdmap = new TreeMap<Integer, NUSALSeqCommand>();
+		lblmap = new HashMap<String, NUSALSeqCommand>();
+		tickmap = new TreeMap<Integer, Integer>();
+		ch_shortnotes = new CoverageMap1D[16];
+		branch_stack = new StackStack<Integer>();
+	}
 	
  	public NUSALSeqReader(FileBuffer seqData){
 		if(seqData == null) throw new IllegalArgumentException("Data source cannot be null!");
@@ -55,12 +68,203 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		ch_shortnotes = new CoverageMap1D[16];
 		branch_stack = new StackStack<Integer>();
 	}
-	
+ 	
+ 	/*--- Inner Structs ---*/
+ 	
+ 	private static class MMLLine{
+ 		public int line_number;
+ 		public String command;
+ 		public String[] args;
+ 	}
+ 	
+ 	private static class MMLBlock{
+ 		public String label;
+ 		//public int line_number = -1; //From text file
+ 		public int parse_mode = PARSEMODE_SEQ;
+ 		public int channel = -1;
+ 		public int layer = -1;
+ 		
+ 		public NUSALSeqCommandChunk chunk;
+ 		public LinkedList<MMLLine> lines;
+ 		
+ 		public MMLBlock(String lbl){
+ 			label = lbl;
+ 			chunk = new NUSALSeqCommandChunk();
+ 			chunk.setLabel(label);
+ 			lines = new LinkedList<MMLLine>();
+ 		}
+ 	}
+ 	
 	/*--- Read ---*/
 	
-	public static NUSALSeqReader readMMLScript(Reader input){
-		//TODO
-		return null;
+	public static NUSALSeqReader readMMLScript(BufferedReader input) throws IOException, UnsupportedFileTypeException{
+		NUSALSeqReader reader = new NUSALSeqReader();
+		reader.rdr_blocks = new LinkedList<MMLBlock>();
+		reader.rdr_lbl_map = new HashMap<String, MMLBlock>();
+		
+		String line = null;
+		int lineno = -1; int charidx = -1;
+		MMLBlock curblock = null;
+		while((line = input.readLine()) != null){
+			lineno++;
+			if(line.startsWith(";")) continue;
+			if(line.isEmpty()) continue;
+			
+			//Trim out any comment in line.
+			charidx = line.indexOf(';');
+			if(charidx >= 0){
+				line = line.substring(0, charidx);
+			}
+			if(line.isEmpty()) continue;
+			
+			//Clean out whitespace from start/end
+			line = line.trim();
+			if(line.isEmpty()) continue;
+			
+			//Check if label. 
+			if(line.endsWith(":")){
+				//Label
+				String lbl = line.substring(0, line.length()-1);
+				curblock = new MMLBlock(lbl);
+				//curblock.line_number = lineno;
+				reader.rdr_blocks.add(curblock);
+				reader.rdr_lbl_map.put(lbl, curblock);
+				//System.err.println("Label line found: " + lbl);
+			}
+			else{
+				//Command
+				if(curblock == null){
+					String lbl = "seqstart";
+					curblock = new MMLBlock(lbl);
+					//curblock.line_number = lineno;
+					reader.rdr_blocks.add(curblock);
+					reader.rdr_lbl_map.put(lbl, curblock);
+				}
+				String[] split = line.split(" ");
+				if(split == null) continue;
+				
+				MMLLine mline = new MMLLine();
+				curblock.lines.add(mline);
+				mline.line_number = lineno;
+				mline.command = split[0];
+				int acount = split.length-1;
+				if(acount >= 1){
+					mline.args = new String[acount];
+					for(int i = 0; i < acount; i++){
+						mline.args[i] = split[i+1].replace(",", "");
+					}
+				}
+			}
+		}
+		
+		//Now, parse commands.
+		NUSALSeqCommandChunk mainchunk = new NUSALSeqCommandChunk();
+		NUSALSeqCommand cmd = null;
+		MMLBlock lastblock = null;
+		for(MMLBlock mblock : reader.rdr_blocks){
+			if(mblock.parse_mode == PARSEMODE_SEQ && (lastblock != null)){
+				//Set to seq, reset default to last block...
+				mblock.parse_mode = lastblock.parse_mode;
+				mblock.channel = lastblock.channel;
+				mblock.layer = lastblock.layer;
+			}
+			for(MMLLine mline : mblock.lines){
+				switch(mblock.parse_mode){
+				case PARSEMODE_SEQ:
+					cmd = SeqCommands.parseSequenceCommand(mline.command, mline.args);
+					break;
+				case PARSEMODE_CHANNEL:
+					cmd = ChannelCommands.parseChannelCommand(mline.command, mline.args);
+					break;
+				case PARSEMODE_LAYER:
+					cmd = LayerCommands.parseLayerCommand(mline.command, mline.args);
+					break;
+				}
+				if(cmd == null){
+					throw new UnsupportedFileTypeException("Could not read command at line " + mline.line_number + ": " + mline.command);
+				}
+				
+				mblock.chunk.addCommand(cmd);
+				//Resolve reference, if present.
+				NUSALSeqCmdType ctype = cmd.getCommand();
+				if(ctype.flagSet(NUSALSeqCommands.FLAG_OPENTRACK)){
+					int idx = cmd.getParam(0);
+					String trglabel = mline.args[1];
+					MMLBlock target = reader.rdr_lbl_map.get(trglabel);
+					if(target == null){
+						throw new UnsupportedFileTypeException("Could not find label \"" + trglabel + "\"");
+					}
+					cmd.setReference(target.chunk);
+					if(mblock.parse_mode == PARSEMODE_SEQ){
+						//Channel
+						target.channel = idx;
+						target.layer = -1;
+						target.parse_mode = PARSEMODE_CHANNEL;
+					}
+					else{
+						if(ctype == NUSALSeqCmdType.CHANNEL_OFFSET_C){
+							//Other channel
+							target.channel = idx;
+							target.layer = -1;
+							target.parse_mode = PARSEMODE_CHANNEL;
+						}
+						else{
+							//Layer
+							target.channel = mblock.channel;
+							target.layer = idx;
+							target.parse_mode = PARSEMODE_LAYER;
+						}
+					}
+				}
+				else if(ctype.flagSet(NUSALSeqCommands.FLAG_BRANCH | NUSALSeqCommands.FLAG_JUMP | NUSALSeqCommands.FLAG_CALL)){
+					String trglabel = mline.args[0];
+					MMLBlock target = reader.rdr_lbl_map.get(trglabel);
+					if(target == null){
+						throw new UnsupportedFileTypeException("Could not find label \"" + trglabel + "\" (Line " + mline.line_number + ")");
+					}
+					cmd.setReference(target.chunk);
+					target.channel = mblock.channel;
+					target.parse_mode = mblock.parse_mode;
+					target.layer = mblock.layer;
+				}
+			}
+			mblock.chunk.linkSequentialCommands();
+			mblock.chunk.getChunkHead().setLabel(mblock.label);
+			mainchunk.addCommand(mblock.chunk);
+			lastblock = mblock;
+		}
+		
+		//Clean up chunks
+		mainchunk.dechunkReference();
+		mainchunk.setAddress(0);
+		
+		//Map in reader
+		for(MMLBlock mblock : reader.rdr_blocks){
+			List<NUSALSeqCommand> clist = mblock.chunk.getCommands();
+			for(NUSALSeqCommand c : clist){
+				reader.cmdmap.put(c.getAddress(), c);
+				if(c.getLabel() != null){
+					reader.lblmap.put(c.getLabel(), c);
+				}
+			}
+		}
+		
+		//Serialize for data block
+		int size = mainchunk.getSizeInBytes();
+		int mod = size & 0xf;
+		int pad = 0;
+		if(mod != 0) {pad = 16 - mod; size += pad;}
+		reader.data = new FileBuffer(size, true);
+		mainchunk.serializeTo(reader.data);
+		for(int i = 0; i < pad; i++) reader.data.addToFile(FileBuffer.ZERO_BYTE);
+		
+		//Clean up
+		reader.rdr_blocks.clear();
+		reader.rdr_lbl_map.clear();
+		reader.rdr_blocks = null;
+		reader.rdr_lbl_map = null;
+		
+		return reader;
 	}
 	
 	private int maxDataSize(int pos, boolean arr16){
@@ -518,6 +722,10 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		return data.getReferenceAt(addr);
 	}
 	
+	public FileBuffer getData(){
+		return this.data;
+	}
+	
 	public NUSALSeqCommand getCommandAt(int addr){
 		//This version returns null if not already parsed as it needs context...
 		return cmdmap.get(addr);
@@ -616,6 +824,29 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	public void clearCachedCommands(){cmdmap.clear();}
 	
 	/*--- Utils ---*/
+	
+	public static Integer readNumber(String in){
+		try{
+			if(in.startsWith("0x")){
+				return Integer.parseInt(in.substring(2), 16);
+			}
+			else return Integer.parseInt(in);
+		}
+		catch(NumberFormatException ex){ex.printStackTrace();}
+		
+		return null;
+	}
+	
+	public static int[] readNumbers(String[] in){
+		if(in == null) return null;
+		int[] out = new int[in.length];
+		for(int i = 0; i < in.length; i++){
+			Integer n = readNumber(in[i]);
+			if(n == null) return null;
+			out[i] = n;
+		}
+		return out;
+	}
 	
 	public static int readVLQ(BufferReference ptr){
 		int b0 = Byte.toUnsignedInt(ptr.getByte());

@@ -64,7 +64,7 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 			if(is_relative){
 				//The parameter offset is always relative to the byte BEFORE the command for some reason
 				int taddr = reference.getAddress();
-				int maddr = getAddress() - 1;
+				int maddr = getAddress() + 2;
 				if(p_idx_addr == 1){
 					//VOICE REL or CHANNEL REL
 					maddr = getAddress() + 3;

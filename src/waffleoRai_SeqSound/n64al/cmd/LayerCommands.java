@@ -160,6 +160,103 @@ public class LayerCommands {
 		return null;
 	}
 	
+	public static NUSALSeqCommand parseLayerCommand(String cmd, String[] args){
+		/*
+		 * The following commands are not currently supported:
+		 * 	lenvelope
+		 */
+		
+		//References resolved by caller.
+		cmd = cmd.toLowerCase();
+		if(cmd.equals("ldelay")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_Rest(n);
+		}
+		else if(cmd.equals("notedvg")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return NUSALSeqNoteCommand.fromRawCommand((byte)n[0], n[1], (byte)n[2], (byte)n[3]);
+		}
+		else if(cmd.equals("notedv")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return NUSALSeqNoteCommand.fromRawCommand((byte)n[0], n[1], (byte)n[2]);
+		}
+		else if(cmd.equals("notevg")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return NUSALSeqNoteCommand.fromRawCommand((byte)n[0], (byte)n[1], (byte)n[2]);
+		}
+		else if(cmd.equals("shortvel")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_ShortVel(n);
+		}
+		else if(cmd.equals("shortdelay")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_ShortDelay(n);
+		}
+		else if(cmd.equals("shortgate")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_ShortGate(n);
+		}
+		else if(cmd.equals("ltp")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_Transpose(n);
+		}
+		else if(cmd.equals("lpan")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_Pan(n);
+		}
+		else if(cmd.equals("lbend2")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_PitchBendAlt(n);
+		}
+		else if(cmd.equals("legatoon")){return new C_L_LegatoOn();}
+		else if(cmd.equals("legatooff")){return new C_L_LegatoOff();}
+		else if(cmd.equals("portamento")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return new C_L_Portamento(n[0],n[1],n[2]);
+		}
+		else if(cmd.equals("portamentooff")){return new C_L_PortamentoOff();}
+		else if(cmd.equals("lrelease")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_Release(n);
+		}
+		else if(cmd.equals("linst")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_SetProgram(n);
+		}
+		else if(cmd.equals("drumpanoff")){return new C_L_DrumPanOff();}
+		else if(cmd.equals("reverbphase")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_ReverbPhase(n);
+		}
+		else if(cmd.equals("shorttablevel")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_ShortVelTbl(n);
+		}
+		else if(cmd.equals("shorttablegate")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_L_ShortGateTbl(n);
+		}
+		
+		NUSALSeqCommand command = FCommands.parseFCommand(cmd, args);
+		return command;
+	}
+	
 	/*--- 0x00:0x3f notedvg ---*/
 	/*--- 0x40:0x7f notedv ---*/
 	/*--- 0x80:0xbf notevg ---*/

@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 
 import waffleoRai_DataContainers.CoverageMap1D;
 import waffleoRai_DataContainers.MultiValMap;
@@ -34,6 +35,7 @@ public class NUSALSequenceCompressor {
 	private ArrayList<NUSALSeqCommand> cmdlist;
 	private int[][] og_locs; //[tb, chunk] indices of commands, matching idxs in cmdlist
 	private Set<Integer> timebreaks;
+	private Set<Integer> breakidxs;
 	
 	private LinkedList<CompOption> cands_list;
 	private MultiValMap<Integer, CompOption> cands_map;
@@ -97,6 +99,14 @@ public class NUSALSequenceCompressor {
 			bytes_saved = uncomp_size - comp_size;
 		}
 		
+		public void updateCoverage(){
+			coverage = new CoverageMap1D();
+			for(Integer s : starts){
+				coverage.addBlock(s, s+len);
+			}
+			coverage.mergeBlocks();
+		}
+		
 		public void removeInstancesOverlapping(CoverageMap1D cov){
 			coverage = new CoverageMap1D();
 			List<Integer> newstarts = new LinkedList<Integer>();
@@ -149,6 +159,19 @@ public class NUSALSequenceCompressor {
 			if(this_starr.length < oth_starr.length) return -1;
 			
 			return 0;
+		}
+		
+		public void debug_printerr(){
+			System.err.print("BYTESAVE: " + bytes_saved + " | ");
+			System.err.print("@{");
+			boolean first = true;
+			for(Integer s : starts){
+				if(!first) System.err.print(", ");
+				System.err.print(s);
+				first = false;
+			}
+			System.err.print("} | LEN: " + len);
+			System.err.print("\n");
 		}
 		
 	}
@@ -267,6 +290,10 @@ public class NUSALSequenceCompressor {
 		LinkedList<CompOption> q2 = new LinkedList<CompOption>();
 		System.err.println("NUSALSequenceCompressor.doComp_greedy_global || Candidates sorted");
 		
+		//Debug print candidates.
+		//System.err.println("DEBUG -- Printing candidates -- ");
+		//for(CompOption cand : cands_list) cand.debug_printerr();
+		
 		while(!cands_list.isEmpty()){
 			CompOption compop = cands_list.pop();
 			applyComp(compop);
@@ -293,6 +320,10 @@ public class NUSALSequenceCompressor {
 		
 		//Also calculate byte size and savings
 		int baseidx = compop.starts.get(0);
+		compop.starts.clear();
+		compop.coverage = new CoverageMap1D();
+		compop.coverage.addBlock(baseidx, baseidx+compop.len);
+		
 		NUSALSeqCommand cmd = cmdlist.get(baseidx);
 		int basetick = cmd.getTickAddress();
 		int maxidx = cmdlist.size() - compop.len;
@@ -305,18 +336,23 @@ public class NUSALSequenceCompressor {
 			
 			boolean pass = true;
 			for(int j = 0; j < compop.len; j++){
-				NUSALSeqCommand cmd1 = cmdlist.get(baseidx+j);
+				int i1 = baseidx + j;
+				int i2 = i+j;
+				NUSALSeqCommand cmd1 = cmdlist.get(i1);
 				//cmd1 should already pass basic tests
 				
-				NUSALSeqCommand cmd2 = cmdlist.get(i+j);
-				if(cmd1.isEndCommand()){pass = false; break;}
-				int tick = cmd1.getTickAddress();
-				if((tick > ctick) && timebreaks.contains(tick)){pass = false; break;}
+				NUSALSeqCommand cmd2 = cmdlist.get(i2);
+				if(cmd2.isEndCommand()){pass = false; break;}
+				if(breakidxs.contains(i2)){pass = false; break;}
+				if(compop.coverage.isCovered(i2)){pass = false; break;}
 				
 				if(!commandsEquivalent(cmd1, cmd2, basetick, ctick)){pass = false; break;}
 			}
 			
-			if(pass) compop.starts.add(i);
+			if(pass){
+				compop.starts.add(i);
+				compop.coverage.addBlock(i, i+compop.len);
+			}
 		}
 		//Sort starts
 		Collections.sort(compop.starts);
@@ -331,12 +367,14 @@ public class NUSALSequenceCompressor {
 		}
 		
 		//Coverage map
+		/*compop.coverage = new CoverageMap1D();
 		for(Integer s : compop.starts){
 			cmd = cmdlist.get(s);
 			//int tick = cmd.getTickAddress();
 			//compop.coverage.addBlock(tick, tick + compop.tick_len);
 			compop.coverage.addBlock(s, s+compop.len);
-		}
+		}*/
+		compop.coverage.mergeBlocks();
 		
 		//Calculate byte savings
 		compop.updateByteSavings();
@@ -345,68 +383,114 @@ public class NUSALSequenceCompressor {
 	private void findCandidatesFor(int cmdidx){
 		//Stops scans at chunk ends as well - if tick hits
 		//	a time break or an end command
-		//Also scan thru existing candidates to make sure adding those already found.
-		
-		//If this index is too close to a chunk end to form a phrase, return.
-		int mined = cmdidx + min_sub_cmds;
+		//Also scan thru existing candidates to make sure not adding those already found.
+		if(breakidxs.contains(cmdidx)) return; //Falls on a breakpoint.
+		int minlen = min_sub_cmds;
+		int mined = cmdidx + minlen;
 		int ccount = cmdlist.size();
 		if(mined > ccount) return;
-		
-		NUSALSeqCommand cmd = cmdlist.get(cmdidx);
-		if(cmd.getCommand() == NUSALSeqCmdType.END_READ) return;
-		int cmdtick = cmd.getTickAddress();
-		int tick = 0;
 		for(int i = cmdidx+1; i < mined; i++){
-			cmd = cmdlist.get(i);
-			if(cmd.getCommand() == NUSALSeqCmdType.END_READ) return;
-			tick = cmd.getTickAddress();
-			if(tick > cmdtick){
-				if(timebreaks.contains(tick)) return;
-			}
+			//Minimum phrase crosses a breakpoint.
+			if(breakidxs.contains(i)) return;
 		}
 		
+		//There's enough room after this command for abs minimum.
+		//Fetch previously found cands and update min len
 		List<CompOption> prevfound = cands_map.getValues(cmdidx);
-		Set<Integer> donelens = new TreeSet<Integer>();
+		Set<Integer> donelens = new HashSet<Integer>();
 		for(CompOption co : prevfound) donelens.add(co.len);
+		//System.err.println("NUSALSequenceCompressor.findCandidatesFor || Previously found cands for tick: " + donelens.size());
+		while(donelens.contains(minlen)) minlen++;
 		
-		int maxlen = ccount - mined;
-		for(int i = mined; i < ccount; i++){
-			//Search for another start point.
-			int matchct = 0;
-			int itick = cmdlist.get(i).getTickAddress(); //It can START on a boundary, but not end.
-			for(int j = 0; j < maxlen; j++){
-				//See how many commands can be chained from this start point.
-				NUSALSeqCommand cmd1 = cmdlist.get(cmdidx + j);
-				if(cmd1.isEndCommand()) break;
-				tick = cmd1.getTickAddress();
-				if((tick > cmdtick) && timebreaks.contains(tick)) break;
-				
-				NUSALSeqCommand cmd2 = cmdlist.get(i + j);
-				if(cmd2.isEndCommand()) break;
-				tick = cmd2.getTickAddress();
-				if((tick > itick) && timebreaks.contains(tick)) break;
-				
-				if(!commandsEquivalent(cmd1, cmd2, cmdtick, itick)) break;
-				matchct++;
+		//If new minimum length is not possible, return.
+		mined = cmdidx + minlen;
+		if(mined > ccount) return;
+		for(int i = cmdidx+1; i < mined; i++){
+			//Minimum phrase crosses a breakpoint.
+			if(breakidxs.contains(i)) return;
+		}
+		
+		//Find possible start points.
+		Set<Integer> match_sts = new HashSet<Integer>();
+		CompOption compop = new CompOption();
+		compop.starts.add(cmdidx);
+		compop.len = minlen;
+		findAllInstances(compop);
+		match_sts.addAll(compop.starts);
+		//Remove any values <= cmdidx
+		match_sts.removeIf(new Predicate<Integer>(){
+			public boolean test(Integer t) {
+				return t <= cmdidx;
 			}
-			//For max match, check if long enough.
-			if(matchct < min_sub_cmds) continue;
+		});
+		//match_sts.remove(cmdidx);
+		//for(int i = 0; i < cmdidx; i++) match_sts.remove(i);
+		if(match_sts.isEmpty()) return; //No matches even at minimum.
+		
+		//Otherwise, add the minimum as a candidate
+		int blen = compop.sub_size;
+		if(compop.bytes_saved > 0){
+			cands_list.add(compop);
+			for(Integer cstart : compop.starts) cands_map.addValue(cstart, compop);	
+		}
+		
+		//Find maximum possible length
+		int maxlen = minlen;
+		for(int i = mined; i < ccount; i++){
+			if(breakidxs.contains(i)) break;
+			if(match_sts.contains(i)) break;
+			maxlen++;
+		}
+		
+		//Iterate thru all possible lengths...
+		Set<Integer> temp = new HashSet<Integer>();
+		NUSALSeqCommand basecmd = cmdlist.get(cmdidx);
+		int basetick = basecmd.getTickAddress();
+		for(int l = minlen+1; l <= maxlen; l++){
+			if(match_sts.isEmpty()) return; //Depleted all possible matches.
+			if(donelens.contains(l)){
+				//add command size...
+				NUSALSeqCommand cmd1 = cmdlist.get(cmdidx + l - 1);
+				blen += cmd1.getSizeInBytes();
+				continue; //Already checked this one.
+			}
+			temp.clear();
+			temp.addAll(match_sts);
+			match_sts.clear();
 			
-			//Check if already found.
-			if(donelens.contains(matchct)) continue;
+			int i1 = cmdidx + l - 1;
+			if(breakidxs.contains(i1)) return; //Shouldn't happen thanks to maxlen, but just to double check.
+			NUSALSeqCommand cmd1 = cmdlist.get(i1);
+			blen += cmd1.getSizeInBytes();
 			
-			//Gen CompOption
-			CompOption compop = new CompOption();
-			compop.starts.add(cmdidx); compop.starts.add(i);
-			compop.len = matchct;
+			for(Integer st : temp){
+				//See if it still matches for this length 
+				int i2 = st + l - 1;
+				if(breakidxs.contains(i2)) continue;
+				if(match_sts.contains(i2)) continue; //Intersects instance previously found.
+				NUSALSeqCommand ocmd = cmdlist.get(st);
+				NUSALSeqCommand cmd2 = cmdlist.get(i2);
+				int comptick = ocmd.getTickAddress();
+				if(commandsEquivalent(cmd1, cmd2, basetick, comptick)){
+					match_sts.add(st);
+				}
+			}
 			
-			//If not, look for all instances
-			findAllInstances(compop);
-			
-			//Then add CompOption
-			if(compop.bytes_saved > 0){
-				cands_list.add(compop);
-				for(Integer cstart : compop.starts) cands_map.addValue(cstart, compop);	
+			if(!match_sts.isEmpty()){
+				compop = new CompOption();
+				compop.starts.add(cmdidx);
+				compop.starts.addAll(match_sts);
+				compop.len = minlen;
+
+				compop.sub_size = blen;
+				compop.updateByteSavings();
+				compop.updateCoverage();
+				
+				//findAllInstances(compop); NOOOOOOOO
+				if(compop.bytes_saved > 0){
+					cands_list.add(compop);
+					for(Integer cstart : compop.starts) cands_map.addValue(cstart, compop);	
+				}
 			}
 		}
 	}
@@ -426,25 +510,25 @@ public class NUSALSequenceCompressor {
 		int st = 0;
 		cmdlist = new ArrayList<NUSALSeqCommand>(c_count);
 		og_locs = new int[c_count][2];
+		breakidxs = new HashSet<Integer>();
 		int b = 0, c = 0, k = 0;
 		for(TimeBlock tb : input){
 			i = 0; c = 0;
+			breakidxs.add(cmdlist.size());
 			for(NUSALSeqCommandChunk cc : tb.main_track){
+				breakidxs.add(cmdlist.size());
 				tick = tb.tick_coords.get(i++);
 				cc.linearizeTo(cmdlist);
 				int sz = cmdlist.size();
 				for(int j = st; j < sz; j++){
 					NUSALSeqCommand cmd = cmdlist.get(j);
 					cmd.setTickAddress(tick);
-					/*if(cmd instanceof NUSALSeqNoteCommand){
-						tick += ((NUSALSeqNoteCommand)cmd).getTime();
-					}
-					else if(cmd.getCommand().flagSet(NUSALSeqCommands.FLAG_ISWAIT)){
-						tick += cmd.getParam(0);
-					}*/
 					tick += cmd.getSizeInTicks(); //Duh
 					og_locs[k][0] = b;
 					og_locs[k++][1] = c;
+					if(cmd.getCommand() == NUSALSeqCmdType.END_READ){
+						breakidxs.add(j);
+					}
 				}
 				st = sz;
 				c++;
@@ -453,6 +537,7 @@ public class NUSALSequenceCompressor {
 		}
 		//System.err.println("Compressor -- estimated commands: " + c_count);
 		//System.err.println("Compressor -- actual commands: " + cmdlist.size());
+		breakidxs.remove(0);
 	}
 	
 	private void rebuildTimeblocks(){

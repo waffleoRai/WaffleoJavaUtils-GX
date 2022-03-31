@@ -192,6 +192,154 @@ public class SeqCommands {
 		return null;
 	}
 	
+	public static NUSALSeqCommand parseSequenceCommand(String cmd, String[] args){
+		NUSALSeqCommand command = FCommands.parseFCommand(cmd, args);
+		if(command != null) return command;
+		
+		/*
+		 * The following commands are not currently supported:
+		 * 	loadseq
+		 * 	unk_C4
+		 * 	unk_C5
+		 * 	unk_C6
+		 * 	sts
+		 * 	tblcall
+		 *  ldshorttablegate
+		 *  ldshorttablevel
+		 */
+		
+		//References resolved by caller.
+		cmd = cmd.toLowerCase();
+		if(cmd.equals("startchan")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_StartChannel(n,-1);
+		}
+		else if(cmd.equals("rstartchan")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_StartChannelRel(n,-1);
+		}
+		else if(cmd.equals("svol")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_SetMasterVolume(n);
+		}
+		else if(cmd.equals("tempo")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_SetTempo(n);
+		}
+		else if(cmd.equals("disablechan")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_DisableChannels(n);
+		}
+		else if(cmd.equals("initchan")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_InitChannels(n);
+		}
+		else if(cmd.equals("sub")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_SubImm(n);
+		}
+		else if(cmd.equals("ldi")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_LoadImm(n);
+		}
+		else if(cmd.equals("mutebhv")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_MuteBehavior(n);
+		}
+		else if(cmd.equals("sexp")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_SetMasterExpression(n);
+		}
+		else if(cmd.equals("tempovar")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_SetTempoVar(n);
+		}
+		else if(cmd.equals("sfade")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return new C_S_SetMasterFade(n[0],n[1]);
+		}
+		else if(cmd.equals("stio")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_StoreIO(n);
+		}
+		else if(cmd.equals("ldio")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_LoadIO(n);
+		}
+		else if(cmd.equals("subio")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_SubIO(n);
+		}
+		else if(cmd.equals("stprel")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_SetDeltaTranspose(n);
+		}
+		else if(cmd.equals("stp")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_SetTranspose(n);
+		}
+		else if(cmd.equals("and")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_AndImm(n);
+		}
+		else if(cmd.equals("rand")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_LoadRandom(n);
+		}
+		else if(cmd.equals("testchan")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_TestChannel(n);
+		}
+		else if(cmd.equals("stopchan")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_StopChannel(n);
+		}
+		else if(cmd.equals("loadbank")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return new C_S_LoadBank(n[0],n[1],n[2]);
+		}
+		else if(cmd.equals("mute")){return new C_S_Mute();}
+		else if(cmd.equals("mutescale")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_MuteScale(n);
+		}
+		else if(cmd.equals("noteallocpolicy")){
+			Integer n = NUSALSeqReader.readNumber(args[0]);
+			if(n == null) return null;
+			return new C_S_NoteAllocPolicy(n);
+		}
+		else if(cmd.equals("print")){
+			int[] n = NUSALSeqReader.readNumbers(args);
+			if(n == null) return null;
+			return new C_S_Print(n[0],n[1]);
+		}
+		
+		return null;
+	}
+	
 	/*--- 0x00:0x0f testchan ---*/
 	public static class C_S_TestChannel extends NUSALSeqGenericCommand{
 		public C_S_TestChannel(int channel) {

@@ -150,6 +150,22 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		}
 	}
 	
+	public void removeEmptyNotesAndDelays(){
+		LinkedList<NUSALSeqCommand> old = commands;
+		commands = new LinkedList<NUSALSeqCommand>();
+		NUSALSeqCmdType ctype = null;
+		for(NUSALSeqCommand cmd : old){
+			ctype = cmd.getCommand();
+			if(ctype.flagSet(NUSALSeqCommands.FLAG_ISWAIT) || cmd instanceof NUSALSeqNoteCommand){
+				if(cmd.getSizeInTicks() > 0) commands.add(cmd);
+			}
+			else{
+				commands.add(cmd);
+			}
+		}
+		linkSequentialCommands();
+	}
+	
 	public void mapByAddress(Map<Integer, NUSALSeqCommand> map){
 		for(NUSALSeqCommand cmd : commands) cmd.mapByAddress(map);
 	}

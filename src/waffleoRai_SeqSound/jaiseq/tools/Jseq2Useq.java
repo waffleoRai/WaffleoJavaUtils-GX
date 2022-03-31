@@ -463,7 +463,7 @@ public class Jseq2Useq {
 			
 			//Tick tables
 			String tt_path = outstem + "_ttu";
-			SeqEventLister el = new SeqEventLister(tt_path, jaiseq.getInitTimebase());
+			SeqEventLister el = new SeqEventLister(tt_path, 48);
 			//nseq.writeDebugTickTables(tt_path);
 			nseq.playTo(el, false);
 			el.complete();

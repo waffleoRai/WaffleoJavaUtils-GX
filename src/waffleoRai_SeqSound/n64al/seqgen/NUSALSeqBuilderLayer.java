@@ -16,6 +16,7 @@ import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqCommandChunk;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqCopyCommand;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqNoteCommand;
+import waffleoRai_SeqSound.n64al.cmd.NUSALSeqWaitCommand;
 import waffleoRai_SeqSound.n64al.cmd.LayerCommands.*;
 import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
 
@@ -400,8 +401,40 @@ public class NUSALSeqBuilderLayer {
 			//Otherwise, just new chunk.
 			if((k > 0) && !sorted_entries.isEmpty() && (k >= sorted_entries.peekFirst())){
 				//New time block.
-				//To ensure proper timeblock alignment, add blocks until in correct block.
+				//Trim time-elapsing commands to not go past end of previous timeblock.
 				int splitpt = sorted_entries.pop();
+				int ci = 0;
+				for(NUSALSeqCommandChunk ch : ctxt.current_block.main_track){
+					int ctick = ctxt.current_block.tick_coords.get(ci);
+					List<NUSALSeqCommand> chcmds = ch.getCommands();
+					for(NUSALSeqCommand ccmd : chcmds){
+						int tsz = ccmd.getSizeInTicks();
+						int endtick = ctick + tsz;
+						if(endtick > splitpt){
+							int diff = endtick - splitpt;
+							if(ccmd instanceof NUSALSeqNoteCommand){
+								NUSALSeqNoteCommand ncmd = (NUSALSeqNoteCommand)ccmd;
+								if(ccmd.getCommand() == NUSALSeqCmdType.PLAY_NOTE_NVG){
+									//Reset to NTVG
+									ncmd.nvg2ntvg();
+									ncmd.setTime(tsz - diff);
+								}
+								else{
+									ncmd.shortenTimeBy(diff);
+								}
+							}
+							else if(ccmd instanceof NUSALSeqWaitCommand){
+								ccmd.setParam(0, tsz - diff);
+							}
+						}
+						ctick = endtick;
+					}
+					//Clean empty commands...
+					ch.removeEmptyNotesAndDelays();
+					ci++;
+				}
+				
+				//To ensure proper timeblock alignment, add blocks until in correct block.
 				ctxt.current_block = new TimeBlock();
 				ctxt.current_block.base_tick = splitpt;
 				blocks.add(ctxt.current_block);
