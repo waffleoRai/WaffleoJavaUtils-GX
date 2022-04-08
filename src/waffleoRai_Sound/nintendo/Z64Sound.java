@@ -16,6 +16,12 @@ public class Z64Sound {
 	public static final int MEDIUM_CART = 2;
 	public static final int MEDIUM_DISK_DRIVE = 3;
 	
+	public static final int CACHE_PERMANENT = 0;
+	public static final int CACHE_PERSISTENT = 1;
+	public static final int CACHE_TEMPORARY = 2;
+	public static final int CACHE_ANY = 3;
+	public static final int CACHE_ANYNOSYNCLOAD = 4;
+	
 	public static final int STDRANGE_BOTTOM = 0x15;
 	public static final int STDRANGE_SIZE = 0x40;
 	public static final int MIDDLE_C = 60;

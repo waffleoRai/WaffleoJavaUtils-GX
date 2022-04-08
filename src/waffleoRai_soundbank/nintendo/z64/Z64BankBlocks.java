@@ -106,6 +106,7 @@ class Z64BankBlocks {
 		protected Z64Envelope data;
 		
 		public EnvelopeBlock(){data = new Z64Envelope();}
+		public EnvelopeBlock(Z64Envelope env){data = env;}
 		
 		public static EnvelopeBlock readFrom(BufferReference ptr){
 			EnvelopeBlock block = new EnvelopeBlock();
@@ -154,6 +155,22 @@ class Z64BankBlocks {
 		
 		public WaveInfoBlock(){
 			wave_info = new Z64WaveInfo();
+		}
+		
+		public WaveInfoBlock(Z64WaveInfo winfo){
+			wave_info = winfo;
+			loop_offset = -1;
+			pred_offset = -1;
+			loop = new LoopBlock();
+			loop.start = winfo.getLoopStart();
+			loop.end = winfo.getLoopEnd();
+			loop.count = winfo.getLoopCount();
+			loop.state_vals = winfo.getLoopState();
+			pred = new Predictor();
+			N64ADPCMTable tbl = winfo.getADPCMBook();
+			pred.count = tbl.getPredictorCount();
+			pred.order = tbl.getOrder();
+			pred.table = tbl.getAsRaw();
 		}
 		
 		public static WaveInfoBlock readFrom(BufferReference ptr){
@@ -223,6 +240,9 @@ class Z64BankBlocks {
 		protected Z64Instrument data;
 		
 		public InstBlock(){data = new Z64Instrument();}
+		public InstBlock(Z64Instrument inst){
+			data = inst;
+		}
 		
 		public static InstBlock readFrom(BufferReference ptr){
 			InstBlock block = new InstBlock();
@@ -299,6 +319,10 @@ class Z64BankBlocks {
 		protected Z64Drum data;
 		
 		public PercBlock(int note){data = new Z64Drum(); index = note;}
+		public PercBlock(Z64Drum drum, int note){
+			data = drum;
+			index = note;
+		}
 		
 		public static PercBlock readFrom(BufferReference ptr, int idx){
 			PercBlock block = new PercBlock(idx);
@@ -352,6 +376,7 @@ class Z64BankBlocks {
 		protected Z64SoundEffect data;
 		
 		public SFXBlock(){data = new Z64SoundEffect();}
+		public SFXBlock(Z64SoundEffect sfx){data = sfx;}
 		
 		public static SFXBlock readFrom(BufferReference ptr){
 			SFXBlock block = new SFXBlock();

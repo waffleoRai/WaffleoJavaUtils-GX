@@ -462,7 +462,7 @@ public class Jseq2Useq {
 			System.err.println("N64 seq midi convert exported to: " + midpath);
 			
 			//Tick tables
-			String tt_path = outstem + "_ttu";
+			/*String tt_path = outstem + "_ttu";
 			SeqEventLister el = new SeqEventLister(tt_path, 48);
 			//nseq.writeDebugTickTables(tt_path);
 			nseq.playTo(el, false);
@@ -471,7 +471,7 @@ public class Jseq2Useq {
 			tt_path = outstem + "_ttj";
 			el = new SeqEventLister(tt_path, jaiseq.getInitTimebase());
 			jaiseq.playThroughTo(el);
-			el.complete();
+			el.complete();*/
 		}
 		catch(Exception ex){
 			ex.printStackTrace();

@@ -1,5 +1,7 @@
 package waffleoRai_soundbank.nintendo.z64;
 
+import java.util.Random;
+
 import waffleoRai_Sound.nintendo.Z64WaveInfo;
 import waffleoRai_soundbank.nintendo.z64.Z64Bank.Labelable;
 
@@ -14,6 +16,12 @@ public class Z64SoundEffect extends Labelable{
 	
 	public void setTuning(float val){tune = val;}
 	public void setSample(Z64WaveInfo val){sample = val;}
+	public void setID(int val){id = val;}
+	
+	public void setIDRandom(){
+		Random r = new Random();
+		id = r.nextInt();
+	}
 	
 	public boolean sfxEquals(Z64SoundEffect other){
 		if(other == null) return false;

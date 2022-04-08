@@ -445,6 +445,7 @@ public class Z64Wave extends SoundAdapter{
 	public boolean loops() {return loopCount >= 0;}
 	public int getLoopFrame() {return loopStart;}
 	public int getLoopEndFrame() {return loopEnd;}
+	public byte[] getRawData(){return this.raw_data;}
 	
 	/*----- Setters -----*/
 	

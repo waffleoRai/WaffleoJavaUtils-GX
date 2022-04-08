@@ -469,7 +469,7 @@ public class NUSALSequenceCompressor {
 				if(breakidxs.contains(i2)) continue;
 				if(match_sts.contains(i2)) continue; //Intersects instance previously found.
 				NUSALSeqCommand ocmd = cmdlist.get(st);
-				NUSALSeqCommand cmd2 = cmdlist.get(i2);
+				NUSALSeqCommand cmd2 = cmdlist.get(i2); //TODO i2 keeps going out of range. Figure out why.
 				int comptick = ocmd.getTickAddress();
 				if(commandsEquivalent(cmd1, cmd2, basetick, comptick)){
 					match_sts.add(st);

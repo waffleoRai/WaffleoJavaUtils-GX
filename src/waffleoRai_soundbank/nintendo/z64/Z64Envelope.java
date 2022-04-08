@@ -3,6 +3,7 @@ package waffleoRai_soundbank.nintendo.z64;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Random;
 
 import waffleoRai_Sound.nintendo.Z64Sound;
 import waffleoRai_soundbank.nintendo.z64.Z64Bank.Labelable;
@@ -133,5 +134,10 @@ public class Z64Envelope extends Labelable{
 
 	public int getID(){return id;}
 	public void setID(int val){id = val;}
+	
+	public void setIDRandom(){
+		Random r = new Random();
+		id = r.nextInt();
+	}
 	
 }

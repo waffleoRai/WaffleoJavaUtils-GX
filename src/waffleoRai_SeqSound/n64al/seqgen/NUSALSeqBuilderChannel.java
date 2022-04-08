@@ -893,7 +893,20 @@ public class NUSALSeqBuilderChannel {
 		
 		//Compress
 		if(compressor != null){
-			//blocks = compressor.compress(blocks);
+			blocks = compressor.compress(blocks);
+			
+			//Label subs
+			int tsec = 0;
+			for(TimeBlock tb : blocks){
+				int ii = 0;
+				if(!tb.subroutines.isEmpty()){
+					for(NUSALSeqCommandChunk chunk : tb.subroutines){
+						String lbl = String.format("sub_ch%02d_%02d-%03d", index, tsec, ii++);
+						chunk.getChunkHead().setLabel(lbl);
+					}
+				}
+				tsec++;
+			}
 		}
 		
 		//System.err.println("NUSALSeqBuilderLayer.buildChannel || DEBUG -- Printing build output for ch " + index);

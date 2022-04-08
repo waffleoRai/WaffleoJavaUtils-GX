@@ -113,8 +113,15 @@ public class N64ZFileTable {
 			e.v_end = Integer.toUnsignedLong(table.nextInt());
 			e.offset = Integer.toUnsignedLong(table.nextInt());
 			long cend = Integer.toUnsignedLong(table.nextInt());
+
 			if(e.offset == 0xFFFFFFFFL){e.size = 0L; continue;}
-			if(e.v_start == 0L && e.v_end == 0L){e.size = 0L; continue;}
+			if(e.v_start == 0L && e.v_end == 0L){
+				if(e.offset == 0L && cend == 0L){
+					ft.entries.remove(ft.entries.size()-1);
+					break;
+				}
+				e.size = 0L; continue;
+			}
 			
 			e.size = e.v_end - e.v_start;
 			if(cend == 0L){
@@ -132,7 +139,25 @@ public class N64ZFileTable {
 	
 	public static N64ZFileTable readTable(FileBuffer data, long offset){
 		if(data == null) return null;
-		FileBuffer sub = data.createReadOnlyCopy(offset, data.getFileSize());
+		
+		//Attempt to discern end.
+		long fend = data.getFileSize();
+		long dend = fend;
+		long pos = offset; data.setCurrentPosition(offset);
+		while(pos < fend){
+			int v_start = data.nextInt();
+			int v_end = data.nextInt();
+			int p_start = data.nextInt();
+			data.nextInt();
+			
+			if(p_start == offset){
+				dend = offset + (v_end - v_start);
+			}
+			
+			pos+=16;	
+		}
+		
+		FileBuffer sub = data.createReadOnlyCopy(offset, dend);
 		N64ZFileTable ft = readTable(sub);
 		try{sub.dispose();}
 		catch(Exception ex){ex.printStackTrace();}
@@ -234,6 +259,12 @@ public class N64ZFileTable {
 		}
 		
 		return fn;
+	}
+	
+	public long getVirtualRomEnd(){
+		if(entries == null || entries.isEmpty()) return 0L;
+		Entry e = entries.get(entries.size()-1);
+		return e.getVirtualEnd();
 	}
 	
 	/*----- Setters -----*/

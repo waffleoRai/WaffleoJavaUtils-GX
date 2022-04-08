@@ -1,5 +1,7 @@
 package waffleoRai_soundbank.nintendo.z64;
 
+import java.util.Random;
+
 import waffleoRai_Sound.nintendo.Z64Sound;
 import waffleoRai_Sound.nintendo.Z64WaveInfo;
 import waffleoRai_SoundSynth.SynthMath;
@@ -28,6 +30,12 @@ public class Z64Drum extends Labelable{
 	public void setTuning(float val){common_tune = val;}
 	public void setEnvelope(Z64Envelope val){envelope = val;}
 	public void setSample(Z64WaveInfo val){sample = val;}
+	public void setID(int val){id = val;}
+	
+	public void setIDRandom(){
+		Random r = new Random();
+		id = r.nextInt();
+	}
 	
 	public static float commonToLocalTuning(int slot_idx, float value){
 		int midi_note = slot_idx + Z64Sound.STDRANGE_BOTTOM;

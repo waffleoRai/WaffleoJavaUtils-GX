@@ -671,7 +671,7 @@ public class Z64Bank implements WriterPrintable{
 		}
 		
 		//Add envelopes (w/ instruments, perc, and sfx)
-		LinkedList<BankBlock> env_blocks = new LinkedList<BankBlock>();
+		LinkedList<EnvelopeBlock> env_blocks = new LinkedList<EnvelopeBlock>();
 		LinkedList<BankBlock> inst_blocks = new LinkedList<BankBlock>();
 		LinkedList<BankBlock> drum_blocks = new LinkedList<BankBlock>();
 		
@@ -695,10 +695,23 @@ public class Z64Bank implements WriterPrintable{
 				
 				if(iblock.envelope != null){
 					if(!iblock.envelope.flag){
-						env_blocks.add(iblock.envelope);
-						iblock.envelope.flag = true;
-						iblock.envelope.addr = current_pos;
-						current_pos = padTo16(current_pos+iblock.envelope.serialSize());
+						EnvelopeBlock match = null;
+						for(EnvelopeBlock other : env_blocks){
+							if(iblock.envelope.data.envEquals(other.data)){
+								match = other;
+								break;
+							}
+						}
+						if(match == null){
+							env_blocks.add(iblock.envelope);
+							iblock.envelope.flag = true;
+							iblock.envelope.addr = current_pos;
+							current_pos = padTo16(current_pos+iblock.envelope.serialSize());	
+						}
+						else{
+							//Switch it out.
+							iblock.envelope = match;
+						}
 					}
 				}
 			}
@@ -715,10 +728,23 @@ public class Z64Bank implements WriterPrintable{
 				
 				if(dblock.envelope != null){
 					if(!dblock.envelope.flag){
-						env_blocks.add(dblock.envelope);
-						dblock.envelope.flag = true;
-						dblock.envelope.addr = current_pos;
-						current_pos = padTo16(current_pos+dblock.envelope.serialSize());
+						EnvelopeBlock match = null;
+						for(EnvelopeBlock other : env_blocks){
+							if(dblock.envelope.data.envEquals(other.data)){
+								match = other;
+								break;
+							}
+						}
+						if(match == null){
+							env_blocks.add(dblock.envelope);
+							dblock.envelope.flag = true;
+							dblock.envelope.addr = current_pos;
+							current_pos = padTo16(current_pos+dblock.envelope.serialSize());	
+						}
+						else{
+							//Switch it out.
+							dblock.envelope = match;
+						}
 					}
 				}
 			}
@@ -746,7 +772,8 @@ public class Z64Bank implements WriterPrintable{
 			block.addr = current_pos;
 			current_pos = padTo16(current_pos+block.serialSize());
 		}
-		itbl[0] = ptbl.addr = current_pos; //Drum table offset.
+		if(pcount > 0) {itbl[0] = ptbl.addr = current_pos;} //Drum table offset.
+		else itbl[0] = 0;
 		for(int i = 0; i < pcount; i++){
 			PercBlock dblock = perc_slots[i];
 			if(dblock == null || dblock.data == null) ptbl.offsets.add(0);
@@ -757,7 +784,8 @@ public class Z64Bank implements WriterPrintable{
 		current_pos = padTo16(current_pos+ptbl.serialSize());
 		
 		//Determine SFX table address and update inst table
-		itbl[1] = current_pos;
+		if(xcount > 0) itbl[1] = current_pos;
+		else itbl[1] = 0;
 		
 		//Write inst table.
 		for(int i = 0; i < itbl.length; i++){
@@ -1156,6 +1184,10 @@ public class Z64Bank implements WriterPrintable{
 	public int getUID(){return uid;}
 	public int getUWSDLinkID(){return this.wsd_ref;}
 	
+	public int getInstCount(){return icount;}
+	public int getPercCount(){return pcount;}
+	public int getSFXCount(){return xcount;}
+	
 	public boolean samplesOrderedByUID(){return this.samples_by_uid;}
 	
 	public List<Z64WaveInfo> getAllWaveInfoBlocks(){
@@ -1321,6 +1353,201 @@ public class Z64Bank implements WriterPrintable{
 	public void setCachePolicy(int val){this.cachePolicy = val;}
 	public void setPrimaryWaveArchiveIndex(int val){warc1 = val;}
 	public void setSecondaryWaveArchiveIndex(int val){warc2 = val;}
+	
+	public void setInstrument(Z64Instrument inst, int preset_index){
+		if(inst == null) return;
+		//See if instrument is already in this bank...
+		Z64Instrument match = findInstrument(inst);
+		if(match != null){
+			//We can just reuse that one!
+			for(int i = 0; i < inst_presets.length; i++){
+				if(i == preset_index) continue;
+				if(inst_presets[i] == null) continue;
+				if(inst_presets[i].data == match){
+					inst_presets[preset_index] = inst_presets[i];
+					return;
+				}
+			}
+		}
+		//Need new instblock
+		if(match == null){
+			inst_pool.put(inst.id, inst);
+			match = inst;
+		}
+		InstBlock block = new InstBlock(match);
+		//if(inst_presets[preset_index] == null) icount++;
+		inst_presets[preset_index] = block;
+		
+		//Find/create the wave info blocks
+		Z64WaveInfo winfo = match.getSampleMiddle();
+		WaveInfoBlock wblock = null;
+		if(winfo != null){
+			wblock = findSoundSample(winfo);
+			if(wblock == null){
+				wblock = new WaveInfoBlock(winfo);
+				sound_samples.put(winfo.getUID(), wblock);
+			}
+			block.snd_med = wblock;
+		}
+		winfo = match.getSampleLow();
+		if(winfo != null){
+			wblock = findSoundSample(winfo);
+			if(wblock == null){
+				wblock = new WaveInfoBlock(winfo);
+				sound_samples.put(winfo.getUID(), wblock);
+			}
+			block.snd_lo = wblock;
+		}
+		winfo = match.getSampleHigh();
+		if(winfo != null){
+			wblock = findSoundSample(winfo);
+			if(wblock == null){
+				wblock = new WaveInfoBlock(winfo);
+				sound_samples.put(winfo.getUID(), wblock);
+			}
+			block.snd_hi = wblock;
+		}
+
+		EnvelopeBlock eblock = new EnvelopeBlock(match.getEnvelope());
+		block.envelope = eblock;
+		
+		updateICount();
+	}
+	
+	public void setDrum(Z64Drum drum, int min_slot, int max_slot){
+		if(drum == null) return;
+		Z64Drum match = findDrum(drum);
+		if(match == null){
+			perc_pool.put(drum.id, drum);
+			match = drum;
+		}
+		
+		//Get sound sample
+		Z64WaveInfo winfo = match.getSample();
+		WaveInfoBlock wblock = findSoundSample(winfo);
+		if(wblock == null){
+			wblock = new WaveInfoBlock(winfo);
+			sound_samples.put(winfo.getUID(), wblock);
+		}
+		
+		EnvelopeBlock eblock = new EnvelopeBlock(match.getEnvelope());
+		
+		min_slot = Math.max(min_slot, 0);
+		max_slot = Math.min(max_slot, 63);
+		for(int j = min_slot; j <= max_slot; j++){
+			//if(perc_slots[j] == null) pcount++;
+			perc_slots[j] = new PercBlock(match, j);
+			perc_slots[j].sample = wblock;
+			perc_slots[j].updateLocalTuning();
+			perc_slots[j].envelope = eblock;
+		}
+		
+		updatePCount();
+	}
+	
+	public void setSoundEffect(Z64SoundEffect sfx, int slot){
+		if(sfx == null) return;
+		if(sfx_slots == null) return;
+		if(slot < 0) return;
+		if(slot >= sfx_slots.length) return;
+		
+		Z64SoundEffect match = findSoundEffect(sfx);
+		if(match == null){
+			sfx_pool.put(sfx.id, sfx);
+			match = sfx;
+		}
+		
+		Z64WaveInfo winfo = match.getSample();
+		WaveInfoBlock wblock = findSoundSample(winfo);
+		if(wblock == null){
+			wblock = new WaveInfoBlock(winfo);
+			sound_samples.put(winfo.getUID(), wblock);
+		}
+		
+		//if(sfx_slots[slot] == null) xcount++;
+		sfx_slots[slot] = new SFXBlock(match);
+		sfx_slots[slot].sample = wblock;
+		updateXCount();
+	}
+	
+	/*----- Find/Match -----*/
+	
+	private void updateICount(){
+		for(int i = inst_presets.length-1; i >= 0; i--){
+			if(inst_presets[i] != null){
+				icount = i+1;
+				return;
+			}
+		}
+		icount = 0;
+	}
+	
+	private void updatePCount(){
+		for(int i = perc_slots.length-1; i >= 0; i--){
+			if(perc_slots[i] != null){
+				pcount = i+1;
+				return;
+			}
+		}
+		pcount = 0;
+	}
+	
+	private void updateXCount(){
+		if(this.sfx_slots == null){
+			xcount = 0;
+			return;
+		}
+		for(int i = sfx_slots.length-1; i >= 0; i--){
+			if(sfx_slots[i] != null){
+				xcount = i+1;
+				return;
+			}
+		}
+		xcount = 0;
+	}
+	
+	protected Z64Instrument findInstrument(Z64Instrument inst){
+		if(inst == null) return null;
+		for(Z64Instrument other : inst_pool.values()){
+			if(inst.instEquals(other)){
+				return other;
+			}
+		}
+		return null;
+	}
+	
+	protected Z64Drum findDrum(Z64Drum drum){
+		if(drum == null) return null;
+		for(Z64Drum other : perc_pool.values()){
+			if(drum.drumEquals(other)){
+				return other;
+			}
+		}
+		return null;
+	}
+	
+	protected Z64SoundEffect findSoundEffect(Z64SoundEffect sfx){
+		if(sfx == null) return null;
+		for(Z64SoundEffect other : sfx_pool.values()){
+			if(sfx.sfxEquals(other)){
+				return other;
+			}
+		}
+		return null;
+	}
+	
+	protected WaveInfoBlock findSoundSample(Z64WaveInfo wave){
+		if(wave == null) return null;
+		if(this.samples_by_uid){
+			return sound_samples.get(wave.getUID());
+		}
+		for(WaveInfoBlock block : sound_samples.values()){
+			if(wave.wavesEqual(block.wave_info, false)){
+				return block;
+			}
+		}
+		return null;
+	}
 	
 	/*----- Linking -----*/
 	

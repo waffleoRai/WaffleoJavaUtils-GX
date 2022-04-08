@@ -298,6 +298,8 @@ public class NUSALSeq implements WriterPrintable{
 		}
 	}
 	
+	public NUSALSeqCommandSource getCommandSource(){return this.source;}
+	
 	/*----- Setters -----*/
 	
 	public void setTarget(SequenceController t){target = t;}
@@ -442,7 +444,6 @@ public class NUSALSeq implements WriterPrintable{
 			loopst = stcand;
 			looped = edcand;
 		}
-		
 	}
 	
 	/*----- Control -----*/
@@ -619,6 +620,8 @@ public class NUSALSeq implements WriterPrintable{
 		initialize();
 		setLoopEnabled(loop);
 		detectLoop();
+		//System.err.println("loopst = " + Integer.toHexString(loopst));
+		//System.err.println("looped = " + Integer.toHexString(looped));
 		
 		target = listener;
 		for(int i = 0; i < 16; i++) channels[i].setListener(target);
@@ -689,6 +692,17 @@ public class NUSALSeq implements WriterPrintable{
 			writer.write(cmd.toMMLCommand());
 			writer.write("\n");
 		}
+	}
+	
+	public FileBuffer getSerializedData(){
+		if(data == null) return null;
+		int fsize = (int)data.getFileSize();
+		int outsize = (fsize + 0xF) & 0xF;
+		FileBuffer buff = new FileBuffer(outsize, true);
+		for(int i = 0; i < fsize; i++) buff.addToFile(data.getByte(i));
+		int padding = outsize - fsize;
+		for(int i = 0; i < padding; i++) buff.addToFile(FileBuffer.ZERO_BYTE);
+		return buff;
 	}
 	
 	public void writeTo(OutputStream out) throws IOException{
