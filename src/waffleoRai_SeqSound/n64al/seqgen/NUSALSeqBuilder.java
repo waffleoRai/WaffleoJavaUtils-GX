@@ -50,6 +50,7 @@ public class NUSALSeqBuilder {
 	private int loop_st = -1;
 	private int loop_ed = -1;
 	
+	private boolean use_gate = false; //If off, gate is always 0
 	private Random gate_randomizer;
 	private int gate_min = 20;
 	private int gate_max = 240;
@@ -120,6 +121,10 @@ public class NUSALSeqBuilder {
 	public void clearTimeBreaks(){time_breaks.clear();}
 	public void addTimeBreak(int tick){time_breaks.add(tick);}
 	public void setMaxLayerDelay(int ticks){ldelay_max = ticks;}
+	
+	public void setGateGen(boolean on){
+		use_gate = on;
+	}
 	
 	public void setMinRandomGateBoundary(int value){
 		if(value < 0) value = 0;
@@ -208,8 +213,12 @@ public class NUSALSeqBuilder {
 	
 	public NUSALSeqNoteCommand generateLayerNote(byte midinote, byte vel, int len, int transpose) {
 		//What to do with gate? No idea.
-		int random_gate = this.gate_randomizer.nextInt(gate_max - gate_min) + gate_min;
-		NUSALSeqNoteCommand cmd = NUSALSeqNoteCommand.fromMidiNote(midinote, transpose, len, vel, (byte)random_gate);
+		byte gate = 0;
+		if(use_gate){
+			int random_gate = this.gate_randomizer.nextInt(gate_max - gate_min) + gate_min;
+			gate = (byte)random_gate;
+		}
+		NUSALSeqNoteCommand cmd = NUSALSeqNoteCommand.fromMidiNote(midinote, transpose, len, vel, gate);
 		return cmd;
 	}
 	
@@ -234,10 +243,13 @@ public class NUSALSeqBuilder {
 		//Generate random gate.
 		int gate = -1;
 		//1. Do we put in a new gate, or tell channel to use last/default?
-		double r = gate_randomizer.nextDouble();
-		if(r >= samegate_chance){
-			gate = gate_min + gate_randomizer.nextInt(gate_max - gate_min);
+		if(use_gate){
+			double r = gate_randomizer.nextDouble();
+			if(r >= samegate_chance){
+				gate = gate_min + gate_randomizer.nextInt(gate_max - gate_min);
+			}	
 		}
+		else gate = 0;
 		
 		if(channels[ch] == null) openChannel(ch);
 		channels[ch].sendNoteOn(tick, midinote, velocity, gate);

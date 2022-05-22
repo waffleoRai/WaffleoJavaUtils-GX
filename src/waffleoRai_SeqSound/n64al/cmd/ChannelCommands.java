@@ -822,7 +822,8 @@ public class ChannelCommands {
 	public static class C_C_CopyFilter extends CMD_IgnoredCommand{
 		public C_C_CopyFilter(int param) {
 			super(NUSALSeqCmdType.COPY_CH_FILTER);
-			super.setParam(0, param);
+			super.setParam(0, (param & 0xf0) >>> 4);
+			super.setParam(1, param & 0xf);
 		}
 	}
 	

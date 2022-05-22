@@ -678,6 +678,10 @@ public class NUSALSeq implements WriterPrintable{
 	}
 	
 	public void exportMMLScript(Writer writer) throws IOException{
+		exportMMLScript(writer, false);
+	}
+	
+	public void exportMMLScript(Writer writer, boolean note_addr) throws IOException{
 		if(writer == null) return;
 		writer.write("; Nintendo 64 MML\n");
 		writer.write("; Auto output by waffleoUtilsGX\n\n");
@@ -689,7 +693,7 @@ public class NUSALSeq implements WriterPrintable{
 				writer.write(":\n");
 			}
 			writer.write("\t");
-			writer.write(cmd.toMMLCommand());
+			writer.write(cmd.toMMLCommand(note_addr));
 			writer.write("\n");
 		}
 	}

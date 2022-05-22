@@ -254,8 +254,8 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		return true;
 	}
 	
-	public String toMMLCommand(){
-		StringBuilder sb = new StringBuilder(64);
+	protected StringBuilder toMMLCommand_child(){
+		StringBuilder sb = new StringBuilder(256);
 		sb.append(super.getCommand().toString());
 		sb.append(' ');
 		sb.append(super.getParam(0));
@@ -272,8 +272,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 			sb.append(", ");
 			sb.append(Byte.toUnsignedInt(getGate()));
 		}
-		
-		return sb.toString();
+		return sb;
 	}
 	
 	protected String paramsToString(){
@@ -294,7 +293,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		//Gate, if applicable
 		if(idx_gate >= 0){
 			sb.append(", g");
-			sb.append(getGate());
+			sb.append(Byte.toUnsignedInt(getGate()));
 		}
 		
 		return sb.toString();

@@ -170,10 +170,10 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		for(NUSALSeqCommand cmd : commands) cmd.mapByAddress(map);
 	}
 	
-	public String toMMLCommand(){
+	public String toMMLCommand(boolean comment_addr){
 		String out = "";
 		for(NUSALSeqCommand cmd : commands){
-			out += cmd.toMMLCommand() + "\n";
+			out += cmd.toMMLCommand(comment_addr) + "\n";
 		}
 		return out;
 	}

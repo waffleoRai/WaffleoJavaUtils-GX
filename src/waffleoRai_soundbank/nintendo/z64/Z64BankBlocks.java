@@ -13,6 +13,7 @@ class Z64BankBlocks {
 	protected static abstract class BankBlock{
 		protected int addr;
 		protected boolean flag = false;
+		protected String enm_str;
 		
 		public abstract int serialSize();
 		public abstract int serializeTo(FileBuffer buffer, boolean uidMode);
@@ -97,6 +98,16 @@ class Z64BankBlocks {
 		
 		public N64ADPCMTable loadToTable(){
 			return N64ADPCMTable.fromRaw(order, count, table);
+		}
+		
+		public boolean isEquivalent(Predictor other){
+			if(other == null) return false;
+			if(this.order != other.order) return false;
+			if(this.count != other.count) return false;
+			for(int i = 0; i < table.length; i++){
+				if(this.table[i] != other.table[i]) return false;
+			}
+			return true;
 		}
 		
 	}
@@ -188,7 +199,7 @@ class Z64BankBlocks {
 			return block;
 		}
 		
-		public int serialSize(){return 16;}
+		public int serialSize(){return Z64Bank.sermode_64?32:16;}
 		
 		public int serializeTo(FileBuffer buffer, boolean uidMode){
 			int flags = (wave_info.getCodec() & 0xf) << 4;
@@ -196,15 +207,31 @@ class Z64BankBlocks {
 			buffer.addToFile((byte)flags);
 			buffer.addToFile(wave_info.getU2());
 			buffer.addToFile((short)wave_info.getWaveSize());
-			if(!uidMode) buffer.addToFile(wave_info.getWaveOffset());
-			else buffer.addToFile(wave_info.getUID());
+			if(Z64Bank.sermode_64){
+				buffer.addToFile(0);
+				if(!uidMode) buffer.addToFile(Integer.toUnsignedLong(wave_info.getWaveOffset()));
+				else {
+					buffer.addToFile(0);
+					buffer.addToFile(wave_info.getUID());
+				}
+			}
+			else{
+				if(!uidMode) buffer.addToFile(wave_info.getWaveOffset());
+				else buffer.addToFile(wave_info.getUID());	
+			}
 			
 			if(loop != null) loop_offset = loop.addr;
 			if(pred != null) pred_offset = pred.addr;
-			buffer.addToFile(loop_offset);
-			buffer.addToFile(pred_offset);
+			if(Z64Bank.sermode_64){
+				buffer.addToFile((long)loop_offset);
+				buffer.addToFile((long)pred_offset);
+			}
+			else{
+				buffer.addToFile(loop_offset);
+				buffer.addToFile(pred_offset);	
+			}
 			
-			return 16;
+			return Z64Bank.sermode_64?32:16;
 		}
 
 		public Z64WaveInfo getWaveInfo(){
@@ -271,7 +298,8 @@ class Z64BankBlocks {
 			return block;
 		}
 		
-		public int serialSize(){return (data==null)?0:32;}
+		public int serialSize(){
+			return (data==null)?0:(Z64Bank.sermode_64?64:32);}
 		
 		public int serializeTo(FileBuffer buffer, boolean uidMode){
 			if(data == null) return 0;
@@ -280,6 +308,8 @@ class Z64BankBlocks {
 			buffer.addToFile(data.getHighRangeBottom());
 			buffer.addToFile(data.getDecay());
 			
+			if(Z64Bank.sermode_64) buffer.addToFile(0);
+			
 			if(envelope != null) off_env = envelope.addr;
 			if(snd_med != null) off_snd_med = snd_med.addr;
 			if(snd_lo != null) off_snd_lo = snd_lo.addr;
@@ -287,20 +317,35 @@ class Z64BankBlocks {
 			if(snd_hi != null) off_snd_hi = snd_hi.addr;
 			else off_snd_hi = 0;
 			
-			buffer.addToFile(off_env);
+			if(Z64Bank.sermode_64){
+				buffer.addToFile((long)off_env);
+				buffer.addToFile((long)off_snd_lo);
+				if(off_snd_lo != 0) {buffer.addToFile(Float.floatToRawIntBits(data.getTuningLow())); buffer.addToFile(0);}
+				else buffer.addToFile(0L);
+				
+				buffer.addToFile((long)off_snd_med);
+				buffer.addToFile(Float.floatToRawIntBits(data.getTuningMiddle()));
+				
+				buffer.addToFile((long)off_snd_hi);
+				if(off_snd_hi != 0) {buffer.addToFile(Float.floatToRawIntBits(data.getTuningHigh())); buffer.addToFile(0);}
+				else buffer.addToFile(0L);	
+			}
+			else{
+				buffer.addToFile(off_env);
+				
+				buffer.addToFile(off_snd_lo);
+				if(off_snd_lo != 0) buffer.addToFile(Float.floatToRawIntBits(data.getTuningLow()));
+				else buffer.addToFile(0);
+				
+				buffer.addToFile(off_snd_med);
+				buffer.addToFile(Float.floatToRawIntBits(data.getTuningMiddle()));
+				
+				buffer.addToFile(off_snd_hi);
+				if(off_snd_hi != 0) buffer.addToFile(Float.floatToRawIntBits(data.getTuningHigh()));
+				else buffer.addToFile(0);	
+			}
 			
-			buffer.addToFile(off_snd_lo);
-			if(off_snd_lo != 0) buffer.addToFile(Float.floatToRawIntBits(data.getTuningLow()));
-			else buffer.addToFile(0);
-			
-			buffer.addToFile(off_snd_med);
-			buffer.addToFile(Float.floatToRawIntBits(data.getTuningMiddle()));
-			
-			buffer.addToFile(off_snd_hi);
-			if(off_snd_hi != 0) buffer.addToFile(Float.floatToRawIntBits(data.getTuningHigh()));
-			else buffer.addToFile(0);
-			
-			return 32;
+			return serialSize();
 		}
 		
 	}
@@ -333,6 +378,7 @@ class Z64BankBlocks {
 			block.tune = Float.intBitsToFloat(ptr.nextInt());
 			block.off_env = ptr.nextInt();
 			block.updateCommonTuning();
+			block.enm_str = String.format("PERC%02d", idx);
 			return block;
 		}
 		
@@ -346,23 +392,32 @@ class Z64BankBlocks {
 			tune = Z64Drum.commonToLocalTuning(index, data.getTuning());
 		}
 		
-		public int serialSize(){return (data==null)?0:16;}
+		public int serialSize(){return (data==null)?0:(Z64Bank.sermode_64?32:16);}
 		
 		public int serializeTo(FileBuffer buffer, boolean uidMode){
 			if(data == null) return 0;
 			buffer.addToFile(data.getDecay());
 			buffer.addToFile(data.getPan());
 			buffer.addToFile((short)0);
+			if(Z64Bank.sermode_64) buffer.addToFile(0);
 			
 			if(envelope != null) off_env = envelope.addr;
 			if(sample != null) off_snd = sample.addr;
 			updateLocalTuning();
 			
-			buffer.addToFile(off_snd);
-			buffer.addToFile(Float.floatToRawIntBits(tune));
-			buffer.addToFile(off_env);
+			if(Z64Bank.sermode_64){
+				buffer.addToFile((long)off_snd);
+				buffer.addToFile(Float.floatToRawIntBits(tune));
+				buffer.addToFile(0);
+				buffer.addToFile((long)off_env);
+			}
+			else{
+				buffer.addToFile(off_snd);
+				buffer.addToFile(Float.floatToRawIntBits(tune));
+				buffer.addToFile(off_env);
+			}
 			
-			return 16;
+			return serialSize();
 		}
 		
 	}
@@ -385,14 +440,21 @@ class Z64BankBlocks {
 			return block;
 		}
 		
-		public int serialSize(){return (data==null)?0:8;}
+		public int serialSize(){return (data==null)?0:(Z64Bank.sermode_64?16:8);}
 		
 		public int serializeTo(FileBuffer buffer, boolean uidMode){
 			if(data == null) return 0;
 			if(sample != null) off_snd = sample.addr;
-			buffer.addToFile(off_snd);
-			buffer.addToFile(Float.floatToRawIntBits(data.getTuning()));
-			return 8;
+			if(Z64Bank.sermode_64){
+				buffer.addToFile((long)off_snd);
+				buffer.addToFile(Float.floatToRawIntBits(data.getTuning()));
+				buffer.addToFile(0);
+			}
+			else{
+				buffer.addToFile(off_snd);
+				buffer.addToFile(Float.floatToRawIntBits(data.getTuning()));	
+			}
+			return serialSize();
 		}
 		
 	}
@@ -406,12 +468,18 @@ class Z64BankBlocks {
 		}
 		
 		public int serialSize() {
+			if(Z64Bank.sermode_64) return offsets.size() << 3;
 			return offsets.size() << 2;
 		}
 
 		public int serializeTo(FileBuffer buffer, boolean uidMode) {
 			int sz = 0;
-			for(Integer off : offsets) {buffer.addToFile(off); sz+=4;}
+			if(Z64Bank.sermode_64){
+				for(Integer off : offsets) {buffer.addToFile(off); sz+=8;}
+			}
+			else{
+				for(Integer off : offsets) {buffer.addToFile(off); sz+=4;}	
+			}
 			return sz;
 		}
 		

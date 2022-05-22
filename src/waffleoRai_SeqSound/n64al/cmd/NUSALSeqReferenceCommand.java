@@ -30,7 +30,7 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 		reference = target;
 		//Update param 1
 		updateAddressParameter();
-		target.addReferee(this);
+		if(target != null) target.addReferee(this);
 	}
 	
 	public abstract NUSALSeqCmdType getRelativeCommand();
@@ -91,7 +91,7 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 		}
 	}
 	
-	public String toMMLCommand(){
+	protected StringBuilder toMMLCommand_child(){
 		StringBuilder sb = new StringBuilder(256);
 		sb.append(super.getCommand().toString());
 		sb.append(' ');
@@ -107,7 +107,7 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 			else sb.append(paramsToString());
 		}
 		else sb.append(paramsToString());
-		return sb.toString();
+		return sb;
 	}
-	
+		
 }

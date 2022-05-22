@@ -28,6 +28,7 @@ public abstract class NUSALSeqCommand {
 	public static final int SERIALFMT_V = 12;
 	public static final int SERIALFMT_NOTE = 13;
 	public static final int SERIALFMT_CPARAMS = 14;
+	public static final int SERIALFMT_COPYFILTER = 15;
 	
 	private NUSALSeqCmdType command;
 	private byte cmdbyte;
@@ -225,6 +226,7 @@ public abstract class NUSALSeqCommand {
 		if(ref == null) return;
 		if(ref.isChunk()){
 			NUSALSeqCommand head = ref.getChunkHead();
+			if(head == null) return; //Weird? Empty chunk?
 			setReference(head);
 			if(head.getLabel() == null) head.setLabel(ref.getLabel());
 		}
@@ -250,12 +252,34 @@ public abstract class NUSALSeqCommand {
 		return cmdname;
 	}
 	
-	public String toMMLCommand(){
+	protected StringBuilder toMMLCommand_child(){
+		StringBuilder sb = new StringBuilder(256);
 		String cmdname = "<NULL>";
 		if(command != null) cmdname = command.toString();
 		String params = paramsToString();
-		if(params != null && !params.isEmpty()) return cmdname + " " + params;
-		return cmdname;
+		sb.append(cmdname);
+		if(params != null && !params.isEmpty()){
+			sb.append(' ');
+			sb.append(params);
+		}
+		return sb;
+	}
+	
+	public String toMMLCommand(){
+		return toMMLCommand(false);
+	}
+	
+	public String toMMLCommand(boolean comment_addr){
+		StringBuilder sb = toMMLCommand_child();
+		if(comment_addr){
+			sb.append(" ; 0x");
+			sb.append(String.format("%04x", getAddress()));
+			if(tick_addr >= 0){
+				sb.append(", tick ");
+				sb.append(tick_addr);
+			}
+		}
+		return sb.toString();
 	}
 	
 	public byte[] serializeMe(){
@@ -387,6 +411,13 @@ public abstract class NUSALSeqCommand {
 			for(int j = 0; j < 8; j++){
 				bytes[j+1] = (byte)params[j];
 			}
+			break;
+		case SERIALFMT_COPYFILTER:
+			bytes = new byte[2];
+			bytes[0] = command.getBaseCommand();
+			i = (params[0] & 0xf) << 4;
+			i |= (params[1] & 0xf);
+			bytes[1] = (byte)i;
 			break;
 		}
 		return bytes;

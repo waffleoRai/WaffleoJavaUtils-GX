@@ -104,6 +104,10 @@ public class N64ADPCMTable extends ADPCMTable{
 	public int getCoefficient(int p, int o, int i) {
 		return coeff_table[p][o][i];
 	}
+	
+	public void setCoefficient(int p, int o, int i, int val){
+		coeff_table[p][o][i] = (int)((short)val);
+	}
 
 	public short[] getAsRaw(){
 		int pcount = coeff_table.length;

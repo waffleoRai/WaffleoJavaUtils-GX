@@ -196,4 +196,34 @@ public class Z64WaveInfo {
 		return true;
 	}
 	
+	/*--- Misc ---*/
+	
+	public Z64WaveInfo copy(){
+		Z64WaveInfo copy = new Z64WaveInfo();
+		copy.adpcm_book = this.adpcm_book;
+		copy.bank_addr = this.bank_addr;
+		copy.codec = this.codec;
+		copy.flag_actor = this.flag_actor;
+		copy.flag_env = this.flag_env;
+		copy.flag_music = this.flag_music;
+		copy.flag_sfx = this.flag_sfx;
+		copy.frame_count = this.frame_count;
+		copy.in_inst = this.in_inst;
+		copy.in_perc = this.in_perc;
+		copy.in_sfx = this.in_sfx;
+		copy.is_used = this.is_used;
+		copy.loop_count = this.loop_count;
+		copy.loop_end = this.loop_end;
+		copy.loop_start = this.loop_start;
+		copy.medium = this.medium;
+		copy.name = this.name;
+		copy.tuning = this.tuning;
+		copy.u2 = this.u2;
+		copy.uid = this.uid;
+		copy.unk_flags = this.unk_flags;
+		copy.wave_offset = this.wave_offset;
+		copy.wave_size = this.wave_size;
+		copy.setLoopState(this.loop_state);
+		return copy;
+	}
 }

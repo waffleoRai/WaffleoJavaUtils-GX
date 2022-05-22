@@ -126,7 +126,8 @@ public class NUSMMLSplitter {
 						processTrack(subch, ch, ly, substval);
 						stack.loadState(state_val);
 						subroutines.add(subch);
-						sublens.put(calltarg, subch.getSizeInTicks());
+						sublen = subch.getSizeInTicks();
+						sublens.put(calltarg, sublen);
 					}
 					pos[1] += sublen;
 					break;
@@ -298,6 +299,7 @@ public class NUSMMLSplitter {
 			
 			for(int j = 0; j < 8; j++){
 				scriptpath = genLayerScriptPath(mml_pathstem,i,j);
+				if(!FileBuffer.fileExists(scriptpath)) continue;
 				br = new BufferedReader(new FileReader(scriptpath));
 				reader.readInMMLScript(br);
 				br.close();
@@ -323,6 +325,7 @@ public class NUSMMLSplitter {
 					NUSALSeqCmdType ctype = cmd.getCommand();
 					if(ctype.flagSet(NUSALSeqCommands.FLAG_OPENTRACK)){
 						//Assumed channel open.
+						//System.err.println("Open channel command found");
 						int ch = cmd.getParam(0);
 						NUSALSeqCommand targ = cmd.getBranchTarget();
 						if(tsec.children[ch] == null) {
@@ -330,6 +333,7 @@ public class NUSMMLSplitter {
 							tsec.children[ch].children = new MMLTsec[8];
 						}
 						MMLBlock chblock = rdr_lbl_map.get(targ.getLabel());
+						reader.parseMMLBlock(chblock, null);
 						tsec.children[ch].maintrack.add(chblock);
 					}
 				}
@@ -350,6 +354,7 @@ public class NUSMMLSplitter {
 									NUSALSeqCommand targ = cmd.getBranchTarget();
 									if(chsec.children[ly] == null) chsec.children[ly] = new MMLTsec();
 									MMLBlock lblock = rdr_lbl_map.get(targ.getLabel());
+									reader.parseMMLBlock(lblock, null);
 									chsec.children[ly].maintrack.add(lblock);
 								}
 							}
@@ -359,6 +364,7 @@ public class NUSMMLSplitter {
 								String slbl = targ.getLabel();
 								if(!used_lbls.contains(slbl)){
 									MMLBlock sub = rdr_lbl_map.get(targ.getLabel());
+									reader.parseMMLBlock(sub, null);
 									chsec.subs.add(sub);
 									used_lbls.add(slbl);
 								}
@@ -379,6 +385,7 @@ public class NUSMMLSplitter {
 										String slbl = targ.getLabel();
 										if(!used_lbls.contains(slbl)){
 											MMLBlock sub = rdr_lbl_map.get(targ.getLabel());
+											reader.parseMMLBlock(sub, null);
 											lsec.subs.add(sub);
 											used_lbls.add(slbl);
 										}

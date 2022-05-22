@@ -3,8 +3,8 @@ package waffleoRai_soundbank.nintendo.z64;
 import java.util.Random;
 
 import waffleoRai_Sound.nintendo.Z64Sound;
+import waffleoRai_Sound.nintendo.Z64Sound.Z64Tuning;
 import waffleoRai_Sound.nintendo.Z64WaveInfo;
-import waffleoRai_SoundSynth.SynthMath;
 import waffleoRai_soundbank.nintendo.z64.Z64Bank.Labelable;
 
 public class Z64Drum extends Labelable{
@@ -12,7 +12,8 @@ public class Z64Drum extends Labelable{
 	private byte pan;
 	
 	//private float tune = 1.0f;
-	private float common_tune = 1.0f;
+	//private float common_tune = 1.0f;
+	private Z64Tuning common_tune;
 	
 	private Z64Envelope envelope;
 	private Z64WaveInfo sample;
@@ -21,13 +22,13 @@ public class Z64Drum extends Labelable{
 	
 	public byte getDecay(){return decay;}
 	public byte getPan(){return pan;}
-	public float getTuning(){return common_tune;}
+	public Z64Tuning getTuning(){return common_tune;}
 	public Z64Envelope getEnvelope(){return envelope;}
 	public Z64WaveInfo getSample(){return sample;}
 	
 	public void setDecay(byte val){decay = val;}
 	public void setPan(byte val){pan = val;}
-	public void setTuning(float val){common_tune = val;}
+	public void setTuning(Z64Tuning val){common_tune = val;}
 	public void setEnvelope(Z64Envelope val){envelope = val;}
 	public void setSample(Z64WaveInfo val){sample = val;}
 	public void setID(int val){id = val;}
@@ -37,18 +38,20 @@ public class Z64Drum extends Labelable{
 		id = r.nextInt();
 	}
 	
-	public static float commonToLocalTuning(int slot_idx, float value){
-		int midi_note = slot_idx + Z64Sound.STDRANGE_BOTTOM;
+	public static float commonToLocalTuning(int slot_idx, Z64Tuning value){
+		/*int midi_note = slot_idx + Z64Sound.STDRANGE_BOTTOM;
 		if(midi_note != Z64Sound.MIDDLE_C){
 			int cents = 100 * (midi_note - Z64Sound.MIDDLE_C);
 			float ratio = (float)(SynthMath.cents2FreqRatio(cents));
 			return ratio/value;
 		}
-		else return value;
+		else return value;*/
+		int midi_note = slot_idx + Z64Sound.STDRANGE_BOTTOM;
+		return Z64Sound.calculateTuning((byte)midi_note, value);
 	}
 	
-	public static float localToCommonTuning(int slot_idx, float value){
-		int midi_note = slot_idx + Z64Sound.STDRANGE_BOTTOM;
+	public static Z64Tuning localToCommonTuning(int slot_idx, float value){
+		/*int midi_note = slot_idx + Z64Sound.STDRANGE_BOTTOM;
 		if(midi_note != Z64Sound.MIDDLE_C){
 			int cents = 100 * (midi_note - Z64Sound.MIDDLE_C);
 			float ratio = (float)(SynthMath.cents2FreqRatio(cents));
@@ -61,7 +64,9 @@ public class Z64Drum extends Labelable{
 			
 			return value;
 		}
-		else return value;
+		else return value;*/
+		int midi_note = slot_idx + Z64Sound.STDRANGE_BOTTOM;
+		return Z64Sound.calculateTuning((byte)midi_note, value);
 	}
 	
 	public boolean drumEquals(Z64Drum other){
@@ -69,8 +74,12 @@ public class Z64Drum extends Labelable{
 		if(other == this) return true;
 		
 		if(this.decay != other.decay) return false;
-		if(this.common_tune != other.common_tune) return false;
 		if(this.pan != other.pan) return false;
+		
+		//Check tuning.
+		if(this.common_tune == null) this.common_tune = new Z64Tuning();
+		if(other.common_tune == null) other.common_tune = new Z64Tuning();
+		if(!this.common_tune.tuningIsEquivalent(other.common_tune, 5)) return false;
 		
 		if(this.envelope == null){
 			if(other.envelope != null) return false;

@@ -22,17 +22,22 @@ import waffleoRai_SeqSound.n64al.NUSALSeqCommandSource;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
 import waffleoRai_Utils.BufferReference;
 import waffleoRai_DataContainers.CoverageMap1D;
+import waffleoRai_DataContainers.MultiValMap;
+import waffleoRai_DataContainers.TallyMap;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_Utils.StackStack;
 
 public class NUSALSeqReader implements NUSALSeqCommandSource{
 	
+	//TODO: Need to handle calls better (need to count length in ticks!) Recursive parse?
+	
 	/*--- Constants ---*/
 	
-	public static final int PARSEMODE_SEQ = 0;
-	public static final int PARSEMODE_CHANNEL = 1;
-	public static final int PARSEMODE_LAYER = 2;
+	public static final int PARSEMODE_SEQ = 0x1;
+	public static final int PARSEMODE_CHANNEL = 0x2;
+	public static final int PARSEMODE_LAYER = 0x4;
+	public static final int PARSEMODE_SUB = 0x8000;
 	
 	/*--- Instance Variables ---*/
 	
@@ -40,6 +45,13 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	private Map<Integer, NUSALSeqCommand> cmdmap;
 	private Map<String, NUSALSeqCommand> lblmap;
 	private Map<Integer, Integer> tickmap; //Address -> tick (first tick it can appear at)
+	private MultiValMap<Integer, NUSALSeqCommand> datarefs;
+	private TallyMap sub_ticklen;
+	
+	//Labeling
+	private int seq_subs;
+	private int[] ch_subs;
+	private int[][] ly_subs;
 	
 	private CoverageMap1D cmd_coverage;
 	private CoverageMap1D[] ch_shortnotes;
@@ -57,6 +69,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		tickmap = new TreeMap<Integer, Integer>();
 		ch_shortnotes = new CoverageMap1D[16];
 		branch_stack = new StackStack<Integer>();
+		sub_ticklen = new TallyMap();
 	}
 	
  	public NUSALSeqReader(FileBuffer seqData){
@@ -65,6 +78,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		cmdmap = new TreeMap<Integer, NUSALSeqCommand>();
 		lblmap = new HashMap<String, NUSALSeqCommand>();
 		tickmap = new TreeMap<Integer, Integer>();
+		datarefs = new MultiValMap<Integer, NUSALSeqCommand>();
 		ch_shortnotes = new CoverageMap1D[16];
 		branch_stack = new StackStack<Integer>();
 	}
@@ -98,6 +112,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	/*--- Read ---*/
  	
  	public void readInMMLScript(BufferedReader input) throws IOException{
+ 		//TODO Update for data compatibility
  		if(rdr_blocks == null) rdr_blocks = new LinkedList<MMLBlock>();
  		if(rdr_lbl_map == null) rdr_lbl_map = new HashMap<String, MMLBlock>();
  		
@@ -311,6 +326,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	}
 	
 	private NUSALSeqDataCommand tryReadData(NUSALSeqDataRefCommand cmd){
+		//TODO Update
 		//Most data structs are fixed size, but some are indexed w/ Q
 		//And some also contain jump addresses, so that complicates things too.
 		if(cmd == null) return null;
@@ -433,6 +449,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	}
 	
 	private void linkReferences(){
+		//TODO Update to reorder data block processing.
 		if(cmdmap.isEmpty()) return;
 		if(cmd_coverage != null) cmd_coverage.mergeBlocks();
 		
@@ -440,6 +457,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		alist.addAll(cmdmap.keySet());
 		//Collections.sort(alist);
 		
+		//Reset label map, then add existing labels.
 		lblmap.clear();
 		for(Integer addr : alist){
 			NUSALSeqCommand cmd = cmdmap.get(addr);
@@ -453,6 +471,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 				if(cmd instanceof NUSALSeqReferenceCommand){
 					int refaddr = cmd.getBranchAddress();
 					NUSALSeqCommand trg = cmdmap.get(refaddr);
+					//TODO: Call labeling works differently.
 					if(trg != null){
 						cmd.setReference(trg);
 						//Give the referenced command a label, if it doesn't already have one.
@@ -469,6 +488,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 					}
 					else {
 						if(cmd instanceof NUSALSeqDataRefCommand){
+							//TODO FIRST just note data refs in map. Then we will scan backwards.
 							//try to read in data.
 							//	Data shouldn't be caught by initial parse cycle, so have to be caught here.
 							NUSALSeqDataRefCommand drcmd = (NUSALSeqDataRefCommand)cmd;
@@ -493,7 +513,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 								}
 								
 								//Add
-								cmdmap.put(refaddr, drcmd);
+								cmdmap.put(refaddr, dcmd);
 								checked.add(refaddr);
 							}
 						}
@@ -520,11 +540,15 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	}
 	
 	private void readTrack(List<int[]> starts, List<List<int[]>> childlists, CoverageMap1D parentmap, int mode, int chidx, int lidx){
+		//TODO More for serialization. Seems like some data blocks need to start on certain alignments, requiring padding before if
+		//	previous command does not end aligned. See OoT seq 30.
 		int pos = 0;
 		int tick = 0;
+		int sub_addr = -1; //Current subroutine
 		NUSALSeqCommand cmd = null, prev_cmd = null;
 		LinkedList<int[]> branches = new LinkedList<int[]>();
 		LinkedList<Integer> opbranches = new LinkedList<Integer>();
+		LinkedList<Integer> callstack = new LinkedList<Integer>();
 		if(starts != null && !starts.isEmpty()) branches.addAll(starts);
 		int[] pp = null;
 		if(!branches.isEmpty()){
@@ -605,8 +629,30 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			cmdmap.put(pos, cmd);
 			cmd_coverage.addBlock(pos, pos + cmd.getSizeInBytes());
 			cmd.setAddress(pos);
-			if(tick >= 0) tickmap.put(pos, tick);
+			if(tick >= 0){
+				tickmap.put(pos, tick);
+				cmd.setTickAddress(tick);
+			}
+			if(sub_addr >= 0){
+				sub_ticklen.increment(sub_addr, cmd.getSizeInTicks());
+			}
+			//DEBUG PRINT
 			//System.err.println("added to map: 0x" + Integer.toHexString(pos) + " -- " + cmd.toString());
+			System.err.print("NUSALSeqReader.readTrack || ");
+			System.err.print(String.format("0x%04x ", cmd.getAddress()));
+			System.err.print("tick=" + cmd.getTickAddress() + " ");
+			switch(mode){
+			case PARSEMODE_SEQ:
+				System.err.print("SEQ ");
+				break;
+			case PARSEMODE_LAYER:
+				System.err.print("LYR" + lidx + " ");
+			case PARSEMODE_CHANNEL:
+				System.err.print("CHN" + chidx + " ");
+				break;
+			}
+			System.err.print(cmd.toMMLCommand());
+			System.err.print("\n");
 			
 			//Analyze logic
 			if(prev_cmd != null) prev_cmd.setSubsequentCommand(cmd);
@@ -634,6 +680,20 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 					tick += cmd.getSizeInTicks();
 					
 					branch_stack.saveState(addr);
+				}
+				else if(e_cmd == NUSALSeqCmdType.CALL){
+					//Has this call been seen before?
+					int call_addr = cmd.getBranchAddress();
+					if(sub_ticklen.hasEntry(call_addr)){
+						tick += sub_ticklen.getCount(call_addr);
+						pos += cmd.getSizeInBytes();
+					}
+					else{
+						if(sub_addr >= 0) callstack.push(sub_addr);
+						sub_addr = call_addr;
+						pos = call_addr;
+						sub_ticklen.setZero(call_addr);
+					}
 				}
 				else{
 					int addr = cmd.getBranchAddress();
@@ -679,7 +739,12 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 						suppress_nullcheck = true;
 						prev_cmd = null;
 						pos = opbranches.pop();
-						tick = -1;
+						tick = -1; 
+						
+						if(sub_addr >= 0){
+							if(callstack.isEmpty()) sub_addr = -1;
+							else sub_addr = callstack.pop();
+						}
 						
 						if(!branch_stack.loadState(pos)) branch_stack.clear();
 						branch_stack.push(pos);
@@ -729,13 +794,18 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			}
 		}
 		
-		
 	}
 	
 	public void preParse(){
 		cmdmap.clear();
 		cmd_coverage = new CoverageMap1D();
 		branch_stack.clear();
+		datarefs.clearValues();
+		tickmap.clear();
+		
+		seq_subs = 0;
+		ch_subs = new int[16];
+		ly_subs = new int[16][8];
 		
 		List<List<int[]>> clists = new ArrayList<List<int[]>>(16);
 		for(int i = 0; i < 16; i++) clists.add(new LinkedList<int[]>());

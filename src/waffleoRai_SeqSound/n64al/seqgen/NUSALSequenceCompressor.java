@@ -73,7 +73,61 @@ public class NUSALSequenceCompressor {
 	
 	/*----- Inner Classes -----*/
 	
-	private static class CompOption implements Comparable<CompOption>{
+	protected static class CompInstance implements Comparable<CompInstance>{
+
+		public static boolean REVSORT_OVERLAP = true;
+		
+		public int start;
+		public int end;
+		public int overlap; //Count
+		
+		public CompInstance(int start, int len){
+			this.start = start;
+			end = start + len;
+			overlap = 0;
+		}
+		
+		public boolean equals(Object o){
+			return this == o;
+		}
+		
+		public int addsubOverlapWith(CompInstance other, boolean add){
+			if(other == null) return -1; //Other is lower, no overlap
+			if(end <= other.start) return 1; //Other is higher, no overlap
+			if(start >= other.end) return -1; //Other is lower, no overlap
+			
+			int amt = 0;
+			int ost = other.start>start?other.start:start;
+			int oed = other.end<end?other.end:end;
+			amt = oed - ost;
+			
+			if(add){
+				overlap += amt;
+				other.overlap += amt;
+			}
+			else{
+				overlap -= amt;
+				other.overlap -= amt;
+			}
+			
+			return 0;
+		}
+		
+		public int compareTo(CompInstance o) {
+			if(o == null) return 1;
+			if(this.overlap != o.overlap){
+				if(REVSORT_OVERLAP) return o.overlap - this.overlap;
+				return this.overlap - o.overlap;
+			}
+			if(this.start != o.start) return this.start - o.start;
+			if(this.end != o.end) return this.end - o.end;
+			
+			return 0;
+		}
+		
+	}
+	
+	protected static class CompOption implements Comparable<CompOption>{
 		
 		public static boolean REVSORT_BYTESAVE = true;
 		
@@ -171,6 +225,8 @@ public class NUSALSequenceCompressor {
 				first = false;
 			}
 			System.err.print("} | LEN: " + len);
+			System.err.print(" | ICOUNT: " + starts.size());
+			System.err.print(" | BYTELEN: " + sub_size);
 			System.err.print("\n");
 		}
 		
@@ -314,6 +370,53 @@ public class NUSALSequenceCompressor {
 		System.err.println("NUSALSequenceCompressor.doComp_greedy_global || Done.");
 	}
 	
+	private void removeOverlappingInstances(CompOption compop){
+		if(compop == null) return;
+		LinkedList<CompInstance> cinst = new LinkedList<CompInstance>();
+		
+		int icount = compop.starts.size();
+		CompInstance[] instarr = new CompInstance[icount];
+		int i = 0;
+		Collections.sort(compop.starts);
+		for(Integer st : compop.starts){
+			CompInstance ci = new CompInstance(st, compop.len);
+			instarr[i] = ci;
+			cinst.add(ci);
+			
+			//Calculate overlaps with all previously added...
+			for(int j = i-1; j >= 0; j--){
+				if(ci.addsubOverlapWith(instarr[j], true) != 0) break;
+			}
+			i++;
+		}
+		
+		compop.starts.clear();
+		Collections.sort(cinst);
+		
+		//Remove top instance until list is empty
+		CompInstance rmv = null;
+		while(!cinst.isEmpty()){
+			rmv = cinst.pop();
+			if(rmv.overlap <= 0) {
+				cinst.push(rmv);
+				break;
+			}
+			
+			for(CompInstance ci : cinst){
+				ci.addsubOverlapWith(rmv, false);
+			}
+			Collections.sort(cinst);
+		}
+		
+		for(CompInstance ci : cinst){
+			compop.starts.add(ci.start);
+		}
+		
+		Collections.sort(compop.starts);
+		compop.updateByteSavings();
+		compop.updateCoverage();
+	}
+	
 	private void findAllInstances(CompOption compop){
 		if(compop.starts.isEmpty()) return;
 		if(compop.len < min_sub_cmds) return;
@@ -321,8 +424,8 @@ public class NUSALSequenceCompressor {
 		//Also calculate byte size and savings
 		int baseidx = compop.starts.get(0);
 		compop.starts.clear();
-		compop.coverage = new CoverageMap1D();
-		compop.coverage.addBlock(baseidx, baseidx+compop.len);
+		//compop.coverage = new CoverageMap1D();
+		//compop.coverage.addBlock(baseidx, baseidx+compop.len);
 		
 		NUSALSeqCommand cmd = cmdlist.get(baseidx);
 		int basetick = cmd.getTickAddress();
@@ -330,6 +433,7 @@ public class NUSALSequenceCompressor {
 		
 		for(int i = 0; i < maxidx; i++){
 			if(compop.starts.contains(i)) continue;
+			if(i == baseidx){compop.starts.add(i); continue;}
 			cmd = cmdlist.get(i);
 			if(cmd.isEndCommand()) continue;
 			int ctick = cmd.getTickAddress();
@@ -344,14 +448,14 @@ public class NUSALSequenceCompressor {
 				NUSALSeqCommand cmd2 = cmdlist.get(i2);
 				if(cmd2.isEndCommand()){pass = false; break;}
 				if(breakidxs.contains(i2)){pass = false; break;}
-				if(compop.coverage.isCovered(i2)){pass = false; break;}
+				//if(compop.coverage.isCovered(i2)){pass = false; break;}
 				
 				if(!commandsEquivalent(cmd1, cmd2, basetick, ctick)){pass = false; break;}
 			}
 			
 			if(pass){
 				compop.starts.add(i);
-				compop.coverage.addBlock(i, i+compop.len);
+				//compop.coverage.addBlock(i, i+compop.len);
 			}
 		}
 		//Sort starts
@@ -374,7 +478,7 @@ public class NUSALSequenceCompressor {
 			//compop.coverage.addBlock(tick, tick + compop.tick_len);
 			compop.coverage.addBlock(s, s+compop.len);
 		}*/
-		compop.coverage.mergeBlocks();
+		//compop.coverage.mergeBlocks();
 		
 		//Calculate byte savings
 		compop.updateByteSavings();
@@ -423,15 +527,16 @@ public class NUSALSequenceCompressor {
 				return t <= cmdidx;
 			}
 		});
-		//match_sts.remove(cmdidx);
-		//for(int i = 0; i < cmdidx; i++) match_sts.remove(i);
 		if(match_sts.isEmpty()) return; //No matches even at minimum.
 		
 		//Otherwise, add the minimum as a candidate
 		int blen = compop.sub_size;
+		removeOverlappingInstances(compop);
 		if(compop.bytes_saved > 0){
 			cands_list.add(compop);
 			for(Integer cstart : compop.starts) cands_map.addValue(cstart, compop);	
+			//System.err.println("*Candidate added -- cmdidx = " + cmdidx + ", len = " + compop.len + ", blen = " + blen);
+			//compop.debug_printerr();
 		}
 		
 		//Find maximum possible length
@@ -458,6 +563,7 @@ public class NUSALSequenceCompressor {
 			temp.addAll(match_sts);
 			match_sts.clear();
 			
+			//Get the next command to look at (for reference)
 			int i1 = cmdidx + l - 1;
 			if(breakidxs.contains(i1)) return; //Shouldn't happen thanks to maxlen, but just to double check.
 			NUSALSeqCommand cmd1 = cmdlist.get(i1);
@@ -466,10 +572,11 @@ public class NUSALSequenceCompressor {
 			for(Integer st : temp){
 				//See if it still matches for this length 
 				int i2 = st + l - 1;
-				if(breakidxs.contains(i2)) continue;
-				if(match_sts.contains(i2)) continue; //Intersects instance previously found.
+				if(i2 >= ccount) continue; //Continues past end of sequence.
+				if(breakidxs.contains(i2)) continue; //Hits a breakpoint.
+				//if(match_sts.contains(i2)) continue; //Intersects instance previously found.
 				NUSALSeqCommand ocmd = cmdlist.get(st);
-				NUSALSeqCommand cmd2 = cmdlist.get(i2); //TODO i2 keeps going out of range. Figure out why.
+				NUSALSeqCommand cmd2 = cmdlist.get(i2);
 				int comptick = ocmd.getTickAddress();
 				if(commandsEquivalent(cmd1, cmd2, basetick, comptick)){
 					match_sts.add(st);
@@ -480,16 +587,19 @@ public class NUSALSequenceCompressor {
 				compop = new CompOption();
 				compop.starts.add(cmdidx);
 				compop.starts.addAll(match_sts);
-				compop.len = minlen;
+				compop.len = l;
 
 				compop.sub_size = blen;
-				compop.updateByteSavings();
-				compop.updateCoverage();
+				removeOverlappingInstances(compop);
+				//compop.updateByteSavings();
+				//compop.updateCoverage();
 				
 				//findAllInstances(compop); NOOOOOOOO
 				if(compop.bytes_saved > 0){
 					cands_list.add(compop);
 					for(Integer cstart : compop.starts) cands_map.addValue(cstart, compop);	
+					//System.err.println("Candidate added -- cmdidx = " + cmdidx + ", len = " + compop.len + ", blen = " + blen);
+					//compop.debug_printerr();
 				}
 			}
 		}
@@ -538,6 +648,9 @@ public class NUSALSequenceCompressor {
 		//System.err.println("Compressor -- estimated commands: " + c_count);
 		//System.err.println("Compressor -- actual commands: " + cmdlist.size());
 		breakidxs.remove(0);
+		
+		//System.err.println("--DEBUG-- Linearized Track:");
+		//for(int j = 0; j < c_count; j++) System.err.println(j + "\t" + cmdlist.get(j).toMMLCommand());
 	}
 	
 	private void rebuildTimeblocks(){

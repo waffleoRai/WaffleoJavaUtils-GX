@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -41,6 +42,7 @@ public class Z64Wave extends SoundAdapter{
 	private int loopCount;
 	private int loopStart;
 	private int loopEnd;
+	private short[] loopState; //TODO
 	
 	private float tuning;
 	
@@ -274,6 +276,10 @@ public class Z64Wave extends SoundAdapter{
 		loopCount = info.getLoopCount(); //0 means none, -1 means infinite
 		loopStart = info.getLoopStart();
 		loopEnd = info.getLoopEnd();
+		if(loopCount != 0){
+			short[] iloops = info.getLoopState();
+			if(iloops != null) loopState = Arrays.copyOf(iloops, 16);
+		}
 		setTuning(info.getTuning());
 	}
 	
@@ -291,17 +297,14 @@ public class Z64Wave extends SoundAdapter{
 			
 			//Mark states in ADPCM table at start and loop point
 			if(wav.loopStart >= 0){
-				if(wav.adpcm_table != null){
-					AudioSampleStream str = wav.createSampleStream(false);
-					try{
-						int order = wav.adpcm_table.getOrder();
-						for(int i = 0; i < (wav.loopStart - order); i++) str.nextSample();
-						for(int i = 0; i < order; i++){
-							wav.adpcm_table.setStartBacksample(order-1-i, str.nextSample()[0]);
-						}
-						str.close();
+				if(wav.adpcm_table != null && wav.loopState == null){
+					wav.loopState = new short[16];
+					int[] s16 = wav.getSamples_16Signed(0);
+					int loopsnap = wav.loopStart & ~0x7;
+					for(int i = 1; i <= 16; i++){
+						if((loopsnap - i) < 0) break;
+						wav.loopState[16-i] = (short)s16[loopsnap - i];
 					}
-					catch(Exception e){e.printStackTrace();};
 				}
 			}
 		}
@@ -316,6 +319,11 @@ public class Z64Wave extends SoundAdapter{
 				if(bytelen % 2 != 0) bytelen--;
 				wav.raw_data = data.getBytes(0, bytelen); 
 			}
+		}
+		if(info.getLoopStart() < 0){
+			info.setLoopStart(0);
+			info.setLoopEnd(bytelen);
+			info.setLoopCount(0);
 		}
 		
 		return wav;
@@ -445,7 +453,13 @@ public class Z64Wave extends SoundAdapter{
 	public boolean loops() {return loopCount >= 0;}
 	public int getLoopFrame() {return loopStart;}
 	public int getLoopEndFrame() {return loopEnd;}
+	public int getLoopCount(){return loopCount;}
+	public short[] getLoopState(){return loopState;}
 	public byte[] getRawData(){return this.raw_data;}
+	
+	public int getCodecEnum(){return this.codec;}
+	public float getTuningValue(){return this.tuning;}
+	public N64ADPCMTable getADPCMTable(){return this.adpcm_table;}
 	
 	/*----- Setters -----*/
 	

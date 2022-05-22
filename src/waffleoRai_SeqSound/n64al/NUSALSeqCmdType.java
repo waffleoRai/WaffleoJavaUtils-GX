@@ -111,7 +111,7 @@ public enum NUSALSeqCmdType {
 	SET_CH_FILTER(0xb0, 1, 3, 0x302, NUSALSeqCommand.SERIALFMT_2, "setfilter"),
 	CLEAR_CH_FILTER(0xb1, 0, 1, 0x302, NUSALSeqCommand.SERIALFMT_, "clearfilter"),
 	LOAD_P_TABLE(0xb2, 1, 3, 0x10002, NUSALSeqCommand.SERIALFMT_2, "ldptbl"),
-	COPY_CH_FILTER(0xb3, 1, 2, 0x42, NUSALSeqCommand.SERIALFMT_1, "copyfilter"),
+	COPY_CH_FILTER(0xb3, 2, 2, 0x42, NUSALSeqCommand.SERIALFMT_COPYFILTER, "copyfilter"),
 	DYNTABLE_WRITE(0xb4, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "p2dyntable"),
 	DYNTABLE_READ(0xb5, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "dyntable2p"),
 	DYNTABLE_LOAD(0xb6, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "lddyn"),

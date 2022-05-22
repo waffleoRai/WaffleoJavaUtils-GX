@@ -24,6 +24,7 @@ import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Sound.nintendo.N64ADPCMTable;
 import waffleoRai_Sound.nintendo.Z64Sound;
+import waffleoRai_Sound.nintendo.Z64Sound.Z64Tuning;
 import waffleoRai_Sound.nintendo.Z64Wave;
 import waffleoRai_Sound.nintendo.Z64WaveInfo;
 import waffleoRai_SoundSynth.SynthBank;
@@ -50,10 +51,10 @@ public class Z64Bank implements WriterPrintable{
 	public static final String SOUND_KEY_STEM = "wave64_";
 	
 	public static final String UBNK_MAGIC = "UBNK";
-	public static final int UBNK_VERSION_MAJOR = 1;
-	public static final int UBNK_VERSION_MINOR = 0;
+	public static final int UBNK_VERSION_MAJOR = 2;
+	public static final int UBNK_VERSION_MINOR = 2;
 	public static final String UWSD_MAGIC = "UWSD";
-	public static final int UWSD_VERSION_MAJOR = 1;
+	public static final int UWSD_VERSION_MAJOR = 2;
 	public static final int UWSD_VERSION_MINOR = 0;
 	
 	public static final String FNMETAKEY_I0COUNT = "INSTCOUNT";
@@ -65,12 +66,20 @@ public class Z64Bank implements WriterPrintable{
 	public static final int STDRANGE_SIZE = Z64Sound.STDRANGE_SIZE;
 	public static final int MIDDLE_C = Z64Sound.MIDDLE_C;
 	
+	/*----- Static Variables -----*/
+	
+	protected static boolean sermode_le = false;
+	protected static boolean sermode_64 = false;
+	
 	/*----- Private Classes -----*/
 	
 	protected static abstract class Labelable{
 		protected String name;
+		//protected String enm_str;
 		public String getName(){return name;}
+		//public String getEnumString(){return enm_str;}
 		public void setName(String s){name = s;}
+		//public void setEnumString(String s){enm_str = s;}
 	}
 	
 	/*----- Instance Variables -----*/
@@ -295,7 +304,8 @@ public class Z64Bank implements WriterPrintable{
 					winfo.addr = perc.off_snd;
 					waveMap.put(perc.off_snd, winfo);
 					perc.sample = winfo;
-					winfo.wave_info.setTuning(perc.data.getTuning());
+					//winfo.wave_info.setTuning(perc.data.getTuning());
+					winfo.wave_info.setTuning(1.0f);
 				}	
 				
 				perc.data.id = offset;
@@ -363,6 +373,20 @@ public class Z64Bank implements WriterPrintable{
 			winfo.wave_info.setName(SOUND_KEY_STEM + String.format("%08x", winfo.wave_info.getWaveOffset()));
 		}
 		
+		//Set enum strings
+		for(int i = 0; i < 126; i++){
+			if(bank.inst_presets[i] != null){
+				bank.inst_presets[i].enm_str = String.format("INST%03d", i);
+			}
+		}
+		if(bank.sfx_slots != null){
+			for(int i = 0; i < bank.sfx_slots.length; i++){
+				if(bank.sfx_slots[i] != null){
+					bank.sfx_slots[i].enm_str = String.format("SFX%03d", i);
+				}
+			}
+		}
+		
 		bank.updateAllReferences();
 		return bank;
 	}
@@ -385,10 +409,15 @@ public class Z64Bank implements WriterPrintable{
 		List<Labelable> labelq = new LinkedList<Labelable>();
 		
 		//Read data blocks
+		String[] ienm = new String[126];
+		String[] penm = new String[64];
+		//System.err.println("Hello there. File Size: 0x" + Long.toHexString(data.getFileSize()));
 		while(data.getCurrentPosition() < fsize){
 			String cmagic = data.getASCII_string(data.getCurrentPosition(), 4);
 			data.skipBytes(4L);
 			int csz = data.nextInt();
+			long cstart = data.getCurrentPosition();
+			//System.err.println("UBNK Chunk Signature: " + cmagic + " | Size = 0x" + Integer.toHexString(csz));
 			if(cmagic.equals("META")){
 				bank.uid = data.nextInt();
 				bank.medium = Byte.toUnsignedInt(data.nextByte());
@@ -413,7 +442,7 @@ public class Z64Bank implements WriterPrintable{
 				bank.wsd_ref = data.nextInt();
 			}
 			else if(cmagic.equals("ENVL")){
-				long basepos = data.getCurrentPosition();
+				long basepos = cstart-8L;
 				int ecount = Short.toUnsignedInt(data.nextShort());
 				if(ecount > 0){
 					long tpos = data.getCurrentPosition();
@@ -424,32 +453,36 @@ public class Z64Bank implements WriterPrintable{
 						tpos += 2;
 						envs[i] = EnvelopeBlock.readFrom(data.getReferenceAt(epos));
 						envs[i].addr = (int)epos;
+						//System.err.println("Envelope " + i + " read: " + (envs[i] != null));
 					}	
 				}		
-				data.skipBytes(csz-2);
+				data.setCurrentPosition(cstart + csz);
 			}
 			else if(cmagic.equals("INST")){
-				bank.icount = data.nextInt();
+				int basepos = (int)cstart - 8;
+				bank.icount = data.nextInt(); //icount is updated later.
 				for(int i = 0; i < 126; i++){
 					inst_offset_tbl[i] = Short.toUnsignedInt(data.nextShort());
+					//System.err.println("inst_offset_tbl[" + i + "] = 0x" + Integer.toHexString(inst_offset_tbl[i]));
 				}
 				data.skipBytes(4L);
 				//Instruments
 				for(int i = 0; i < bank.icount; i++){
 					int addr = (int)data.getCurrentPosition();
 					InstBlock ib = InstBlock.readFrom(data.getReferenceAt(addr));
-					ib.addr = addr;
-					ib.data.id = addr;
-					instmap.put(addr, ib);
+					ib.addr = addr - basepos;
+					ib.data.id = ib.addr;
+					instmap.put(ib.addr, ib);
 					bank.inst_pool.put(ib.addr, ib.data);
 					data.skipBytes(32L);
 					labelq.add(ib.data);
+					//System.err.println("DEBUG: ID for inst " + i + ": 0x" + Integer.toHexString(ib.addr));
 				}
 			}
 			else if(cmagic.equals("PERC")){
 				bank.pcount = data.nextInt();
 				for(int i = 0; i < bank.pcount; i++){
-					int addr = (int)data.getCurrentPosition();
+					int addr = (int)cstart;
 					Z64Drum drum = new Z64Drum();
 					drum.id = addr;
 					drum.setDecay(data.nextByte());
@@ -457,8 +490,13 @@ public class Z64Bank implements WriterPrintable{
 					int min = Byte.toUnsignedInt(data.nextByte());
 					int max = Byte.toUnsignedInt(data.nextByte());
 					int waveref = data.nextInt();
-					drum.setTuning(Float.intBitsToFloat(data.nextInt()));
-					int envref = data.nextInt();
+					Z64Tuning drumtune = new Z64Tuning();
+					drumtune.root_key = data.nextByte();
+					drumtune.fine_tune = data.nextByte();
+					drum.setTuning(drumtune);
+					//drum.setTuning(Float.intBitsToFloat(data.nextInt()));
+					//int envref = data.nextInt();
+					int envref = (int)data.nextShort();
 					
 					bank.perc_pool.put(drum.id, drum);
 					for(int j = min; j <= max; j++){
@@ -466,31 +504,54 @@ public class Z64Bank implements WriterPrintable{
 						pblock.data = drum;
 						pblock.off_env = envref;
 						pblock.off_snd = waveref;
+						pblock.updateLocalTuning();
 						bank.perc_slots[j] = pblock;
 					}
 					labelq.add(drum);
 				}
 			}
 			else if(cmagic.equals("LABL")){
-				long cpos = data.getCurrentPosition();
+				long cpos = cstart;
 				for(Labelable l : labelq){
 					SerializedString ss = data.readVariableLengthString("UTF8", cpos, BinFieldSize.WORD, 2);
 					l.setName(ss.getString());
 					cpos += ss.getSizeOnDisk();
 				}
-				data.skipBytes(csz);
+				data.setCurrentPosition(cstart+csz);
+			}
+			else if(cmagic.equals("IENM")){
+				long cpos = cstart;
+				for(int i = 0; i < 126; i++){
+					SerializedString ss = data.readVariableLengthString("UTF8", cpos, BinFieldSize.WORD, 2);
+					cpos += ss.getSizeOnDisk();
+					ienm[i] = ss.getString();
+				}
+				data.setCurrentPosition(cstart+csz);
+			}
+			else if(cmagic.equals("PENM")){
+				long cpos = cstart;
+				for(int i = 0; i < 64; i++){
+					//System.err.println("perc slot = " + i + ", cpos = 0x" + Long.toHexString(cpos));
+					SerializedString ss = data.readVariableLengthString("UTF8", cpos, BinFieldSize.WORD, 2);
+					cpos += ss.getSizeOnDisk();
+					penm[i] = ss.getString();
+				}
+				//System.err.println("cpos = 0x" + Long.toHexString(cpos));
+				data.setCurrentPosition(cstart+csz);
 			}
 			else data.skipBytes(csz);
 		}
 		
 		//Link things (need to make dummy wave infos as well)
+		//TODO Split block instances for different slots
 		for(int i = 0; i < 126; i++){
 			if(inst_offset_tbl[i] <= 0) continue;
-			if(i >= bank.icount) bank.icount = i;
+			if(i >= bank.icount) bank.icount = i+1;
 			InstBlock ib = instmap.get(inst_offset_tbl[i]);
 			bank.inst_presets[i] = ib;
 			if(ib != null && ib.envelope == null && ib.snd_med == null){
-				if(ib.off_env > 0){
+				//System.err.println("Preset " + i + " env index: " + ib.off_env);
+				if(ib.off_env >= 0){
 					ib.envelope = envs[ib.off_env];
 					if(ib.envelope != null) ib.data.setEnvelope(ib.envelope.data);
 				}
@@ -534,13 +595,18 @@ public class Z64Bank implements WriterPrintable{
 					ib.data.setSampleHigh(wblock.wave_info);
 				}
 			}
+			if(bank.inst_presets[i] != null){
+				//System.err.println("Assigned inst 0x" + Integer.toHexString(bank.inst_presets[i].addr) + " to preset " + i + "(" + bank.inst_presets[i].toString() + ")");
+				if(ienm[i] == null || ienm[i].isEmpty()) ienm[i] = String.format("INST%03d", i);
+				bank.inst_presets[i].enm_str = ienm[i];
+			}
 		}
 		
 		for(int i = 0; i < STDRANGE_SIZE; i++){
 			if(bank.perc_slots[i] == null) continue;
-			if(i >= bank.pcount) bank.pcount = i;
+			if(i >= bank.pcount) bank.pcount = i+1;
 			PercBlock pblock = bank.perc_slots[i];
-			if(pblock.off_env > 0){
+			if(pblock.off_env >= 0){
 				pblock.envelope = envs[pblock.off_env];
 				if(pblock.envelope != null) pblock.data.setEnvelope(pblock.envelope.data);
 			}
@@ -558,6 +624,10 @@ public class Z64Bank implements WriterPrintable{
 				if(pblock.data.getSample() == null){
 					pblock.data.setSample(wblock.wave_info);
 				}
+			}
+			if(bank.perc_slots[i] != null){
+				if(penm[i] == null || penm[i].isEmpty()) penm[i] = String.format("PERC%02d", i);
+				bank.perc_slots[i].enm_str = penm[i];
 			}
 		}
 
@@ -613,6 +683,15 @@ public class Z64Bank implements WriterPrintable{
 					if(wblock != null) block.data.setSample(wblock.wave_info);
 				}
 			}
+			else if(cmagic.equals("ENUM")){
+				for(int i = 0; i < xcount; i++){
+					SerializedString ss = data.readVariableLengthString("UTF8", data.getCurrentPosition(), BinFieldSize.WORD, 2);
+					if(sfx_slots[i] != null){
+						sfx_slots[i].enm_str = ss.getString();
+					}
+					data.skipBytes(ss.getSizeOnDisk());
+				}
+			}
 			else data.skipBytes(csz);
 		}
 		
@@ -629,10 +708,12 @@ public class Z64Bank implements WriterPrintable{
 	
 	public void serializeTo(FileBuffer target){
 		if(target == null) return;
+		target.setEndian(!sermode_le);
 		updateAllReferences();
 		
 		//Figure out inst table size.
-		int itbl_sz = 8 + (icount << 2);
+		int shamt = Z64Bank.sermode_64?3:2;
+		int itbl_sz = 8 + (icount << shamt);
 		int current_pos = padTo16(itbl_sz);
 		int[] itbl = new int[icount+2];
 		
@@ -789,7 +870,8 @@ public class Z64Bank implements WriterPrintable{
 		
 		//Write inst table.
 		for(int i = 0; i < itbl.length; i++){
-			target.addToFile(itbl[i]);
+			if(Z64Bank.sermode_64) target.addToFile((long)itbl[i]);
+			else target.addToFile(itbl[i]);
 		}
 		while((target.getFileSize() & 0xf) != 0) target.addToFile(FileBuffer.ZERO_BYTE);
 		
@@ -843,21 +925,33 @@ public class Z64Bank implements WriterPrintable{
 		if(winfo != null){
 			if(samples_by_uid) target.addToFile(winfo.getUID());
 			else target.addToFile(winfo.getWaveOffset());
-			target.addToFile(Float.floatToRawIntBits(drum.getTuning()));
+			//target.addToFile(Float.floatToRawIntBits(drum.getTuning()));
+			Z64Tuning drumtune = drum.getTuning();
+			target.addToFile(drumtune.root_key);
+			target.addToFile(drumtune.fine_tune);
 		}
-		else target.addToFile(-1L);
+		else{
+			target.addToFile(-1);
+			target.addToFile((short)0x3c00);
+		}
 		
 		Z64Envelope env = drum.getEnvelope();
 		if(env != null){
-			target.addToFile(env.id);
+			target.addToFile((short)env.id);
 		}
-		else target.addToFile(-1);
+		else target.addToFile((short)-1);
 	}
 	
 	public void writeUFormat(String pathstem) throws IOException{
 		
 		Z64Envelope e0 = null;
 		Z64WaveInfo wi0 = null;
+		
+		//DEBUG
+		/*Writer w = new BufferedWriter(new FileWriter(pathstem + ".txt"));
+		System.err.println("BANK WITH UID 0x" + String.format("%08x", this.uid));
+		printMeTo(w);
+		w.close();*/
 		
 		//Do the UBNK -------------
 		final int HEADER_SIZE = 16;
@@ -894,6 +988,7 @@ public class Z64Bank implements WriterPrintable{
 			}
 		}
 		else ch_meta.addToFile(FileBuffer.ZERO_BYTE);
+		ch_meta.addToFile(0);
 		file_sz += ch_meta.getFileSize();
 		chunk_count++;
 		
@@ -991,18 +1086,19 @@ public class Z64Bank implements WriterPrintable{
 			InstBlock iblock = inst_presets[i];
 			if(iblock != null){
 				ch_inst.replaceShort((short)iblock.data.id, cpos);
-				cpos += 2;
 			}
+			cpos += 2;
 		}
 		file_sz += ch_inst.getFileSize();
 		chunk_count++;
 		
 		//PERC
-		int pcount_unique = perc_pool.size();
-		FileBuffer ch_perc = new FileBuffer(12 + (pcount_unique * 16), true);
+		//int pcount_unique = perc_pool.size();
+		int pcount_reg = 0;
+		FileBuffer ch_perc = new FileBuffer(12 + (64 * 12), true);
 		ch_perc.printASCIIToFile("PERC");
-		ch_perc.addToFile(0);
-		ch_perc.addToFile(pcount_unique);
+		ch_perc.addToFile(0L);
+		//ch_perc.addToFile(pcount_unique);
 		int r_min = 0;
 		Z64Drum last_drum = null;
 		for(int i = 0; i < STDRANGE_SIZE; i++){
@@ -1011,6 +1107,7 @@ public class Z64Bank implements WriterPrintable{
 				//End of range. Put last block.
 				if(last_drum != null){
 					serializeDrumUBNK(last_drum, r_min, i-1, ch_perc);
+					pcount_reg++;
 					labels.add(last_drum.getName());
 					last_drum = null;
 				}
@@ -1035,6 +1132,7 @@ public class Z64Bank implements WriterPrintable{
 				else{
 					if(!last_drum.drumEquals(block.data)){
 						serializeDrumUBNK(last_drum, r_min, i-1, ch_perc);
+						pcount_reg++;
 						labels.add(last_drum.getName());
 						r_min = i;
 						last_drum = block.data;
@@ -1045,10 +1143,12 @@ public class Z64Bank implements WriterPrintable{
 		//	Last block
 		if(last_drum != null){
 			serializeDrumUBNK(last_drum, r_min, STDRANGE_SIZE-1, ch_perc);
+			pcount_reg++;
 			labels.add(last_drum.getName());
 		}
 		//	Replace size value
 		ch_perc.replaceInt((int)ch_perc.getFileSize() - 8, 4L);
+		ch_perc.replaceInt(pcount_reg, 8L);
 		file_sz += ch_perc.getFileSize();
 		chunk_count++;
 		
@@ -1059,7 +1159,7 @@ public class Z64Bank implements WriterPrintable{
 		ch_envl.addToFile((short)ecount);
 		ival = ecount << 1;
 		for(int i = 0; i < ival; i++) ch_envl.addToFile(FileBuffer.ZERO_BYTE);
-		long tpos = 8L;
+		long tpos = 10L;
 		for(Z64Envelope env : envs){
 			pos = (int)ch_envl.getFileSize();
 			for(short[] event : env.events){
@@ -1071,6 +1171,7 @@ public class Z64Bank implements WriterPrintable{
 			ch_envl.replaceShort((short)pos, tpos);
 			tpos+=2;
 		}
+		while((ch_envl.getFileSize() % 4) != 0) ch_envl.addToFile(FileBuffer.ZERO_BYTE);
 		ch_envl.replaceInt((int)ch_envl.getFileSize() - 8, 4L);
 		if(ecount > 0){
 			file_sz += ch_envl.getFileSize();
@@ -1096,6 +1197,62 @@ public class Z64Bank implements WriterPrintable{
 			chunk_count++;
 		}
 		
+		//IENM
+		FileBuffer ch_ienm = null;
+		if(!this.inst_pool.isEmpty()){
+			int estsz = 0;
+			for(int i = 0; i < 126; i++){
+				if(inst_presets[i] != null){
+					if(inst_presets[i].enm_str == null){
+						inst_presets[i].enm_str = String.format("INST%03d", i);
+					}
+					estsz += inst_presets[i].enm_str.length() + 3;
+				}
+				else estsz += 2;
+			}
+			ch_ienm = new FileBuffer(8 + estsz, true);
+			ch_ienm.printASCIIToFile("IENM");
+			ch_ienm.addToFile(0);
+			for(int i = 0; i < 126; i++){
+				if(inst_presets[i] != null){
+					ch_ienm.addVariableLengthString(inst_presets[i].enm_str, BinFieldSize.WORD, 2);
+				}
+				else ch_ienm.addToFile((short)0);
+			}
+			while((ch_ienm.getFileSize() % 4) != 0) ch_ienm.addToFile(FileBuffer.ZERO_BYTE);
+			ch_ienm.replaceInt((int)ch_ienm.getFileSize() - 8, 4L);
+			file_sz += ch_ienm.getFileSize();
+			chunk_count++;
+		}
+		
+		//PENM
+		FileBuffer ch_penm = null;
+		if(pcount > 0){
+			int estsz = 0;
+			for(int i = 0; i < 64; i++){
+				if(perc_slots[i] != null){
+					if(perc_slots[i].enm_str == null){
+						perc_slots[i].enm_str = String.format("PERC%02d", i);
+					}
+					estsz += perc_slots[i].enm_str.length() + 3;
+				}
+				else estsz += 2;
+			}
+			ch_penm = new FileBuffer(8 + estsz, true);
+			ch_penm.printASCIIToFile("PENM");
+			ch_penm.addToFile(0);
+			for(int i = 0; i < 64; i++){
+				if(perc_slots[i] != null){
+					ch_penm.addVariableLengthString(perc_slots[i].enm_str, BinFieldSize.WORD, 2);
+				}
+				else ch_penm.addToFile((short)0);
+			}
+			while((ch_penm.getFileSize() % 4) != 0) ch_penm.addToFile(FileBuffer.ZERO_BYTE);
+			ch_penm.replaceInt((int)ch_penm.getFileSize() - 8, 4L);
+			file_sz += ch_penm.getFileSize();
+			chunk_count++;
+		}
+		
 		//Finish header
 		header.addToFile(file_sz + HEADER_SIZE);
 		header.addToFile((short)(HEADER_SIZE));
@@ -1109,6 +1266,8 @@ public class Z64Bank implements WriterPrintable{
 		ch_inst.writeToStream(bos);
 		ch_perc.writeToStream(bos);
 		if(ch_labl != null) ch_labl.writeToStream(bos);
+		if(ch_ienm != null) ch_ienm.writeToStream(bos);
+		if(ch_penm != null) ch_penm.writeToStream(bos);
 		bos.close();
 		
 		//Do the UWSD (If needed) -------------
@@ -1162,15 +1321,41 @@ public class Z64Bank implements WriterPrintable{
 			ch_data.replaceInt((int)ch_data.getFileSize() - 8, 4L);
 			file_sz += ch_data.getFileSize();
 			
+			//ENUM
+			FileBuffer ch_enum = null;
+			int estsz = 0;
+			for(int i = 0; i < xcount; i++){
+				if(sfx_slots[i] != null){
+					if(sfx_slots[i].enm_str == null){
+						sfx_slots[i].enm_str = String.format("SFX%03d", i);
+					}
+					estsz += sfx_slots[i].enm_str.length() + 3;
+				}
+				else estsz += 2;
+			}
+			ch_enum = new FileBuffer(8 + estsz, true);
+			ch_enum.printASCIIToFile("ENUM");
+			ch_enum.addToFile(0);
+			for(int i = 0; i < xcount; i++){
+				if(sfx_slots[i] != null){
+					ch_enum.addVariableLengthString(sfx_slots[i].enm_str, BinFieldSize.WORD, 2);
+				}
+				else ch_enum.addToFile((short)0);
+			}
+			while((ch_enum.getFileSize() % 4) != 0) ch_enum.addToFile(FileBuffer.ZERO_BYTE);
+			ch_enum.replaceInt((int)ch_enum.getFileSize() - 8, 4L);
+			file_sz += ch_enum.getFileSize();
+			
 			//Output
 			header.addToFile(file_sz + HEADER_SIZE);
 			header.addToFile((short)HEADER_SIZE);
-			header.addToFile((short)2);
+			header.addToFile((short)3);
 			
 			bos = new BufferedOutputStream(new FileOutputStream(pathstem + ".buwsd"));
 			header.writeToStream(bos);
 			ch_meta.writeToStream(bos);
 			ch_data.writeToStream(bos);
+			ch_enum.writeToStream(bos);
 			bos.close();
 		}
 	}
@@ -1318,6 +1503,40 @@ public class Z64Bank implements WriterPrintable{
 			if(sfx_slots[i] != null) c = i+1;
 		}
 		return c;
+	}
+	
+	public String getInstPresetEnumString(int idx){
+		if(idx < 0 || idx >= inst_presets.length) return null;
+		if(inst_presets[idx] == null) return null;
+		String e = inst_presets[idx].enm_str;
+		if(e == null){
+			e = String.format("INST_%03d", idx);
+			inst_presets[idx].enm_str = e;
+		}
+		return e;
+	}
+	
+	public String getDrumSlotEnumString(int idx){
+		if(idx < 0 || idx >= perc_slots.length) return null;
+		if(perc_slots[idx] == null) return null;
+		String e = perc_slots[idx].enm_str;
+		if(e == null){
+			e = String.format("DRUM_%02d", idx);
+			perc_slots[idx].enm_str = e;
+		}
+		return e;
+	}
+	
+	public String getSFXSlotEnumString(int idx){
+		if(sfx_slots == null) return null;
+		if(idx < 0 || idx >= sfx_slots.length) return null;
+		if(sfx_slots[idx] == null) return null;
+		String e = sfx_slots[idx].enm_str;
+		if(e == null){
+			e = String.format("SFX_%03d", idx);
+			sfx_slots[idx].enm_str = e;
+		}
+		return e;
 	}
 	
 	/*----- Setters -----*/
@@ -1470,6 +1689,29 @@ public class Z64Bank implements WriterPrintable{
 		updateXCount();
 	}
 	
+	public void setInstPresetEnumString(int idx, String val){
+		if(idx < 0 || idx >= inst_presets.length) return;
+		if(inst_presets[idx] == null) return;
+		inst_presets[idx].enm_str = val;
+	}
+	
+	public void setDrumSlotEnumString(int idx, String val){
+		if(idx < 0 || idx >= perc_slots.length) return;
+		if(perc_slots[idx] == null) return;
+		perc_slots[idx].enm_str = val;
+	}
+	
+	public void setSFXSlotEnumString(int idx, String val){
+		if(sfx_slots == null) return;
+		if(idx < 0 || idx >= sfx_slots.length) return;
+		if(sfx_slots[idx] == null) return;
+		sfx_slots[idx].enm_str = val;
+	}
+	
+	public static void setSerializationByteOrder(boolean big){sermode_le = !big;}
+	public static void setSerialization64Bit(){sermode_64 = true;}
+	public static void setSerialization32Bit(){sermode_64 = false;}
+	
 	/*----- Find/Match -----*/
 	
 	private void updateICount(){
@@ -1614,8 +1856,147 @@ public class Z64Bank implements WriterPrintable{
 			}	
 		}
 		
+		//Merge wave block ADPCM tables?
+		List<Predictor> predblocks = new LinkedList<Predictor>();
 		for(WaveInfoBlock wb : sound_samples.values()){
 			wb.getWaveInfo(); //Calling this links loop and preds properly
+			boolean matched = false;
+			for(Predictor other : predblocks){
+				if(other.isEquivalent(wb.pred)){
+					wb.pred = other;
+					matched = true;
+					break;
+				}
+			}
+			wb.pred.flag = false;
+			if(!matched) predblocks.add(wb.pred);
+		}
+	}
+	
+	public void updateWaves(Map<Integer, Z64WaveInfo> wavemap){
+		Map<Integer, WaveInfoBlock> oldsamples = sound_samples;
+		sound_samples = new HashMap<Integer, WaveInfoBlock>();
+		
+		//Inst
+		WaveInfoBlock wblock = null;
+		Z64WaveInfo winfo = null;
+		for(int i = 0; i < inst_presets.length; i++){
+			InstBlock ib = inst_presets[i];
+			if(ib == null) continue;
+			
+			//Mid
+			int wid = ib.off_snd_med;
+			wblock = sound_samples.get(wid);
+			if(wblock == null){
+				//Check input
+				winfo = wavemap.get(wid);
+				if(winfo == null){
+					//Pull from old map.
+					wblock = oldsamples.get(wid);
+					winfo = wblock.getWaveInfo();
+					sound_samples.put(wid, wblock);
+				}
+				else{
+					wblock = new WaveInfoBlock(winfo);
+					sound_samples.put(wid, wblock);
+				}
+			}
+			ib.snd_med = wblock;
+			ib.data.setSampleMiddle(wblock.getWaveInfo());
+			
+			//Lo
+			wid = ib.off_snd_lo;
+			if(wid != 0 && wid != -1){
+				wblock = sound_samples.get(wid);
+				if(wblock == null){
+					//Check input
+					winfo = wavemap.get(wid);
+					if(winfo == null){
+						wblock = oldsamples.get(wid);
+						winfo = wblock.getWaveInfo();
+						sound_samples.put(wid, wblock);
+					}
+					else{
+						wblock = new WaveInfoBlock(winfo);
+						sound_samples.put(wid, wblock);
+					}
+				}
+				ib.snd_lo = wblock;
+				ib.data.setSampleLow(winfo);
+			}
+			
+			//Hi
+			wid = ib.off_snd_hi;
+			if(wid != 0 && wid != -1){
+				wblock = sound_samples.get(wid);
+				if(wblock == null){
+					//Check input
+					winfo = wavemap.get(wid);
+					if(winfo == null){
+						wblock = oldsamples.get(wid);
+						winfo = wblock.getWaveInfo();
+						sound_samples.put(wid, wblock);
+					}
+					else{
+						wblock = new WaveInfoBlock(winfo);
+						sound_samples.put(wid, wblock);
+					}
+				}
+				ib.snd_hi = wblock;
+				ib.data.setSampleHigh(winfo);
+			}
+		}
+		
+		//Perc
+		for(int i = 0; i < perc_slots.length; i++){
+			PercBlock pblock = perc_slots[i];
+			if(pblock == null) continue;
+			
+			int wid = pblock.off_snd;
+			wblock = sound_samples.get(wid);
+			if(wblock == null){
+				//Check input
+				winfo = wavemap.get(wid);
+				if(winfo == null){
+					//Pull from old map.
+					wblock = oldsamples.get(wid);
+					winfo = wblock.getWaveInfo();
+					sound_samples.put(wid, wblock);
+				}
+				else{
+					wblock = new WaveInfoBlock(winfo);
+					sound_samples.put(wid, wblock);
+				}
+			}
+			pblock.sample = wblock;
+			pblock.data.setSample(winfo);
+		}
+		
+		//SFX
+		if(sfx_slots != null){
+			for(int i = 0; i < sfx_slots.length; i++){
+				SFXBlock sb = sfx_slots[i];
+				if(sb == null) continue;
+				
+				int wid = sb.off_snd;
+				wblock = sound_samples.get(wid);
+				if(wblock == null){
+					//Check input
+					winfo = wavemap.get(wid);
+					if(winfo == null){
+						//Pull from old map.
+						wblock = oldsamples.get(wid);
+						winfo = wblock.getWaveInfo();
+						sound_samples.put(wid, wblock);
+					}
+					else{
+						wblock = new WaveInfoBlock(winfo);
+						sound_samples.put(wid, wblock);
+					}
+				}
+				sb.sample = wblock;
+				sb.data.setSample(winfo);
+			}
 		}
 	}
 	
@@ -1790,9 +2171,14 @@ public class Z64Bank implements WriterPrintable{
 	private static void convertPerc(Z64Drum src, SimpleInstrument target){
 		int ridx = target.newRegion(src.getSample().getName());
 		InstRegion reg = target.getRegion(ridx);
-		float s_tune = src.getSample().getTuning();
-		float r_tune = src.getTuning();
-		calculateTuning(s_tune, r_tune, reg);
+		//float s_tune = src.getSample().getTuning();
+		//float r_tune = src.getTuning();
+		//calculateTuning(s_tune, r_tune, reg);
+		Z64Tuning drumtune = src.getTuning();
+		if(drumtune != null){
+			reg.setUnityKey(drumtune.root_key);
+			reg.setFineTune(drumtune.fine_tune);
+		}
 		Z64Envelope env = src.getEnvelope();
 		if(env != null){
 			convertEnvelope(env, reg, src.getDecay());
@@ -2178,6 +2564,8 @@ public class Z64Bank implements WriterPrintable{
 			InstBlock block = inst_presets[i];
 			out.write(String.format("\t%03d: ", i));
 			if(block != null){
+				//System.err.println("Block in preset " + i + ": " + block.toString());
+				//System.err.println("\tEnv null? " + (block.data.getEnvelope() == null));
 				String n = block.data.getName();
 				if(n == null){
 					n = "INST_" + Integer.toHexString(block.data.id);
@@ -2206,7 +2594,7 @@ public class Z64Bank implements WriterPrintable{
 					n = "PERC_" + Integer.toHexString(block.data.id);
 					block.data.setName(n);
 				}
-				out.write(n + "\n");
+				out.write(n + "\t" + block.tune + "\n");
 				Z64Envelope env = block.data.getEnvelope();
 				n = env.getName();
 				if(n == null){
@@ -2364,10 +2752,24 @@ public class Z64Bank implements WriterPrintable{
 				out.write("\t\tSample: ");
 				out.write(drum.getSample().getName());
 				out.write(" (");
-				out.write(Float.toString(drum.getTuning()));
+				Z64Tuning drumtune = drum.getTuning();
+				out.write("MIDI " + drumtune.root_key);
+				if(drumtune.fine_tune > 0){
+					out.write(" +" + drumtune.fine_tune);
+				}
+				else if(drumtune.fine_tune < 0){
+					out.write(" " + drumtune.fine_tune);
+				}
+				//out.write(Float.toString(drum.getTuning()));
 				out.write(")\n");
 			}
 		}
+	}
+	
+	public void printMeTo(String path) throws IOException{
+		BufferedWriter writer = new BufferedWriter(new FileWriter(path));
+		printMeTo(writer);
+		writer.close();
 	}
 	
 	public static void main(String[] args){

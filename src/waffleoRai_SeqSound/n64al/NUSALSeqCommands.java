@@ -18,5 +18,10 @@ public class NUSALSeqCommands {
 	public static final int FLAG_SEQVALID =		0x000004;
 	public static final int FLAG_CHVALID =		0x000002;
 	public static final int FLAG_LYRVALID =		0x000001;
+	
+	public static final int MML_DATAPARAM_TYPE__DECSIGNED = 0;
+	public static final int MML_DATAPARAM_TYPE__DECUNSIGNED = 1;
+	public static final int MML_DATAPARAM_TYPE__HEXUNSIGNED = 2;
+	public static final int MML_DATAPARAM_TYPE__BUFFER = 3;
 
 }
