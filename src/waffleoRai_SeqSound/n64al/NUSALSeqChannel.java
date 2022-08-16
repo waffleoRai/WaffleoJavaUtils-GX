@@ -8,6 +8,9 @@ import waffleoRai_Threads.SyncedInt;
 
 public class NUSALSeqChannel {
 	
+	public static final int LAYER_COUNT = NUSALSeq.MAX_LAYERS_PER_CHANNEL;
+	public static final int MAX_LAYER_IDX = LAYER_COUNT - 1;
+	
 	/*----- Instance Variables -----*/
 
 	private int pos;
@@ -61,7 +64,7 @@ public class NUSALSeqChannel {
 		//pos = startpos;
 		ch_idx = index;
 		//pending_notes = new TreeMap<Byte, Integer>();
-		layers = new NUSALSeqLayer[4];
+		layers = new NUSALSeqLayer[LAYER_COUNT];
 		return_stack = new LinkedList<Integer>();
 		parent_seq = parent;
 		seqIO = new SyncedInt[8];
@@ -75,7 +78,7 @@ public class NUSALSeqChannel {
 		term_flag = true;
 		//err_flag = false;
 		err_addr = -1; err_layer = -1;
-		for(int i = 0; i < 4; i++){
+		for(int i = 0; i < LAYER_COUNT; i++){
 			layers[i] = new NUSALSeqLayer(this, i);
 		}
 		for(int i = 0; i < 8; i++) seqIO[i].set(0);
@@ -391,7 +394,7 @@ public class NUSALSeqChannel {
 	}
 	
 	public boolean pointLayerTo(int layer_idx, int position){
-		if(layer_idx < 0 || layer_idx > 3) return false;
+		if(layer_idx < 0 || layer_idx > MAX_LAYER_IDX) return false;
 		return layers[layer_idx].jumpTo(position, false);
 	}
 	
@@ -508,7 +511,7 @@ public class NUSALSeqChannel {
 		}
 		
 		//Its layers
-		for(int i = 0; i < 4; i++){
+		for(int i = 0; i < LAYER_COUNT; i++){
 			if(layers[i] != null){
 				if(!layers[i].isActive()) continue;
 				if(!layers[i].nextTick(savecmd, tick)){

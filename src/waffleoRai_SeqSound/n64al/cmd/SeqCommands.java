@@ -454,6 +454,14 @@ public class SeqCommands {
 			super.setParam(1, seq_idx);
 			super.setParam(2, addr);
 		}
+		protected StringBuilder toMMLCommand_child(){
+			StringBuilder sb = new StringBuilder(256);
+			sb.append("loadseq ");
+			sb.append(super.getParam(0) + " ");
+			sb.append(super.getParam(1) + " ");
+			sb.append(String.format("0x%04x", super.getParam(2)));
+			return sb;
+		}
 	}
 	
 	/*--- 0xc7 sts ---*/
@@ -492,6 +500,12 @@ public class SeqCommands {
 			flagSeqUsed();
 			sequence.setVarQ(sequence.getVarQ() & getParam(0));
 			return true;
+		}
+		protected StringBuilder toMMLCommand_child(){
+			StringBuilder sb = new StringBuilder(256);
+			sb.append("and 0x");
+			sb.append(Integer.toHexString(getParam(0) & 0xff));
+			return sb;
 		}
 	}
 	

@@ -63,11 +63,9 @@ public class NAudioSampleStream implements AudioSampleStream{
 		src_channels = usechannels;
 		encodingType = source.getEncodingType();
 		int ccount = src.totalChannels();
-		if(encodingType == NinSound.ENCODING_TYPE_DSP_ADPCM)
-		{
+		if(encodingType == NinSound.ENCODING_TYPE_DSP_ADPCM){
 			dsp_states = new NinADPCM[ccount];
-			for(int i = 0; i < ccount; i++)
-			{
+			for(int i = 0; i < ccount; i++){
 				dsp_states[i] = source.generateNewADPCMState(i);
 			}	
 			bitDepth = 16;
@@ -97,6 +95,23 @@ public class NAudioSampleStream implements AudioSampleStream{
 		else{
 			loopStart = -1;
 			loopEnd = source.totalFrames();
+		}
+		//System.err.println("loopEnd = " + loopEnd);
+		
+		if(encodingType == NinSound.ENCODING_TYPE_DSP_ADPCM){
+			//Adjust loop points
+			//Stream uses pos INCLUDING P/S, but frame coords are audio frames only.
+			int pkg = 0; int pkg_pos = 0;
+			if(loopStart > 0){
+				pkg = loopStart / 14;
+				pkg_pos = loopStart % 14;
+				loopStart  = (pkg << 4) + pkg_pos;
+			}
+			if(loopEnd > 0){
+				pkg = loopEnd / 14;
+				pkg_pos = loopEnd % 14;
+				loopEnd  = (pkg << 4) + pkg_pos;
+			}
 		}
 	}
 	
@@ -152,17 +167,18 @@ public class NAudioSampleStream implements AudioSampleStream{
 			{
 				int c = src_channels[i];
 				NinADPCM state = dsp_states[c];
-				if(state.newBlock())
-				{
+				if(state.newBlock()){
 					addpos = 3;
 					int n0 = source.getRawDataPoint(c, pos);
 					int n1 = source.getRawDataPoint(c, pos+1);
 					int samp = source.getRawDataPoint(c, pos+2);
-					state.setPS((n0 << 4) | n1);
+					//state.setPS((n0 << 4) | n1);
+					state.setPredictor(n0);
+					state.setShift(n1);
+					//System.err.println("DEBUG || Pred = " + n0 + ", Shamt = " + n1 + ", pos = " + pos);
 					target[i] = state.decompressNextNybble(samp);
 				}
-				else
-				{
+				else{
 					target[i] = state.decompressNextNybble(source.getRawDataPoint(c, pos));
 				}
 			}
@@ -244,8 +260,7 @@ public class NAudioSampleStream implements AudioSampleStream{
 		
 		//int ccount = source.totalChannels();
 		int ccount = src_channels.length;
-		if(pos >= loopEnd)
-		{
+		if(pos >= loopEnd){
 			if(loopStart >= 0) loopMe();
 			else{
 				return new int[ccount];

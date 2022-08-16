@@ -12,6 +12,7 @@ public class NUSALSeqWaitCommand extends NUSALSeqCommand{
 		super(cmd, cmd.getBaseCommand());
 		//super(vox_lvl?NUSALSeqCmdType.REST:NUSALSeqCmdType.WAIT, 
 		//		vox_lvl?NUSALSeqCmdType.REST.getBaseCommand():NUSALSeqCmdType.WAIT.getBaseCommand());
+		if(cmd == NUSALSeqCmdType.YIELD) super.reallocParamArray(1);
 		super.setParam(0, ticks);
 	}
 

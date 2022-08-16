@@ -50,7 +50,10 @@ public class ChannelCommands {
 				i = Short.toUnsignedInt(dat.getShort(1));
 				return new C_C_StartLayer(cmdlo, i);
 			}
-		case 0x9: return new C_C_StartLayerTable(cmdlo);
+		case 0x9:{
+			if(cmdlo < 0x8) return new C_C_StopLayer(cmdlo);
+			return new C_C_StartLayerTable(cmdlo-8);
+		}
 	/* 0xbn */		
 		case 0xb:
 			switch(cmdlo){
@@ -100,6 +103,14 @@ public class ChannelCommands {
 	/* 0xcn */
 		case 0xc:
 			switch(cmdlo){
+			case 0x0:
+				i = (int)dat.getByte(1);
+				final int fi = i;
+				return new CMD_IgnoredCommand(NUSALSeqCmdType.C_UNK_C0){
+					protected void onInit(){
+						setParam(0, fi);;
+					}
+				};
 			case 0x1:
 				i = (int)dat.getByte(1);
 				return new C_C_ChangeProgram(i);
@@ -979,7 +990,7 @@ public class ChannelCommands {
 			return true;
 		}
 	}
-	
+		
 	/*--- 0xc1 instr ---*/
 	public static class C_C_ChangeProgram extends NUSALSeqGenericCommand{
 		public C_C_ChangeProgram(int idx) {
@@ -1109,6 +1120,12 @@ public class ChannelCommands {
 			//TODO is it seq P&Q? Or do channels have their own?
 			seq.setVarQ(seq.getVarQ() & getParam(0));
 			return true;
+		}
+		protected StringBuilder toMMLCommand_child(){
+			StringBuilder sb = new StringBuilder(256);
+			sb.append("and 0x");
+			sb.append(Integer.toHexString(getParam(0) & 0xff));
+			return sb;
 		}
 	}
 	

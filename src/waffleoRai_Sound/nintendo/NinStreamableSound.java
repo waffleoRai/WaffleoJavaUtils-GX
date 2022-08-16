@@ -42,8 +42,8 @@ public abstract class NinStreamableSound implements Sound{
 	protected SampleChannel[] rawSamples;
 	
 	//Some optional fields for tweaking, usually contained in other files
-	protected int unityNote;
-	protected int fineTune;
+	protected int unityNote = 60;
+	protected int fineTune = 0;
 	
 	//Sound interface playback crap
 	protected List<Iterator<Integer>> activeIterators;
@@ -163,7 +163,7 @@ public abstract class NinStreamableSound implements Sound{
 	
 	public int[] getSamples_16Signed(int channel){
 		//Just use the AudioSampleStream since it works...
-		AudioSampleStream me = createSampleStream();
+		AudioSampleStream me = createSampleStream(false);
 		int fcount = estimateFrames();
 		int[] samps = new int[fcount];
 		

@@ -387,7 +387,7 @@ public class LayerCommands {
 	/*--- 0xca lpan ---*/
 	public static class C_L_Pan extends NUSALSeqGenericCommand{
 		public C_L_Pan(int value) {
-			super(NUSALSeqCmdType.CH_PAN); 
+			super(NUSALSeqCmdType.L_PAN); 
 			setParam(0, value);
 		}
 		public boolean doCommand(NUSALSeqLayer voice){

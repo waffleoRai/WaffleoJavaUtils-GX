@@ -15,11 +15,11 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 import waffleoRai_SeqSound.n64al.NUSALSeq;
-import waffleoRai_SeqSound.n64al.NUSALSeq.UnrecognizedCommandException;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandSource;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
+import waffleoRai_SeqSound.n64al.NUSALSeqDataType;
 import waffleoRai_Utils.BufferReference;
 import waffleoRai_DataContainers.CoverageMap1D;
 import waffleoRai_DataContainers.MultiValMap;
@@ -30,14 +30,22 @@ import waffleoRai_Utils.StackStack;
 
 public class NUSALSeqReader implements NUSALSeqCommandSource{
 	
-	//TODO: Need to handle calls better (need to count length in ticks!) Recursive parse?
+	//TODO Call tick calculation still not working quite right... (Seq CZLE031, ch 2)
+	//TODO Update MML parser to recognize ptbl
+	
+	//TODO stps on voice_offset param genning buffer instead of pointing to instruction. (stps seems to always do this)
+	//TODO still not parsing voice_offset mod params in layer context, except for first in table.
+	//TODO having trouble with some envelopes (0xffa in seq 01)
 	
 	/*--- Constants ---*/
 	
+	public static final int PARSEMODE_UNDEFINED = 0x0;
 	public static final int PARSEMODE_SEQ = 0x1;
 	public static final int PARSEMODE_CHANNEL = 0x2;
 	public static final int PARSEMODE_LAYER = 0x4;
 	public static final int PARSEMODE_SUB = 0x8000;
+	
+	public static final int LAYER_COUNT = NUSALSeq.MAX_LAYERS_PER_CHANNEL;
 	
 	/*--- Instance Variables ---*/
 	
@@ -46,12 +54,21 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	private Map<String, NUSALSeqCommand> lblmap;
 	private Map<Integer, Integer> tickmap; //Address -> tick (first tick it can appear at)
 	private MultiValMap<Integer, NUSALSeqCommand> datarefs;
+	private LinkedList<ParseRequest> ptr_parse_queue;
 	private TallyMap sub_ticklen;
 	
 	//Labeling
 	private int seq_subs;
 	private int[] ch_subs;
 	private int[][] ly_subs;
+	
+	private int seq_tbl_subs;
+	private int[] ch_tbl_subs;
+	private int[] ch_startchan;
+	
+	//Linking
+	private Set<Integer> rchecked;
+	private Set<Integer> rskip;
 	
 	private CoverageMap1D cmd_coverage;
 	private CoverageMap1D[] ch_shortnotes;
@@ -64,26 +81,58 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	/*--- Initialization ---*/
 	
 	public NUSALSeqReader(){
-		cmdmap = new TreeMap<Integer, NUSALSeqCommand>();
-		lblmap = new HashMap<String, NUSALSeqCommand>();
-		tickmap = new TreeMap<Integer, Integer>();
-		ch_shortnotes = new CoverageMap1D[16];
-		branch_stack = new StackStack<Integer>();
-		sub_ticklen = new TallyMap();
+		initInternal();
 	}
 	
  	public NUSALSeqReader(FileBuffer seqData){
 		if(seqData == null) throw new IllegalArgumentException("Data source cannot be null!");
 		data = seqData;
-		cmdmap = new TreeMap<Integer, NUSALSeqCommand>();
+		initInternal();
+	}
+ 	
+ 	private void initInternal(){
+ 		cmdmap = new TreeMap<Integer, NUSALSeqCommand>();
 		lblmap = new HashMap<String, NUSALSeqCommand>();
 		tickmap = new TreeMap<Integer, Integer>();
 		datarefs = new MultiValMap<Integer, NUSALSeqCommand>();
 		ch_shortnotes = new CoverageMap1D[16];
 		branch_stack = new StackStack<Integer>();
-	}
+		sub_ticklen = new TallyMap();
+		rchecked = new TreeSet<Integer>();
+		rskip = new TreeSet<Integer>();
+		ptr_parse_queue = new LinkedList<ParseRequest>();
+ 	}
  	
  	/*--- Inner Structs ---*/
+ 	
+ 	public static class ParseRequest{
+ 		public int channel;
+ 		public int layer;
+ 		public int address;
+ 		public int tick;
+ 		public String label;
+ 		
+ 		public ParseRequest(int ch, int addr, String lbl, int tick_coord){
+ 			channel = ch; address = addr; label = lbl;
+ 			tick = tick_coord; layer = -1;
+ 		}
+ 		
+ 		public ParseRequest(int ch, int lyr, int addr, String lbl, int tick_coord){
+ 			channel = ch; address = addr; label = lbl;
+ 			tick = tick_coord; layer = lyr;
+ 		}
+ 		
+ 		public void printDebug(){
+ 			System.err.print("ParseRequest -- CH");
+ 			System.err.print(String.format("%02d", channel));
+ 			if(layer >= 0){
+ 				System.err.print(String.format("-%02d", layer));
+ 			}
+ 			System.err.print(" -> 0x");
+ 			System.err.print(String.format("%04x", address));
+ 			System.err.println();
+ 		}
+ 	}
  	
  	public static class MMLLine{
  		public int line_number;
@@ -112,7 +161,6 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	/*--- Read ---*/
  	
  	public void readInMMLScript(BufferedReader input) throws IOException{
- 		//TODO Update for data compatibility
  		if(rdr_blocks == null) rdr_blocks = new LinkedList<MMLBlock>();
  		if(rdr_lbl_map == null) rdr_lbl_map = new HashMap<String, MMLBlock>();
  		
@@ -182,17 +230,23 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			block.layer = previous.layer;
 		}
 		for(MMLLine mline : block.lines){
-			switch(block.parse_mode){
-			case PARSEMODE_SEQ:
-				cmd = SeqCommands.parseSequenceCommand(mline.command, mline.args);
-				break;
-			case PARSEMODE_CHANNEL:
-				cmd = ChannelCommands.parseChannelCommand(mline.command, mline.args);
-				break;
-			case PARSEMODE_LAYER:
-				cmd = LayerCommands.parseLayerCommand(mline.command, mline.args);
-				break;
+			if(mline.command.equals("data")){
+				cmd = DataCommands.parseData(mline.command, mline.args);
 			}
+			else{
+				switch(block.parse_mode){
+				case PARSEMODE_SEQ:
+					cmd = SeqCommands.parseSequenceCommand(mline.command, mline.args);
+					break;
+				case PARSEMODE_CHANNEL:
+					cmd = ChannelCommands.parseChannelCommand(mline.command, mline.args);
+					break;
+				case PARSEMODE_LAYER:
+					cmd = LayerCommands.parseLayerCommand(mline.command, mline.args);
+					break;
+				}	
+			}
+			
 			if(cmd == null){
 				throw new UnsupportedFileTypeException("Could not read command at line " + mline.line_number + ": " + mline.command);
 			}
@@ -241,9 +295,19 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 					}
 				}
 			}
-			else if(ctype.flagSet(NUSALSeqCommands.FLAG_BRANCH | NUSALSeqCommands.FLAG_JUMP | NUSALSeqCommands.FLAG_CALL)){
+			else if(ctype.flagSet(NUSALSeqCommands.FLAG_ADDRREF)){
 				String trglabel = mline.args[0];
-				MMLBlock target = rdr_lbl_map.get(trglabel);
+				MMLBlock target = null;
+				int offset = 0;
+				if(trglabel.contains("[")){
+					int i0 = trglabel.indexOf('[');
+					int i1 = trglabel.indexOf(']');
+					target = rdr_lbl_map.get(trglabel.substring(0, i0));
+					offset = Integer.parseInt(trglabel.substring(i0+1, i1));
+				}
+				else{
+					target = rdr_lbl_map.get(trglabel);
+				}
 				if(target == null){
 					throw new UnsupportedFileTypeException("Could not find label \"" + trglabel + "\" (Line " + mline.line_number + ")");
 				}
@@ -251,6 +315,11 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 				target.channel = block.channel;
 				target.parse_mode = block.parse_mode;
 				target.layer = block.layer;
+				
+				if((cmd instanceof NUSALSeqDataRefCommand) && offset != 0){
+					NUSALSeqDataRefCommand drcmd = (NUSALSeqDataRefCommand)cmd;
+					drcmd.setDataOffset(offset);
+				}
 			}
 		}
 		block.chunk.linkSequentialCommands();
@@ -309,226 +378,377 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		return reader;
 	}
 	
-	private int maxDataSize(int pos, boolean arr16){
-		int max = arr16?512:256;
-		
-		//Look for known commands that would mark the data end. Probably.
-		if(cmd_coverage != null){
-			for(int i = 0; i < max; i++){
-				if(cmd_coverage.isCovered(pos+i)){
-					//New end.
-					if(arr16 && (i % 2 != 0)) i &= ~1;
-					return i;
-				}
+	private NUSALSeqCommand searchForModifiedInstruction_ldptbl(NUSALSeqCommand referee){
+		if(referee.getCommand() != NUSALSeqCmdType.LOAD_P_TABLE) return null;
+		//Scan for an stps in the same context...
+		NUSALSeqCommand stps = null;
+		NUSALSeqCommand current = referee.getSubsequentCommand();
+		while(current != null){
+			if(current.getCommand() == NUSALSeqCmdType.STORE_TO_SELF_P){
+				stps = current;
+				break;
 			}
+			else current = current.getSubsequentCommand();
 		}
-		return max;
+		if(stps == null) return null;
+		
+		//Check stps target.
+		NUSALSeqCommand stps_trg = null;
+		int addr = stps.getBranchAddress();
+		for(int a = addr; a >= 0; a--){
+			stps_trg = cmdmap.get(a);
+			if(stps_trg != null) break;
+		}
+		return stps_trg;
 	}
 	
-	private NUSALSeqDataCommand tryReadData(NUSALSeqDataRefCommand cmd){
-		//TODO Update
-		//Most data structs are fixed size, but some are indexed w/ Q
-		//And some also contain jump addresses, so that complicates things too.
-		if(cmd == null) return null;
+	private int checkPTBLTargetLayer(NUSALSeqCommand referee){
+		if(referee.getCommand() != NUSALSeqCmdType.LOAD_P_TABLE) return -1;
+		//Scan for an stps in the same context...
+		NUSALSeqCommand stps = null;
+		NUSALSeqCommand current = referee.getSubsequentCommand();
+		while(current != null){
+			if(current.getCommand() == NUSALSeqCmdType.STORE_TO_SELF_P){
+				stps = current;
+				break;
+			}
+			else current = current.getSubsequentCommand();
+		}
+		if(stps == null) return -1;
 		
-		NUSALSeqCmdType ecmd = cmd.getCommand();
-		NUSALSeqDataCommand dcmd = null;
-		int dsz = 0;
-		int daddr = cmd.getBranchAddress();
-		if(ecmd == NUSALSeqCmdType.CALL_TABLE){
-			//Indexed by Q, contains seq jump targets
-			dsz = maxDataSize(daddr, true);
-			//Parse all of these as seq branches... (yuck)
-			int caddr = cmd.getAddress();
-			System.err.println("NUSALSeqReader.tryReadData || tblcall command @ 0x" + Integer.toHexString(caddr) + " | Attempting to read table...");
-			int maxentries = dsz >>> 1;
-			data.setCurrentPosition(daddr);
-			List<int[]> branches = new LinkedList<int[]>();
-			int dtick = tickmap.get(caddr);
-			for(int e = 0; e < maxentries; e++){
-				int val = (int)data.nextShort();
-				//Is it a valid offset?
-				if(val >= 0 && val < data.getFileSize()){
-					branches.add(new int[]{val, dtick});
-				}
-				else{
-					dsz = e << 1;
-					break;
-				}
-			}
-			if(!branches.isEmpty()){
-				try{
-					readTrack(branches, new ArrayList<List<int[]>>(16), null, PARSEMODE_SEQ, -1, -1);}
-				catch(UnrecognizedCommandException ex){
-					//Probably just not a real jump address.
-					//Figure out which address triggered it...
-					int badaddr = branch_stack.peekBottom();
-					data.setCurrentPosition(daddr);
-					for(int e = 0; e < maxentries; e++){
-						int val = (int)data.nextShort();
-						if(val == badaddr || val < 0 || val >= data.getFileSize()){
-							dsz = e << 1;
-							break;
-						}
-					}
-				}
-			}
+		//Check stps target.
+		NUSALSeqCommand stps_trg = null;
+		int addr = stps.getBranchAddress();
+		for(int a = addr; a >= 0; a--){
+			stps_trg = cmdmap.get(a);
+			if(stps_trg != null) break;
 		}
-		else if(ecmd == NUSALSeqCmdType.SET_DYNTABLE){
-			//Indexed by Q, contains layer jump targets
-			dsz = maxDataSize(daddr, true);
-			int caddr = cmd.getAddress();
-			System.err.println("NUSALSeqReader.tryReadData || dyntable command @ 0x" + Integer.toHexString(caddr) + " | Attempting to read table...");
-			//Guess channel.
-			int ch = -1;
-			for(int i = 0; i < 16; i++){
-				if(cmd.channelUsed(i)){
-					ch = i;
-					break;
-				}
-			}
-			
-			if(ch >= 0){
-				int maxentries = dsz >>> 1;
-				data.setCurrentPosition(daddr);
-				List<int[]> branches = new LinkedList<int[]>();
-				int dtick = tickmap.get(caddr);	
-				for(int e = 0; e < maxentries; e++){
-					int val = (int)data.nextShort();
-					//Is it a valid offset?
-					if(val >= 0 && val < data.getFileSize()){
-						branches.add(new int[]{val, dtick});
-					}
-					else{
-						dsz = e << 1;
-						break;
-					}
-				}
-				if(!branches.isEmpty()){
-					try{
-						readTrack(branches, null, ch_shortnotes[ch], PARSEMODE_LAYER, ch, 4);}
-					catch(UnrecognizedCommandException ex){
-						int badaddr = branch_stack.peekBottom();
-						data.setCurrentPosition(daddr);
-						for(int e = 0; e < maxentries; e++){
-							int val = (int)data.nextShort();
-							if(val == badaddr || val < 0 || val >= data.getFileSize()){
-								dsz = e << 1;
-								break;
-							}
-						}
-					}
-				}
-			}
-
+		
+		if(stps_trg == null) return -1;
+		NUSALSeqCmdType tcmd = stps_trg.getCommand();
+		if(tcmd == NUSALSeqCmdType.VOICE_OFFSET){
+			return stps_trg.getParam(0);
 		}
-		else if(ecmd == NUSALSeqCmdType.LOAD_P_TABLE || ecmd == NUSALSeqCmdType.STORE_TO_SELF_P){
-			//Indexed by Q, u16 array
-			dsz = maxDataSize(daddr, true);
+		
+		return -1;
+	}
+	
+	private String genPointerTargetLabel(NUSALSeqCmdType referee_type, int ch){
+		if(referee_type == NUSALSeqCmdType.CALL_TABLE){
+			return "tblsub_seq_" + String.format("%03d", seq_tbl_subs++);
 		}
-		else if(ecmd == NUSALSeqCmdType.STORE_TO_SELF || ecmd == NUSALSeqCmdType.LOAD_FROM_SELF){
-			//Indexed by Q, u8 array
-			dsz = maxDataSize(daddr, false);
+		else if(referee_type == NUSALSeqCmdType.SET_DYNTABLE){
+			return String.format("tblsub_ch%X_%03d", ch, ch_tbl_subs[ch]++);
 		}
 		else{
-			//Fixed size, data
-			dsz = cmd.getExpectedDataSize();
+			if(ch < 0) return "sub_seq_" + String.format("%03d", seq_subs++);
+			else return String.format("sub_ch%X_%03d", ch, ch_subs[ch]++);
 		}
-		if(dsz <= 0) return null;
-		dcmd = new NUSALSeqDataCommand(dsz);
-		dcmd.setAddress(daddr);
-		byte[] darr = dcmd.getDataArray();
-		for(int i = 0; i < dsz; i++){
-			darr[i] = data.getByte(daddr+i);
-		}
-		if(cmd_coverage != null){
-			cmd_coverage.addBlock(daddr, daddr+dsz);
-		}
-		
-		return dcmd;
 	}
 	
-	private void linkReferences(){
-		//TODO Update to reorder data block processing.
-		if(cmdmap.isEmpty()) return;
+	private boolean checkTablePointer(int value, int ch){
+		if(value == 0) return true; //Assume it's a NULL
+		if(value >= data.getFileSize()) return false;
+		
+		//See if it's part of an existing instruction or datablock
+		NUSALSeqCommand prev = null;
+		for(int addr = value; addr >= 0; addr--){
+			prev = cmdmap.get(addr);
+			if(prev != null) break;
+		}
+		
+		if(prev != null){
+			int endaddr = prev.getAddress() + prev.getSizeInBytes();
+			if(value < endaddr){
+				//Covered. Return whether track matches.
+				int[] used = prev.getFirstUsed();
+				if(ch < 0) return used[0] == ch; //-1 is seq
+				else return used[0] >= 0; //If it's valid for any channel, it's okay.
+			}
+		}
+		
+		return true;
+	}
+	
+	private int nextScanStart(){
+		int datend = (int)data.getFileSize();
+		int cvrend = cmd_coverage.getMaxCoveredValue();
+		int pos = cvrend;
+		//Make sure we don't run into any data (not included in coverage map)
+		while(pos < datend){
+			if(cmdmap.containsKey(pos)) return -1;
+			if(data.getByte(pos) != 0) return pos;
+			pos++;
+		}
+		return -1;
+	}
+	
+	private List<int[]> linkReferences(){
+		if(cmdmap.isEmpty()) return null;
 		if(cmd_coverage != null) cmd_coverage.mergeBlocks();
+		List<int[]> newstarts = new LinkedList<int[]>();
 		
 		List<Integer> alist = new ArrayList<Integer>(cmdmap.size());
 		alist.addAll(cmdmap.keySet());
 		//Collections.sort(alist);
 		
 		//Reset label map, then add existing labels.
-		lblmap.clear();
+		lblmap.clear(); datarefs.clearValues();
 		for(Integer addr : alist){
 			NUSALSeqCommand cmd = cmdmap.get(addr);
 			if(cmd.getLabel() != null) lblmap.put(cmd.getLabel(), cmd);
 		}
-		Set<Integer> checked = new TreeSet<Integer>();
-		while(checked.size() < cmdmap.size()){
+		while((rchecked.size() + rskip.size()) < cmdmap.size()){
 			for(Integer addr : alist){
-				if(checked.contains(addr)) continue;
+				if(rchecked.contains(addr)) continue;
 				NUSALSeqCommand cmd = cmdmap.get(addr);
 				if(cmd instanceof NUSALSeqReferenceCommand){
 					int refaddr = cmd.getBranchAddress();
 					NUSALSeqCommand trg = cmdmap.get(refaddr);
-					//TODO: Call labeling works differently.
 					if(trg != null){
 						cmd.setReference(trg);
 						//Give the referenced command a label, if it doesn't already have one.
+						int[] trgctx = trg.getFirstUsed();
 						if(trg.getLabel() == null){
-							int n = 0;
-							String l = trg.genCtxLabelSuggestion() + String.format("%03d", n);
-							while(lblmap.containsKey(l)){
-								n++;
-								l = trg.genCtxLabelSuggestion() + String.format("%03d", n);
+							if(cmd.getCommand() == NUSALSeqCmdType.CALL){
+								String l = "sub";
+								if(trgctx[0] < 0){
+									//Seq
+									l += "_seq_" + String.format("%03d", seq_subs++);
+								}
+								else{
+									//Ch or ly
+									int c = trgctx[0];
+									if(trgctx[1] < 0){
+										//Ch
+										l += String.format("_ch%X_%03d", c, ch_subs[c]++);
+									}
+									else{
+										//Ly
+										int ly = trgctx[1];
+										l += String.format("_ch%X-ly%d_%03d", c, ly, ly_subs[c][ly]++);
+									}
+								}
+								trg.setLabel(l);
+								lblmap.put(l, trg);	
 							}
-							trg.setLabel(l);
-							lblmap.put(l, trg);
+							else{
+								int n = 0;
+								String l = null;
+								if(trgctx[0] < 0){
+									//Seq
+									l = "seq_block";
+								}
+								else{
+									//Ch or ly
+									int c = trgctx[0];
+									if(trgctx[1] < 0){
+										//Ch
+										l = String.format("ch%X_block", c);
+									}
+									else{
+										//Ly
+										int ly = trgctx[1];
+										l = String.format("ch%X-ly%d_block", c, ly);
+									}
+								}
+								String testlbl = l + String.format("%03d", n);
+								while(lblmap.containsKey(testlbl)){
+									n++;
+									testlbl = l + String.format("%03d", n);
+								}
+								trg.setLabel(testlbl);
+								lblmap.put(testlbl, trg);	
+							}
 						}
 					}
 					else {
-						if(cmd instanceof NUSALSeqDataRefCommand){
-							//TODO FIRST just note data refs in map. Then we will scan backwards.
-							//try to read in data.
-							//	Data shouldn't be caught by initial parse cycle, so have to be caught here.
-							NUSALSeqDataRefCommand drcmd = (NUSALSeqDataRefCommand)cmd;
-							NUSALSeqDataCommand dcmd = tryReadData(drcmd);
-							if(dcmd == null){
-								System.err.println("NUSALSeqReader.linkReferences || WARNING: "
-										+ "The following reference could not be resolved: 0x" + Integer.toHexString(refaddr));
+						//Note reference
+						datarefs.addValue(refaddr, cmd);
+					}
+					rchecked.add(addr);
+				}
+				else if (cmd instanceof NUSALSeqPtrTableData){
+					//Scan table again to see if there are...
+					//	A. Any yet unlinked refs
+					//	B. Any invalid ptrs that should trigger a shrinking of the table
+					NUSALSeqPtrTableData dcmd = (NUSALSeqPtrTableData)cmd;
+					int tsize = dcmd.getUnitCount();
+					int resize = 0;
+					int usech = dcmd.getFirstChannelUsed();
+					for(int i = 0; i < tsize; i++){
+						if(dcmd.getReference(i) == null){
+							int raddr = dcmd.getDataValue(i, false);
+							NUSALSeqCommand trg = cmdmap.get(raddr);
+							if(trg != null){
+								dcmd.setReference(i, trg);
 							}
 							else{
-								drcmd.setReference(dcmd);
-								
-								//Label
-								if(dcmd.getLabel() == null){
-									int n = 0;
-									String l = dcmd.genCtxLabelSuggestion() + String.format("%03d", n);
-									while(lblmap.containsKey(l)){
-										n++;
-										l = dcmd.genCtxLabelSuggestion() + String.format("%03d", n);
+								if(checkTablePointer(raddr, usech)){
+									if(dcmd.readAsSubPointers() && raddr != 0 && !cmdmap.containsKey(raddr)){
+										ptr_parse_queue.add(new ParseRequest(usech, dcmd.getLayer(), raddr, genPointerTargetLabel(null, usech), dcmd.getTickAddress()));
+										System.err.println(String.format("Table @ 0x%04x added parse request for 0x%04x (point A)", addr, raddr));
 									}
-									dcmd.setLabel(l);
-									lblmap.put(l, dcmd);
 								}
-								
-								//Add
-								cmdmap.put(refaddr, dcmd);
-								checked.add(refaddr);
+								else break; //Invalid pointer	
 							}
-						}
-						else{
-							System.err.println("NUSALSeqReader.linkReferences || WARNING: "
-									+ "The following reference could not be resolved: 0x" + Integer.toHexString(refaddr));	
+							resize++;
 						}
 					}
+					if(resize < tsize) dcmd.resize(resize);
 				}
-				checked.add(addr);
+				else rchecked.add(addr);
+				//rchecked.add(addr); //We don't want this flagged for pointer tables because we want it to scan each time.
 			}	
 			alist.clear();
 			alist.addAll(cmdmap.keySet());
 		}
 		
+		//Process data
+		if(!datarefs.isEmpty()){
+			alist.clear();
+			alist.addAll(datarefs.getOrderedKeys());
+			Collections.reverse(alist);
+			int max_addr = (int)data.getFileSize();
+			
+			int n = 0; int m = 0;
+			for(int addr : alist){
+				//First, is there anything already there? Can this overlap things?
+				List<NUSALSeqCommand> cmdlist = datarefs.getValues(addr);
+				if(cmdlist == null || cmdlist.isEmpty()) continue;
+				NUSALSeqCommand referee = cmdlist.get(0);
+				NUSALSeqCmdType ctype = referee.getCommand();
+				if(ctype.flagSet(NUSALSeqCommands.FLAG_REFOVERLAP)){
+					if(cmd_coverage.isCovered(addr)){
+						//Referencing something already existing...
+						int ovrl = -1; int pos = addr;
+						NUSALSeqCommand ovl_obj = null;
+						while(pos > 0 && ovl_obj == null){
+							ovl_obj = cmdmap.get(pos--);
+							ovrl++;
+						}
+						if(ovl_obj == null){
+							System.err.println("NUSALSeqReader.linkReferences || WARNING: "
+									+ "The following reference could not be resolved: 0x" + Integer.toHexString(addr));
+							continue;
+						}
+						
+						String lbl = ovl_obj.getLabel();
+						if(ovl_obj.getLabel() == null){
+							lbl = String.format(".dataref%03d", m++);
+							while(lblmap.containsKey(lbl)){
+								m++;
+								lbl = String.format(".dataref%03d", m++);
+							}
+							ovl_obj.setLabel(lbl);
+							lblmap.put(lbl, ovl_obj);
+						}
+						
+						for(NUSALSeqCommand cmd : cmdlist){
+							if(cmd instanceof NUSALSeqDataRefCommand){
+								NUSALSeqDataRefCommand drcmd = (NUSALSeqDataRefCommand)cmd;
+								drcmd.setDataOffset(ovrl);
+								drcmd.setReference(ovl_obj);
+							}
+						}
+						
+						continue;
+					}
+				}
+				
+				int end_addr = addr+1;
+				while(end_addr < max_addr && (!cmd_coverage.isCovered(end_addr))){
+					end_addr++;
+				}
+				
+				NUSALSeqDataCommand dcmd = DataCommands.parseData(ctype, data.getReferenceAt(addr), end_addr);
+				if(dcmd == null){
+					System.err.println("NUSALSeqReader.linkReferences || WARNING: "
+							+ "The following reference could not be resolved: 0x" + Integer.toHexString(addr));
+					continue;
+				}
+				
+				NUSALSeqDataType dtype = dcmd.getDataType();
+				if(dtype == NUSALSeqDataType.CALLTABLE || dtype == NUSALSeqDataType.P_TABLE){
+					//DataCommands.parseData will read into table as far as it can (til it hits table type max, covered block, or end of seq)
+					//	This should take a look at the contents of the table to further shorten it and add suspected jump targets to parse queue
+					int usech = -1;
+					int usely = -1;
+					boolean data_likely = false;
+					if(dtype == NUSALSeqDataType.P_TABLE){
+						//This will be channel context, BUT it can point to a table
+						//	of values to use for startlayer/dynstartlayer
+						//If referee type is ldptbl check next stps target?
+						//usely = this.checkPTBLTargetLayer(referee);
+						NUSALSeqCommand modtrg = searchForModifiedInstruction_ldptbl(referee);
+						if(modtrg != null){
+							NUSALSeqCmdType mcmd = modtrg.getCommand();
+							if(mcmd == NUSALSeqCmdType.VOICE_OFFSET){
+								usely = modtrg.getParam(0);
+							}
+							else{
+								//TODO Check if data only?
+								//rn default to data only...
+								data_likely = true;
+							}
+						}
+						if(usely < 0){
+							//Regular channel command
+							usech = referee.getFirstChannelUsed();
+						}
+						else{
+							//Layer context. 
+							usech = referee.getFirstUsed()[0];
+						}
+					}
+					
+					NUSALSeqPtrTableData pcmd;
+					int resize = 0;
+					int unitsmax = dcmd.getUnitCount();
+					for(int j = 0; j < unitsmax; j++){
+						int p = dcmd.getDataValue(j, false);
+						if(!checkTablePointer(p, usech)) break;
+						if(p != 0 && !cmdmap.containsKey(p) && !data_likely){
+							ptr_parse_queue.add(new ParseRequest(usech, usely, p, genPointerTargetLabel(ctype, usech), referee.getTickAddress()));	
+							System.err.println(String.format("Table @ 0x%04x added parse request for 0x%04x (point B)", addr, p));
+						}
+						resize++;
+					}
+					pcmd = new NUSALSeqPtrTableData(dtype, resize);
+					pcmd.data = dcmd.data;
+					pcmd.setReadAsSubPointers(!data_likely);
+					if(usech >= 0) pcmd.flagChannelUsed(usech);
+					dcmd = pcmd;
+					pcmd.setLayer(usely);
+					rskip.add(addr);
+				}
+				else rchecked.add(addr);
+				
+				dcmd.setAddress(addr);
+				dcmd.setTickAddress(referee.getTickAddress());
+				cmdmap.put(addr, dcmd);
+				//cmd_coverage.addBlock(addr, addr + dcmd.getSizeInBytes());
+				String lbl = String.format(".data%03d", n++);
+				while(lblmap.containsKey(lbl)){
+					n++;
+					lbl = String.format(".data%03d", n++);
+				}
+				dcmd.setLabel(lbl);
+				lblmap.put(lbl, dcmd);
+				//rchecked.add(addr);
+				
+				for(NUSALSeqCommand cmd : cmdlist) cmd.setReference(dcmd);
+			}
+		}
+		
+		//Set _entry label for 0x0000
+		NUSALSeqCommand cmd = cmdmap.get(0);
+		if(cmd != null) {
+			cmd.setLabel("_entry");
+			lblmap.put(cmd.getLabel(), cmd);
+		}
+		
+		return newstarts;
 	}
 	
 	private boolean listHasAddr(List<int[]> list, int addr){
@@ -540,8 +760,6 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	}
 	
 	private void readTrack(List<int[]> starts, List<List<int[]>> childlists, CoverageMap1D parentmap, int mode, int chidx, int lidx){
-		//TODO More for serialization. Seems like some data blocks need to start on certain alignments, requiring padding before if
-		//	previous command does not end aligned. See OoT seq 30.
 		int pos = 0;
 		int tick = 0;
 		int sub_addr = -1; //Current subroutine
@@ -603,22 +821,45 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 				else break;
 			}
 			
+			//Check to see if empty/buffer
+			int zerocount = 0;
+			for(int p = pos; p < data.getFileSize(); p++){
+				if(data.getByte(p) != 0) break;
+				zerocount++;
+			}
+			
 			//Parse
 			switch(mode){
 			case PARSEMODE_SEQ:
-				cmd = SeqCommands.parseSequenceCommand(data.getReferenceAt(pos));
-				cmd.flagSeqUsed();
+				if(zerocount >= 2){
+					cmd = new NUSALSeqDataCommand(NUSALSeqDataType.BUFFER, 1);
+					popflag = true;
+				}
+				else cmd = SeqCommands.parseSequenceCommand(data.getReferenceAt(pos));
+				if(cmd != null) cmd.flagSeqUsed();
 				break;
 			case PARSEMODE_CHANNEL:
-				cmd = ChannelCommands.parseChannelCommand(data.getReferenceAt(pos));
-				cmd.flagChannelUsed(chidx);
+				if(zerocount >= 1){
+					//00 would be cdelay 0 ticks. I guess you could use it, but seems silly.
+					cmd = new NUSALSeqDataCommand(NUSALSeqDataType.BUFFER, 1);
+					popflag = true;
+				}
+				else cmd = ChannelCommands.parseChannelCommand(data.getReferenceAt(pos));
+				if(cmd != null) cmd.flagChannelUsed(chidx);
 				break;
 			case PARSEMODE_LAYER:
-				l_shortnotes = (parentmap != null) && parentmap.isCovered(tick);
-				cmd = LayerCommands.parseLayerCommand(data.getReferenceAt(pos), l_shortnotes);
-				cmd.flagLayerUsed(chidx, lidx);
+				if(zerocount >= 2){
+					//00 00... would be note 0 for zero ticks. Doesn't make sense.
+					cmd = new NUSALSeqDataCommand(NUSALSeqDataType.BUFFER, 1);
+					popflag = true;
+				}
+				else{
+					l_shortnotes = (parentmap != null) && parentmap.isCovered(tick);
+					cmd = LayerCommands.parseLayerCommand(data.getReferenceAt(pos), l_shortnotes);	
+				}
+				if(cmd != null) cmd.flagLayerUsed(chidx, lidx);
 				break;
-			}
+			}	
 			if(cmd == null){
 				if(!suppress_nullcheck) throw new NUSALSeq.UnrecognizedCommandException(data.getByte(pos), pos, modestr);
 				else{
@@ -626,9 +867,9 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 					continue;
 				}
 			}
+			cmd.setAddress(pos);
 			cmdmap.put(pos, cmd);
 			cmd_coverage.addBlock(pos, pos + cmd.getSizeInBytes());
-			cmd.setAddress(pos);
 			if(tick >= 0){
 				tickmap.put(pos, tick);
 				cmd.setTickAddress(tick);
@@ -670,6 +911,16 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 					
 					branch_stack.saveState(addr);
 				}
+				else if(e_cmd == NUSALSeqCmdType.CHANNEL_OFFSET_C){
+					int ch = cmd.getParam(0);
+					int addr = cmd.getBranchAddress();
+					ptr_parse_queue.add(new ParseRequest(ch, addr, String.format("ch%X_startchan_%03d", ch, ch_startchan[ch]++), tick));
+					
+					pos += cmd.getSizeInBytes();
+					tick += cmd.getSizeInTicks();
+					
+					branch_stack.saveState(addr);
+				}
 				else if(e_cmd == NUSALSeqCmdType.VOICE_OFFSET || e_cmd == NUSALSeqCmdType.VOICE_OFFSET_REL){
 					int ch = cmd.getParam(0);
 					int addr = cmd.getBranchAddress();
@@ -691,6 +942,12 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 					else{
 						if(sub_addr >= 0) callstack.push(sub_addr);
 						sub_addr = call_addr;
+						pos += cmd.getSizeInBytes();
+						if(!opbranches.contains(pos)){
+							opbranches.add(pos);
+							branch_stack.saveState(pos);
+						}
+						
 						pos = call_addr;
 						sub_ticklen.setZero(call_addr);
 					}
@@ -707,12 +964,16 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 						pos += cmd.getSizeInBytes();
 					}
 					else{
-						//Take jump, but save current position
-						pos += cmd.getSizeInBytes();
+						//Take jump
+						//Commented out region saves current position.
+						//	I have removed this as it seems to be doing more harm than good.
+						/*pos += cmd.getSizeInBytes();
 						if(!opbranches.contains(pos)){
-							opbranches.add(pos);
-							branch_stack.saveState(pos);
-						}
+							if(data.getByte(pos) != 0){
+								opbranches.add(pos);
+								branch_stack.saveState(pos);	
+							}
+						}*/
 						pos = addr;
 					}
 					tick += cmd.getSizeInTicks();
@@ -778,18 +1039,18 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		
 		//If in seq or channel mode, do children
 		if(mode == PARSEMODE_SEQ){
-			List<List<int[]>> vlists = new ArrayList<List<int[]>>(4);
-			for(int i = 0; i < 4; i++)vlists.add(new LinkedList<int[]>());
+			List<List<int[]>> vlists = new ArrayList<List<int[]>>(LAYER_COUNT);
+			for(int i = 0; i < LAYER_COUNT; i++)vlists.add(new LinkedList<int[]>());
 			for(int i = 0; i < 16; i++){
 				readTrack(childlists.get(i), vlists, null, PARSEMODE_CHANNEL, i, -1);
 				
 				//Clear voice lists for next channel.
-				for(int j = 0; j < 4; j++) vlists.get(j).clear();
+				for(int j = 0; j < LAYER_COUNT; j++) vlists.get(j).clear();
 			}
 		}
 		else if(mode == PARSEMODE_CHANNEL){
 			//Just use the parentmap local variable to fill for a channel.
-			for(int i = 0; i < 4; i++){
+			for(int i = 0; i < LAYER_COUNT; i++){
 				readTrack(childlists.get(i), null, ch_shortnotes[chidx], PARSEMODE_LAYER, chidx, i);
 			}
 		}
@@ -802,16 +1063,79 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		branch_stack.clear();
 		datarefs.clearValues();
 		tickmap.clear();
+		rchecked.clear();
 		
 		seq_subs = 0;
 		ch_subs = new int[16];
-		ly_subs = new int[16][8];
+		ly_subs = new int[16][NUSALSeq.MAX_LAYERS_PER_CHANNEL];
+		seq_tbl_subs = 0;
+		ch_tbl_subs = new int[16];
+		ch_startchan = new int[16];
 		
 		List<List<int[]>> clists = new ArrayList<List<int[]>>(16);
 		for(int i = 0; i < 16; i++) clists.add(new LinkedList<int[]>());
-		readTrack(null, clists, null, PARSEMODE_SEQ, -1, -1);
 		
-		linkReferences();
+		List<List<int[]>> vlists = new ArrayList<List<int[]>>(LAYER_COUNT);
+		for(int i = 0; i < LAYER_COUNT; i++) vlists.add(new LinkedList<int[]>());
+		List<int[]> pstarts = new LinkedList<int[]>();
+		
+		List<int[]> remaining = null;
+		do{
+			if(!cmdmap.containsKey(0) || (remaining != null && !remaining.isEmpty())){
+				readTrack(remaining, clists, null, PARSEMODE_SEQ, -1, -1);	
+			}
+			while(!ptr_parse_queue.isEmpty()){
+				pstarts.clear();
+				ParseRequest req = ptr_parse_queue.pop();
+				//System.err.println("Request found: ch = " + req.channel + ", raddr = 0x" + Integer.toHexString(req.address));
+				req.printDebug();
+				pstarts.add(new int[]{req.address, req.tick});
+				if(req.channel < 0){
+					readTrack(pstarts, clists, null, PARSEMODE_SEQ, -1, -1);
+				}
+				else if(req.layer >= 0){
+					readTrack(pstarts, null, ch_shortnotes[req.channel], PARSEMODE_LAYER, req.channel, req.layer);
+				}
+				else{
+					readTrack(pstarts, vlists, null, PARSEMODE_CHANNEL, req.channel, -1);
+				}
+				//Label result
+				NUSALSeqCommand cmd = cmdmap.get(req.address);
+				if(cmd != null && req.label != null) cmd.setLabel(req.label);
+			}
+			remaining = linkReferences();
+			
+			//Now check coverage to see if large non-zero chunk uncovered.
+			if(ptr_parse_queue.isEmpty()){
+				int nextstart = nextScanStart();
+				if(nextstart > 0){
+					if(remaining == null) remaining = new LinkedList<int[]>();
+					remaining.add(new int[]{nextstart, 0});
+				}	
+			}
+			
+		} while((remaining != null && !remaining.isEmpty()) || !ptr_parse_queue.isEmpty());
+		
+		//Find dalloc buffers and extend them to next command
+		List<Integer> addrlist = new ArrayList<Integer>(cmdmap.size()+1);
+		addrlist.addAll(cmdmap.keySet());
+		Collections.sort(addrlist);
+		Collections.reverse(addrlist);
+		int lastaddr = (int)data.getFileSize();
+		for(Integer addr : addrlist){
+			NUSALSeqCommand cmd = cmdmap.get(addr);
+			if(cmd instanceof NUSALSeqDataCommand){
+				NUSALSeqDataCommand dcmd = (NUSALSeqDataCommand)cmd;
+				if(dcmd.getDataType() == NUSALSeqDataType.BUFFER){
+					dcmd.reallocate(lastaddr - addr);
+				}
+				else if((addr + dcmd.getSizeInBytes()) > lastaddr){
+					//Shrink.
+					dcmd.reallocate(lastaddr - addr);
+				}
+			}
+			lastaddr = addr;
+		}
 	}
 	
 	/*--- Getters ---*/

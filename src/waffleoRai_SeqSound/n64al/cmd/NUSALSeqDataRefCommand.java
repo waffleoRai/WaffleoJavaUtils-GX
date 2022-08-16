@@ -7,6 +7,7 @@ public abstract class NUSALSeqDataRefCommand extends NUSALSeqReferenceCommand{
 
 	private String lbl_prefix;
 	private int data_size;
+	private int offset; //Offset of reference from start of linked command (if overlap)
 	
 	protected NUSALSeqDataRefCommand(NUSALSeqCmdType cmd, int addr, int exp_datsz) {
 		super(cmd, addr, false);
@@ -24,7 +25,20 @@ public abstract class NUSALSeqDataRefCommand extends NUSALSeqReferenceCommand{
 	public NUSALSeqCmdType getRelativeCommand() {return null;}
 	public NUSALSeqCmdType getAbsoluteCommand() {return super.getCommand();}
 	
+	public int getDataOffset(){return offset;}
+	public void setDataOffset(int value){offset = value;}
+	
 	public String getLabelPrefix(){return lbl_prefix;}
 	public int getExpectedDataSize(){return data_size;}
+	
+	protected StringBuilder toMMLCommand_child(){
+		StringBuilder sb = super.toMMLCommand_child();
+		if(offset != 0){
+			sb.append('[');
+			sb.append(offset);
+			sb.append(']');
+		}
+		return sb;
+	}
 	
 }

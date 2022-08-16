@@ -8,23 +8,25 @@ public class NinDSPADPCMTable extends ADPCMTable{
 	
 	//All values are sign extended from short
 	//This is because Java refuses to do bit operations on anything smaller than 32 bits
-	private int[] coeff;
+	private int[][] coeff;
 	
 	/*--- Construction/Parsing ---*/
 	
-	public NinDSPADPCMTable(){
+	public NinDSPADPCMTable(int predictors){
 		super(2);
-		coeff = new int[16];
+		coeff = new int[predictors][2];
 	}
 	
 	public static NinDSPADPCMTable readFromFile(FileBuffer src, long stpos){
 		//System.out.println("Input start offset: 0x" + Long.toHexString(stpos));
 		if(src == null) return null;
 		long cpos = stpos;
-		NinDSPADPCMTable tbl = new NinDSPADPCMTable();
-		for(int i = 0; i < 16; i++){
-			tbl.coeff[i] = (int)src.shortFromFile(cpos);
-			cpos += 2;
+		NinDSPADPCMTable tbl = new NinDSPADPCMTable(8);
+		for(int p = 0; p < 8; p++){
+			for(int o = 0; o < 2; o++){
+				tbl.coeff[p][o] = (int)src.shortFromFile(cpos);
+				cpos += 2;
+			}
 		}
 		tbl.gain = (int)src.shortFromFile(cpos); cpos += 2;
 		int ps = (int)src.shortFromFile(cpos); cpos += 2;
@@ -44,17 +46,35 @@ public class NinDSPADPCMTable extends ADPCMTable{
 	
 	/*--- Getters ---*/
 	
-	public int getCoefficient(int index){return coeff[index];}
+	public int getPredictorIndex(int index_1d){
+		return index_1d%coeff.length;
+	}
+	
+	public int getOrderIndex(int index_1d){
+		return index_1d/coeff.length;
+	}
+	
+	public int predictorCount(){return coeff.length;}
+	public int getCoefficient(int index){return coeff[getPredictorIndex(index)][getOrderIndex(index)];}
+	public int getCoefficient(int p, int o){return coeff[p][o];}
 	public int getGain(){return gain;}
 	
 	/*--- Setters ---*/
 	
-	public void reallocCoefficientTable(int alloc){
-		coeff = new int[alloc];
+	public void reallocCoefficientTable(int predictors){
+		coeff = new int[predictors][2];
 	}
 	
-	public void setCoefficient(int index, int value){coeff[index] = value;}
+	public void setCoefficient(int index, int value){coeff[getPredictorIndex(index)][getOrderIndex(index)] = value;}
+	public void setCoefficient(int p, int o, int value){coeff[p][o] = value;}
 	public void setGain(int value){gain = value;}
+	
+	public void setInitBacksample(int sample, int idx){backsamps_start[idx] = sample;}
+	public void setLoopBacksample(int sample, int idx){backsamps_loop[idx] = sample;}
+	public void setInitPredictor(int value){cidx_start = value;}
+	public void setLoopPredictor(int value){cidx_loop = value;}
+	public void setInitShift(int value){shamt_start = value;}
+	public void setLoopShift(int value){shamt_loop = value;}
 
 	/*--- Print Info ---*/
 	
@@ -69,9 +89,12 @@ public class NinDSPADPCMTable extends ADPCMTable{
 		System.out.println("Loop S1: 0x" + Integer.toHexString(backsamps_loop[0]));
 		System.out.println("Loop S2: 0x" + Integer.toHexString(backsamps_loop[1]));
 		System.out.println("Coeff Table: ");
-		for(int i = 0; i < coeff.length; i++)
-		{
-			System.out.println("\t0x" + Integer.toHexString(coeff[i]));
+		for(int p = 0; p < coeff.length; p++){
+			for(int o = 0; o < 2; o++){
+				int val = coeff[p][o] & 0xffff;
+				System.out.print(String.format("%04x ", val));
+			}
+			System.out.println();
 		}
 	}
 	

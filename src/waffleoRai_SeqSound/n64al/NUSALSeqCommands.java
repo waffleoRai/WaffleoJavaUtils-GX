@@ -2,6 +2,8 @@ package waffleoRai_SeqSound.n64al;
 
 public class NUSALSeqCommands {
 	
+	public static final int FLAG_REFOVERLAP = 	0x080000;
+	public static final int FLAG_ADDRREF = 		0x040000;
 	public static final int FLAG_OPENTRACK = 	0x020000;
 	public static final int FLAG_STATEMOD = 	0x010000;
 	public static final int FLAG_BRANCH = 		0x008000;

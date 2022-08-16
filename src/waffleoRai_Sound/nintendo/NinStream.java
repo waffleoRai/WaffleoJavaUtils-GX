@@ -1,9 +1,14 @@
 package waffleoRai_Sound.nintendo;
 
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import waffleoRai_Sound.ADPCMTable;
 import waffleoRai_Sound.SampleChannel;
@@ -11,6 +16,7 @@ import waffleoRai_Sound.WAV;
 import waffleoRai_Sound.WAV.LoopType;
 import waffleoRai_SoundSynth.AudioSampleStream;
 import waffleoRai_SoundSynth.soundformats.game.NAudioSampleStream;
+import waffleoRai_Utils.FileBuffer;
 
 public abstract class NinStream extends NinStreamableSound{
 	
@@ -19,10 +25,13 @@ public abstract class NinStream extends NinStreamableSound{
 	public static class Track{
 		public int volume;
 		public int pan;
+		public int s_pan;
+		public int flags;
 		
 		public int chCount;
 		public int leftChannelID;
 		public int rightChannelID;
+		public List<Integer> additional_ch;
 	}
 	
 	public static class ADPCTable{
@@ -155,6 +164,7 @@ public abstract class NinStream extends NinStreamableSound{
 		catch(Exception e){return false;}
 		if(t == null) return false;
 		
+		//System.err.println("Total Frames: " + totalFrames());
 		WAV wav = new WAV(16, t.chCount, totalFrames());
 		wav.setSampleRate(sampleRate);
 		if(loops) wav.setLoop(LoopType.Forward, loopStart, totalFrames());
@@ -162,7 +172,8 @@ public abstract class NinStream extends NinStreamableSound{
 		
 		//Copy data
 		//Instead of looping through all channels, it's just the channels we want
-		wav.copyData(0, getSamples_16Signed(t.leftChannelID));
+		int[] data = getSamples_16Signed(t.leftChannelID);
+		wav.copyData(0, data);
 		if(t.chCount > 1) wav.copyData(1, getSamples_16Signed(t.rightChannelID));
 		
 		try {
@@ -235,15 +246,162 @@ public abstract class NinStream extends NinStreamableSound{
 		return writeTrackAsWAV(path ,track, sframe, framediff);
 	}
 	
+	public boolean writeChannelAsWAV(String path, int channel){
+		if(channel < 0 || channel >= channelCount) return false;
+		
+		//System.err.println("Total Frames: " + totalFrames());
+		WAV wav = new WAV(16, 1, totalFrames());
+		wav.setSampleRate(sampleRate);
+		if(loops) wav.setLoop(LoopType.Forward, loopStart, totalFrames());
+		wav.setSMPL_tune(unityNote, fineTune);
+		
+		wav.copyData(0, getSamples_16Signed(channel));
+		
+		try {
+			wav.writeFile(path);
+		} 
+		catch (IOException e) {
+			e.printStackTrace();
+			return false;
+		}
+		
+		return true;
+	}
+	
+	public boolean dumpAllToWAV(String dirpath, String streamname){
+		if(dirpath == null) return false;
+		if(streamname == null || streamname.isEmpty()) streamname = "ninstream";
+		String outpath = null;
+		boolean good = true;
+		
+		try {
+			if(!FileBuffer.directoryExists(dirpath)) Files.createDirectories(Paths.get(dirpath));
+			Set<Integer> covered_ch = new HashSet<Integer>();
+			List<Integer> channels = new ArrayList<Integer>(channelCount+1);
+			
+			if(tracks == null || tracks.size() < 2){
+				if(tracks == null || tracks.isEmpty()){
+					//Dump channels
+					if(super.channelCount < 2){
+						outpath = dirpath + File.separator + streamname + ".wav";
+						return writeChannelAsWAV(outpath, 0);
+					}
+					else{
+						dirpath += File.separator + streamname;
+						if(!FileBuffer.directoryExists(dirpath)) Files.createDirectories(Paths.get(dirpath));
+						for(int c = 0; c < channelCount; c++){
+							outpath = dirpath + File.separator + streamname + String.format("_ch%02d.wav", c);
+							good = good && writeChannelAsWAV(outpath, c);
+						}
+						return good;
+					}
+				}
+				else{
+					//1 track. Check if it covers all channels.
+					Track track = tracks.get(0);
+					if(track.chCount <= 2 && track.chCount == super.channelCount){
+						//Write one file
+						outpath = dirpath + File.separator + streamname + ".wav";
+						return writeTrackAsWAV(outpath, 0);
+					}
+					else{
+						//Write this track, then remaining channels.
+						dirpath += File.separator + streamname;
+						if(!FileBuffer.directoryExists(dirpath)) Files.createDirectories(Paths.get(dirpath));
+						
+						if(track.chCount <= 2){
+							covered_ch.add(track.leftChannelID);
+							if(track.chCount > 1) covered_ch.add(track.rightChannelID);
+							outpath = dirpath + File.separator + streamname + String.format("_track%02d.wav", 0);
+							good = good && writeTrackAsWAV(outpath, 0);
+						}
+						else{
+							//Split track into channels
+							channels.add(track.leftChannelID);
+							channels.add(track.rightChannelID);
+							if(track.additional_ch != null) channels.addAll(track.additional_ch);
+							covered_ch.addAll(channels);
+							String stem = dirpath + File.separator + streamname;
+							if(track.chCount != channelCount){
+								stem += "_track00";
+							}
+							
+							int c = 0;
+							for(Integer chidx : channels){
+								outpath = stem + String.format("_ch%02d.wav",c);
+								good = good && writeChannelAsWAV(outpath, chidx);
+								c++;
+							}
+						}
+						
+						//Do remaining channels.
+						for(int c = 0; c < channelCount; c++){
+							if(covered_ch.contains(c)) continue;
+							outpath = dirpath + File.separator + streamname + String.format("_ch%02d.wav", 0,c);
+							good = good && writeChannelAsWAV(outpath, c);
+						}
+					}
+				}
+			}
+			else{
+				//2 or more tracks
+				dirpath += File.separator + streamname;
+				if(!FileBuffer.directoryExists(dirpath)) Files.createDirectories(Paths.get(dirpath));
+				
+				//Do tracks first.
+				int t = 0;
+				for(Track track : tracks){
+					String stem = dirpath + File.separator + streamname + String.format("_track%02d", t);
+					if(track.chCount <= 2){
+						covered_ch.add(track.leftChannelID);
+						if(track.chCount > 1) covered_ch.add(track.rightChannelID);
+						outpath = stem + ".wav";
+						good = good && writeTrackAsWAV(outpath, t);
+					}
+					else{
+						channels.add(track.leftChannelID);
+						channels.add(track.rightChannelID);
+						if(track.additional_ch != null) channels.addAll(track.additional_ch);
+						covered_ch.addAll(channels);
+						int c = 0;
+						for(Integer chidx : channels){
+							outpath = stem + String.format("_ch%02d.wav", c);
+							good = good && writeChannelAsWAV(outpath, chidx);
+							c++;
+						}
+					}
+					t++;
+				}
+				
+				//Do remaining channels.
+				for(int c = 0; c < channelCount; c++){
+					if(covered_ch.contains(c)) continue;
+					outpath = dirpath + File.separator + streamname + String.format("_ch%02d.wav", 0,c);
+					good = good && writeChannelAsWAV(outpath, c);
+				}
+			}
+			
+		}
+		catch(Exception ex){
+			ex.printStackTrace();
+			return false;
+		}
+		
+		return good;
+	}
+	
 	public int[] getActiveTrackChannels(){
-
 		if(active_track == -1) return null;
 		if(tracks == null || tracks.isEmpty()) return null;
 		Track t = tracks.get(active_track);
-		int[] chans = new int[2];
-		chans[0] = t.leftChannelID;
-		chans[1] = t.rightChannelID;
-		
+		int[] chans = new int[t.chCount];
+		if(t.chCount > 0) chans[0] = t.leftChannelID;
+		if(t.chCount > 1) chans[1] = t.rightChannelID;
+		if(t.chCount > 2){
+			for(int c = 2; c < t.chCount; c++){
+				chans[c] = t.additional_ch.get(c-2);
+			}
+		}
 		return chans;
 	}
 	

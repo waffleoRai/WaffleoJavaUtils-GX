@@ -283,6 +283,11 @@ public class FCommands {
 		public C_Yield() {
 			super(NUSALSeqCmdType.YIELD, 1);
 		}
+		protected StringBuilder toMMLCommand_child(){
+			StringBuilder sb = new StringBuilder(32);
+			sb.append("yield");
+			return sb;
+		}
 	}
 	
 	/*--- ff: end ---*/

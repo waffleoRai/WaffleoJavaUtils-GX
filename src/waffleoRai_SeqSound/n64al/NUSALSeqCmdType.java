@@ -8,6 +8,8 @@ public enum NUSALSeqCmdType {
 	//basecmd, pcount, minsize, flags, sertype, name
 	/*Flags are: 
 	 * 
+	 *  19	Data reference can overlap other data or command
+	 * 	18	References an address in sequence (needs ref resolved)
 	 * 	17	Open subtrack (layer/ch starts)
 	 * 	16	Player/channel state modifying
 	 * 
@@ -40,17 +42,17 @@ public enum NUSALSeqCmdType {
 	
 	UNRESERVE_NOTES(0xf0, 0, 1, 0x10007, NUSALSeqCommand.SERIALFMT_, "unreservenotes"),
 	RESERVE_NOTES(0xf1, 1, 2, 0x10007, NUSALSeqCommand.SERIALFMT_1, "reservenotes"),
-	BRANCH_IF_LTZ_REL(0xf2, 1, 2, 0x8007, NUSALSeqCommand.SERIALFMT_1, "rbltz"), //Relative addr
-	BRANCH_IF_EQZ_REL(0xf3, 1, 2, 0x8007, NUSALSeqCommand.SERIALFMT_1, "rbeqz"), //Relative addr
-	BRANCH_ALWAYS_REL(0xf4, 1, 2, 0x4007, NUSALSeqCommand.SERIALFMT_1, "rjump"), //Relative addr
-	BRANCH_IF_GTEZ(0xf5, 1, 3, 0x8007, NUSALSeqCommand.SERIALFMT_2, "bgez"), //Abs addr
+	BRANCH_IF_LTZ_REL(0xf2, 1, 2, 0x48007, NUSALSeqCommand.SERIALFMT_1, "rbltz"), //Relative addr
+	BRANCH_IF_EQZ_REL(0xf3, 1, 2, 0x48007, NUSALSeqCommand.SERIALFMT_1, "rbeqz"), //Relative addr
+	BRANCH_ALWAYS_REL(0xf4, 1, 2, 0x44007, NUSALSeqCommand.SERIALFMT_1, "rjump"), //Relative addr
+	BRANCH_IF_GTEZ(0xf5, 1, 3, 0x48007, NUSALSeqCommand.SERIALFMT_2, "bgez"), //Abs addr
 	BREAK(0xf6, 0, 1, 0x1007, NUSALSeqCommand.SERIALFMT_, "break"), //Abs addr
 	LOOP_END(0xf7, 0, 1, 0x5007, NUSALSeqCommand.SERIALFMT_, "loopend"),
 	LOOP_START(0xf8, 1, 2, 0x7, NUSALSeqCommand.SERIALFMT_1, "loop"),
-	BRANCH_IF_LTZ(0xf9, 1, 3, 0x8007, NUSALSeqCommand.SERIALFMT_2, "bltz"),//Abs addr
-	BRANCH_IF_EQZ(0xfa, 1, 3, 0x8007, NUSALSeqCommand.SERIALFMT_2, "beqz"), //Abs addr
-	BRANCH_ALWAYS(0xfb, 1, 3, 0x4007, NUSALSeqCommand.SERIALFMT_2, "jump"), //Abs addr
-	CALL(0xfc, 1, 3, 0x2007, NUSALSeqCommand.SERIALFMT_2, "call"), //Abs addr
+	BRANCH_IF_LTZ(0xf9, 1, 3, 0x48007, NUSALSeqCommand.SERIALFMT_2, "bltz"),//Abs addr
+	BRANCH_IF_EQZ(0xfa, 1, 3, 0x48007, NUSALSeqCommand.SERIALFMT_2, "beqz"), //Abs addr
+	BRANCH_ALWAYS(0xfb, 1, 3, 0x44007, NUSALSeqCommand.SERIALFMT_2, "jump"), //Abs addr
+	CALL(0xfc, 1, 3, 0x42007, NUSALSeqCommand.SERIALFMT_2, "call"), //Abs addr
 	WAIT(0xfd, 1, 2, 0xe0f, NUSALSeqCommand.SERIALFMT_V, "delay"),
 	YIELD(0xfe, 0, 1, 0xe07, NUSALSeqCommand.SERIALFMT_, "yield"),
 	END_READ(0xff, 0, 1, 0x1007, NUSALSeqCommand.SERIALFMT_, "end"),
@@ -61,17 +63,17 @@ public enum NUSALSeqCmdType {
 	STOP_CHANNEL(0x40, 1, 1, 0x10004, NUSALSeqCommand.SERIALFMT_L, "stopchan"),
 	LOAD_BANK(0x60, 3, 3, 0x10004, NUSALSeqCommand.SERIALFMT_L11, "loadbank"),
 	LOAD_IO_S(0x80, 1, 1, 0x10004, NUSALSeqCommand.SERIALFMT_L, "ldio"),
-	CHANNEL_OFFSET(0x90, 2, 3, 0x20004, NUSALSeqCommand.SERIALFMT_L2, "startchan"), //90 - 9f (counting channel # as param)
-	CHANNEL_OFFSET_REL(0xa0, 2, 3, 0x20004, NUSALSeqCommand.SERIALFMT_L2, "rstartchan"), //a0 - af (counting channel # as param)
-	LOAD_SEQ(0xb0, 3, 4, 0x10004, NUSALSeqCommand.SERIALFMT_L12, "loadseq"), //b0 - bf (uses channel var to start new seq??)
+	CHANNEL_OFFSET(0x90, 2, 3, 0x60004, NUSALSeqCommand.SERIALFMT_L2, "startchan"), //90 - 9f (counting channel # as param)
+	CHANNEL_OFFSET_REL(0xa0, 2, 3, 0x60004, NUSALSeqCommand.SERIALFMT_L2, "rstartchan"), //a0 - af (counting channel # as param)
+	LOAD_SEQ(0xb0, 3, 4, 0x50004, NUSALSeqCommand.SERIALFMT_L12, "loadseq"), //b0 - bf (uses channel var to start new seq??)
 	S_UNK_C4(0xc4, 2, 3, 0x4, NUSALSeqCommand.SERIALFMT_11, "unk_C4"),
 	S_UNK_C5(0xc5, 1, 3, 0x4, NUSALSeqCommand.SERIALFMT_2, "unk_C5"),
 	S_UNK_C6(0xc6, 0, 1, 0x4, NUSALSeqCommand.SERIALFMT_, "unk_C6"),
-	CALL_TABLE(0xcd, 1, 3, 0x2004, NUSALSeqCommand.SERIALFMT_2, "tblcall"),
+	CALL_TABLE(0xcd, 1, 3, 0x42004, NUSALSeqCommand.SERIALFMT_2, "tblcall"),
 	RAND_S(0xce, 1, 2, 0x10004, NUSALSeqCommand.SERIALFMT_1, "rand"),
 	NOTEALLOC_POLICY_S(0xd0, 1, 2, 0x10004, NUSALSeqCommand.SERIALFMT_1, "noteallocpolicy"),
-	LOAD_SHORTTBL_GATE(0xd1, 1, 3, 0x10004, NUSALSeqCommand.SERIALFMT_2, "ldshorttablegate"),
-	LOAD_SHORTTBL_VEL(0xd2, 1, 3, 0x10004, NUSALSeqCommand.SERIALFMT_2, "ldshorttablevel"),
+	LOAD_SHORTTBL_GATE(0xd1, 1, 3, 0x50004, NUSALSeqCommand.SERIALFMT_2, "ldshorttablegate"),
+	LOAD_SHORTTBL_VEL(0xd2, 1, 3, 0x50004, NUSALSeqCommand.SERIALFMT_2, "ldshorttablevel"),
 	MUTE_BEHAVIOR_S(0xd3, 1, 2, 0x10004, NUSALSeqCommand.SERIALFMT_1, "mutebhv"),
 	MUTE_S(0xd4, 0, 1, 0x104, NUSALSeqCommand.SERIALFMT_, "mute"),
 	MUTE_SCALE_S(0xd5, 1, 2, 0x104, NUSALSeqCommand.SERIALFMT_1, "mutescale"),
@@ -89,7 +91,7 @@ public enum NUSALSeqCmdType {
 	//Sequence + Channel Commands
 	SUBTRACT_IO(0x50, 1, 1, 0x10006, NUSALSeqCommand.SERIALFMT_L, "subio"),
 	STORE_IO(0x70, 1, 1, 0x10006, NUSALSeqCommand.SERIALFMT_L, "stio"),
-	STORE_TO_SELF(0xc7, 2, 4, 0x10046, NUSALSeqCommand.SERIALFMT_12, "sts"),
+	STORE_TO_SELF(0xc7, 2, 4, 0xd0046, NUSALSeqCommand.SERIALFMT_12, "sts"),
 	SUBTRACT_IMM(0xc8, 1, 2, 0x10006, NUSALSeqCommand.SERIALFMT_1, "sub"),
 	AND_IMM(0xc9, 1, 2, 0x10006, NUSALSeqCommand.SERIALFMT_1, "and"),
 	LOAD_IMM(0xcc, 1, 2, 0x10006, NUSALSeqCommand.SERIALFMT_1, "ldi"),
@@ -99,18 +101,18 @@ public enum NUSALSeqCmdType {
 	CH_DELTA_TIME(0x00, 1, 1, 0xe02, NUSALSeqCommand.SERIALFMT_L, "cdelay"), 
 	LOAD_SAMPLE(0x10, 1, 1, 0x10002, NUSALSeqCommand.SERIALFMT_L, "loadspl"), //0x10 - 0x17
 	LOAD_SAMPLE_P(0x18, 1, 1, 0x10002, NUSALSeqCommand.SERIALFMT_L, "loadsplp"), //0x18 - 0x1f
-	CHANNEL_OFFSET_C(0x20, 2, 3, 0x30002, NUSALSeqCommand.SERIALFMT_L2, "startchan"),
+	CHANNEL_OFFSET_C(0x20, 2, 3, 0x70002, NUSALSeqCommand.SERIALFMT_L2, "startchan"),
 	STORE_CHIO(0x30, 2, 2, 0x10002, NUSALSeqCommand.SERIALFMT_L1, "stcio"),
 	LOAD_CHIO(0x40, 2, 2, 0x10002, NUSALSeqCommand.SERIALFMT_L1, "ldcio"),
 	LOAD_IO_C(0x60, 1, 1, 0x10002, NUSALSeqCommand.SERIALFMT_L, "ldio"),
-	VOICE_OFFSET_REL(0x78, 2, 3, 0x20002, NUSALSeqCommand.SERIALFMT_L2, "rstartlayer"), //0x78 - 0x7b (rel)
+	VOICE_OFFSET_REL(0x78, 2, 3, 0x60002, NUSALSeqCommand.SERIALFMT_L2, "rstartlayer"), //0x78 - 0x7f (rel)
 	TEST_VOICE(0x80, 1, 1, 0x10002, NUSALSeqCommand.SERIALFMT_L, "testlayer"), //0x80 - 0x87
-	VOICE_OFFSET(0x88, 2, 3, 0x20002, NUSALSeqCommand.SERIALFMT_L2, "startlayer"), //0x88 - 0x8b (abs)
+	VOICE_OFFSET(0x88, 2, 3, 0x60002, NUSALSeqCommand.SERIALFMT_L2, "startlayer"), //0x88 - 0x8f (abs)
 	STOP_VOICE(0x90, 1, 1, 0x10002, NUSALSeqCommand.SERIALFMT_L, "stoplayer"), //0x90 - 0x97
 	VOICE_OFFSET_TABLE(0x98, 1, 1, 0x20002, NUSALSeqCommand.SERIALFMT_L, "dynstartlayer"), //0x98 - 0x9f
-	SET_CH_FILTER(0xb0, 1, 3, 0x302, NUSALSeqCommand.SERIALFMT_2, "setfilter"),
+	SET_CH_FILTER(0xb0, 1, 3, 0x40302, NUSALSeqCommand.SERIALFMT_2, "setfilter"),
 	CLEAR_CH_FILTER(0xb1, 0, 1, 0x302, NUSALSeqCommand.SERIALFMT_, "clearfilter"),
-	LOAD_P_TABLE(0xb2, 1, 3, 0x10002, NUSALSeqCommand.SERIALFMT_2, "ldptbl"),
+	LOAD_P_TABLE(0xb2, 1, 3, 0x50002, NUSALSeqCommand.SERIALFMT_2, "ldptbl"),
 	COPY_CH_FILTER(0xb3, 2, 2, 0x42, NUSALSeqCommand.SERIALFMT_COPYFILTER, "copyfilter"),
 	DYNTABLE_WRITE(0xb4, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "p2dyntable"),
 	DYNTABLE_READ(0xb5, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "dyntable2p"),
@@ -122,17 +124,18 @@ public enum NUSALSeqCmdType {
 	C_UNK_BB(0xbb, 2, 4, 0x2, NUSALSeqCommand.SERIALFMT_12, "unk_BB"),
 	ADD_IMM_P(0xbc, 1, 3, 0x10002, NUSALSeqCommand.SERIALFMT_2, "addp"),
 	ADD_RAND_IMM_P(0xbd, 2, 4, 0x10002, NUSALSeqCommand.SERIALFMT_12, "randaddp"),
+	C_UNK_C0(0xc0, 1, 2, 0x2, NUSALSeqCommand.SERIALFMT_1, "unk_C0"),
 	SET_PROGRAM(0xc1, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "instr"),
-	SET_DYNTABLE(0xc2, 2, 3, 0x10002, NUSALSeqCommand.SERIALFMT_2, "dyntable"),
+	SET_DYNTABLE(0xc2, 2, 3, 0x50002, NUSALSeqCommand.SERIALFMT_2, "dyntable"),
 	SHORTNOTE_ON(0xc3, 0, 1, 0x202, NUSALSeqCommand.SERIALFMT_, "shorton"),
 	SHORTNOTE_OFF(0xc4, 0, 1, 0x202, NUSALSeqCommand.SERIALFMT_, "shortoff"),
 	SHIFT_DYNTABLE(0xc5, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "dynsetdyntable"),
 	SET_BANK(0xc6, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "bank"),
 	MUTE_BEHAVIOR_C(0xca, 1, 2, 0x10002, NUSALSeqCommand.SERIALFMT_1, "mutebhv"),
-	LOAD_FROM_SELF(0xcb, 1, 3, 0x10002, NUSALSeqCommand.SERIALFMT_2, "lds"),
+	LOAD_FROM_SELF(0xcb, 1, 3, 0x50002, NUSALSeqCommand.SERIALFMT_2, "lds"),
 	STOP_CHANNEL_C(0xcd, 1, 2, 0x10002, NUSALSeqCommand.SERIALFMT_1, "stopchan"),
-	LOAD_IMM_P(0xce, 1, 3, 0x10002, NUSALSeqCommand.SERIALFMT_2, "ldpi"),
-	STORE_TO_SELF_P(0xce, 1, 3, 0x10042, NUSALSeqCommand.SERIALFMT_2, "stps"),
+	LOAD_IMM_P(0xce, 1, 3, 0x50002, NUSALSeqCommand.SERIALFMT_2, "ldpi"),
+	STORE_TO_SELF_P(0xce, 1, 3, 0x50042, NUSALSeqCommand.SERIALFMT_2, "stps"),
 	CH_STEREO_EFF(0xd0, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "stereoheadseteffects"),
 	CH_NOTEALLOC_POLICY(0xd1, 1, 2, 0x10002, NUSALSeqCommand.SERIALFMT_1, "noteallocpolicy"),
 	CH_SUSTAIN(0xd2, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "sustain"),
@@ -141,7 +144,7 @@ public enum NUSALSeqCmdType {
 	CH_VIBRATO_FREQ(0xd8, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "vibfreq"),
 	CH_VIBRATO_DEPTH(0xd8, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "vibdepth"),
 	CH_RELEASE(0xd9, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "release"),
-	CH_ENVELOPE(0xda, 1, 3, 0x302, NUSALSeqCommand.SERIALFMT_2, "cenvelope"),
+	CH_ENVELOPE(0xda, 1, 3, 0x40302, NUSALSeqCommand.SERIALFMT_2, "cenvelope"),
 	CH_TRANSPOSE(0xdb, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "ctp"),
 	CH_PANMIX(0xdc, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "panmix"),
 	CH_PAN(0xdd, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "cpan"),
@@ -154,7 +157,7 @@ public enum NUSALSeqCmdType {
 	CALL_DYNTABLE(0xe4, 0, 1, 0x2002, NUSALSeqCommand.SERIALFMT_, "dyncall"),
 	CH_REVERB_IDX(0xe5, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "reverbidx"),
 	CH_SAMPLE_VARIATION(0xe6, 1, 2, 0x10302, NUSALSeqCommand.SERIALFMT_1, "splvari"),
-	CH_LOAD_PARAMS(0xe7, 1, 3, 0x302, NUSALSeqCommand.SERIALFMT_2, "ldcparams"),
+	CH_LOAD_PARAMS(0xe7, 1, 3, 0x40302, NUSALSeqCommand.SERIALFMT_2, "ldcparams"),
 	CH_SET_PARAMS(0xe8, 8, 9, 0x302, NUSALSeqCommand.SERIALFMT_CPARAMS, "cparams"),
 	CH_PRIORITY(0xe9, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "notepriority"),
 	CH_HALT(0xea, 0, 1, 0x2, NUSALSeqCommand.SERIALFMT_, "halt"),
@@ -179,7 +182,7 @@ public enum NUSALSeqCmdType {
 	PORTAMENTO_OFF(0xc8, 0, 1, 0x301, NUSALSeqCommand.SERIALFMT_, "portamentooff"),
 	L_SHORTGATE(0xc9, 1, 2, 0x301, NUSALSeqCommand.SERIALFMT_1, "shortgate"),
 	L_PAN(0xca, 1, 2, 0x301, NUSALSeqCommand.SERIALFMT_1, "lpan"),
-	L_ENVELOPE(0xcb, 2, 4, 0x301, NUSALSeqCommand.SERIALFMT_21, "lenvelope"),
+	L_ENVELOPE(0xcb, 2, 4, 0x40301, NUSALSeqCommand.SERIALFMT_21, "lenvelope"),
 	DRUMPAN_OFF(0xcc, 0, 1, 0x301, NUSALSeqCommand.SERIALFMT_, "drumpanoff"),
 	L_REVERB_PHASE(0xcd, 1, 2, 0x301, NUSALSeqCommand.SERIALFMT_1, "reverbphase"),
 	L_PITCHBEND_ALT(0xce, 1, 2, 0x301, NUSALSeqCommand.SERIALFMT_1, "lbend2"),
@@ -193,7 +196,8 @@ public enum NUSALSeqCmdType {
 	 * converted to the actually AL seq commands (with transposition if needed)
 	*/
 	DATA_ONLY(0x00, 1, 1, 0x80, NUSALSeqCommand.SERIALFMT_DUMMY, "DATA"),
-	MULTI_EVENT_CHUNK(0x00, 1, 1, 0x0, NUSALSeqCommand.SERIALFMT_DUMMY, "BLOCK");
+	MULTI_EVENT_CHUNK(0x00, 1, 1, 0x0, NUSALSeqCommand.SERIALFMT_DUMMY, "BLOCK"),
+	UNRESOLVED_LINK(0x00, 1, 1, 0x80, NUSALSeqCommand.SERIALFMT_DUMMY, "UNKLINK");
 	
 	;
 

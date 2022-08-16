@@ -57,6 +57,10 @@ public class NUSALSeq implements WriterPrintable{
 	
 	public static final int MIDI_NRPN_ID_GENERAL_HI = 0x0600;
 	
+	public static final int LAYERS_PER_CHANNEL_STD = 4;
+	public static final int LAYERS_PER_CHANNEL_EXT = 8;
+	public static final int MAX_LAYERS_PER_CHANNEL = LAYERS_PER_CHANNEL_EXT;
+	
 	public static final byte[] DEFO_SHORTTBL_VEL = 
 		{12, 25, 38, 51, 57, 64, 71, 76, 83, 89, 96, 102, 109, 115, 121, 127};
 	public static final byte[] DEFO_SHORTTBL_GATE = 
@@ -181,8 +185,16 @@ public class NUSALSeq implements WriterPrintable{
 		if(source == null) return;
 		data = new FileBuffer(source.getMinimumSizeInBytes() + 64, true);
 		List<NUSALSeqCommand> commands = source.getOrderedCommands();
+		
+		int last_end = 0;
 		for(NUSALSeqCommand cmd : commands){
+			int caddr = cmd.getAddress();
+			int dpad = caddr - last_end;
+			for(int j = 0; j < dpad; j++){
+				data.addToFile(FileBuffer.ZERO_BYTE);
+			}
 			cmd.serializeTo(data);
+			last_end = caddr + cmd.getSizeInBytes();
 		}
 		int mod = (int)data.getFileSize() & 0xf;
 		if(mod != 0){

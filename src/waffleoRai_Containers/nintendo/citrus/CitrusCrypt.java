@@ -9,6 +9,7 @@ import java.security.MessageDigest;
 import waffleoRai_Encryption.AES;
 import waffleoRai_Encryption.DecryptorMethod;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileUtils;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 //https://www.3dbrew.org/wiki/AES_Registers
@@ -661,6 +662,26 @@ public class CitrusCrypt {
 			for(int j = 0; j < 16; j++) System.err.print(String.format("%02x ", k[j]));
 			System.err.println();
 			System.err.println();
+		}
+		
+	}
+	
+	public static void main(String[] args){
+		
+		try{
+			String inpath = args[0];
+			CitrusCrypt crypt = loadCitrusCrypt(FileBuffer.createBuffer(inpath));
+			
+			for(int i = 0; i < crypt.keyslots.length; i++){
+				String fmtstr = String.format("slot0x%02xKey", i);
+				System.out.println(fmtstr + "X=" + FileUtils.bytes2str(crypt.keyslots[i].keyX).toUpperCase());
+				System.out.println(fmtstr + "Y=" + FileUtils.bytes2str(crypt.keyslots[i].keyY).toUpperCase());
+				System.out.println(fmtstr + "N=" + FileUtils.bytes2str(crypt.keyslots[i].normal).toUpperCase());
+			}
+		}
+		catch(Exception ex){
+			ex.printStackTrace();
+			System.exit(1);
 		}
 		
 	}

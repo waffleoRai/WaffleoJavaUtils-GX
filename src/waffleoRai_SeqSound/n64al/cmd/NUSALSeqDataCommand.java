@@ -11,7 +11,7 @@ import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
 public class NUSALSeqDataCommand extends NUSALSeqCommand{
 
 	protected byte[] data;
-	private NUSALSeqDataType dtype;
+	protected NUSALSeqDataType dtype;
 	
 	public NUSALSeqDataCommand(int size) {
 		super(NUSALSeqCmdType.DATA_ONLY, (byte)0x00);
@@ -39,6 +39,18 @@ public class NUSALSeqDataCommand extends NUSALSeqCommand{
 		}
 	}
 	
+	public NUSALSeqDataType getDataType(){return dtype;}
+	
+	public void setAddress(int addr){
+		int align = dtype.getAlignment();
+		if(align > 1){
+			addr += (align-1);
+			addr /= align;
+			addr *= align;
+		}
+		super.setAddress(addr);
+	}
+	
 	public boolean doCommand(NUSALSeq sequence){
 		throw new UnsupportedOperationException("Target does not contain executable data.");
 	}
@@ -52,6 +64,15 @@ public class NUSALSeqDataCommand extends NUSALSeqCommand{
 	}
 	
 	public byte[] getDataArray(){return data;}
+	
+	public void reallocate(int new_size_bytes){
+		byte[] temp = new byte[new_size_bytes];
+		int copysz = temp.length<data.length?temp.length:data.length;
+		for(int i = 0; i < copysz; i++){
+			temp[i] = data[i];
+		}
+		data = temp;
+	}
 	
 	public int getDataValue(int u_pos, boolean sign_extend){
 		int usize = dtype.getUnitSize();
@@ -95,6 +116,10 @@ public class NUSALSeqDataCommand extends NUSALSeqCommand{
 		}
 	}
 	
+	public int getUnitCount(){
+		return data.length/dtype.getUnitSize();
+	}
+	
 	public int getSizeInBytes(){
 		return data.length;
 	}
@@ -109,6 +134,7 @@ public class NUSALSeqDataCommand extends NUSALSeqCommand{
 		sb.append(dtype.getMMLString());
 		int ptype = dtype.getParamPrintType();
 		if(ptype == NUSALSeqCommands.MML_DATAPARAM_TYPE__BUFFER){
+			sb.append(" ");
 			sb.append(data.length);
 		}
 		else{

@@ -40,6 +40,14 @@ public class NinADPCM {
 		sampleIndex = loopIndex;
 	}
 	
+	public void setShift(int val){
+		now_shamt = val;
+	}
+	
+	public void setPredictor(int val){
+		now_cidx = val;
+	}
+	
 	public void setPS(int val){
 		now_shamt = val & 0xF;
 		now_cidx = (val >>> 4) & 0xF;
@@ -56,14 +64,17 @@ public class NinADPCM {
 		if (init >= 8) init -= 16;
 		//int scale = 1 << (nowps & 0xF);
 		//int cIndex = ((nowps >>> 4) & 0xF) << 1;
-		int scale = 1 << now_shamt;
-		int cIndex = now_cidx << 1;
+		//int scale = 1 << now_shamt;
+		//int cIndex = now_cidx << 1;
 		
 		//outSample = (0x400 + (scale * outSample << 11) + (_coefs[cIndex.Clamp(0, 15)] * _cyn1) + (_coefs[(cIndex + 1).Clamp(0, 15)] * _cyn2)) >> 11;
 		int out = 0x400;
-		out += (scale * init) << 11;
-		out += init_table.getCoefficient(cIndex) * oldSample;
-		out += init_table.getCoefficient(Math.min(cIndex + 1, 15)) * olderSample;
+		//out += (scale * init) << 11;
+		out += (init << now_shamt) << 11;
+		//out += init_table.getCoefficient(cIndex) * oldSample;
+		//out += init_table.getCoefficient(Math.min(cIndex + 1, 15)) * olderSample;
+		out += init_table.getCoefficient(now_cidx, 0) * oldSample;
+		out += init_table.getCoefficient(now_cidx, 1) * olderSample;
 		
 		out = out >> 11;
 		out = Math.min(0x7FFF, out);

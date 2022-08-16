@@ -235,7 +235,7 @@ public class DSStream extends NinStream{
 	
 	public static class DSStreamDef extends SoundFileDefinition{
 
-		private static final String DEFO_ENG_STR = "Nitro Audio Stream";
+		private static final String DEFO_ENG_STR = "Nintendo Nitro SDK Audio Stream";
 		private static final String[] EXT_LIST = {"strm", "STRM", "nstm", "bnstm"};
 		
 		private String str;

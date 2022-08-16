@@ -27,6 +27,9 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 	}
 	
 	public void setReference(NUSALSeqCommand target){
+		if(reference != null){
+			reference.removeReferee(this);
+		}
 		reference = target;
 		//Update param 1
 		updateAddressParameter();

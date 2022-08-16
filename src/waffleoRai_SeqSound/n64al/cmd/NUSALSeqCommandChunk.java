@@ -39,7 +39,7 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		int pos = addr;
 		for(NUSALSeqCommand cmd : commands){
 			cmd.setAddress(pos);
-			pos += cmd.getSizeInBytes();
+			pos = cmd.getAddress() + cmd.getSizeInBytes(); //setAddress may adjust address if command needs alignment!
 		}
 	}
 
@@ -106,7 +106,17 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 	
 	public int getSizeInBytes() {
 		int total = 0;
-		for(NUSALSeqCommand cmd : commands) total += cmd.getSizeInBytes();
+		int last_end = -1;
+		for(NUSALSeqCommand cmd : commands){
+			int caddr = cmd.getAddress();
+			int csize = cmd.getSizeInBytes();
+			int cend = caddr + csize;
+			if(last_end >= 0){
+				csize += caddr - last_end;
+			}
+			total += csize;
+			last_end = cend;
+		}
 		return total;
 	}
 	
@@ -182,27 +192,56 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		if(this.isEmpty()) return null;
 		byte[] barr = new byte[getSizeInBytes()];
 		int i = 0;
+		int last_end = -1;
 		for(NUSALSeqCommand cmd : commands){
+			int caddr = cmd.getAddress();
 			byte[] scmd = cmd.serializeMe();
+			if(last_end >= 0){
+				int dpad = caddr - last_end;
+				if(dpad > 0){
+					for(int j = 0; j < dpad; j++) barr[i++] = 0;
+				}
+			}
 			for(int j = 0; j < scmd.length; j++){
 				barr[i++] = scmd[j];
 			}
+			last_end = caddr + scmd.length;
 		}
 		return barr;
 	}
 	
 	public int serializeTo(OutputStream stream) throws IOException{
 		int total = 0;
+		int last_end = -1;
 		for(NUSALSeqCommand cmd : commands){
+			int caddr = cmd.getAddress();
+			int csize = cmd.getSizeInBytes();
+			if(last_end >= 0){
+				int dpad = caddr - last_end;
+				for(int j = 0; j < dpad; j++) {
+					stream.write(0); total++;
+				}
+			}
 			total += cmd.serializeTo(stream);
+			last_end = caddr + csize;
 		}
 		return total;
 	}
 	
 	public int serializeTo(FileBuffer buffer){
 		int total = 0;
+		int last_end = -1;
 		for(NUSALSeqCommand cmd : commands){
+			int caddr = cmd.getAddress();
+			int csize = cmd.getSizeInBytes();
+			if(last_end >= 0){
+				int dpad = caddr - last_end;
+				for(int j = 0; j < dpad; j++) {
+					buffer.addToFile(FileBuffer.ZERO_BYTE); total++;
+				}
+			}
 			total += cmd.serializeTo(buffer);
+			last_end = caddr + csize;
 		}
 		return total;
 	}

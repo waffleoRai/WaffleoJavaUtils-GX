@@ -72,6 +72,7 @@ public abstract class NUSALSeqCommand {
 	public byte getCommandByte(){return cmdbyte;}
 	protected void setCommand(NUSALSeqCmdType cmd){command = cmd;}
 	protected void setCommandByte(byte b){cmdbyte = b;}
+	protected void reallocParamArray(int size){params = new int[size];}
 	
 	public NUSALSeqCommand getSubsequentCommand(){return next_cmd;}
 	public NUSALSeqCommand getPreviousCommand(){return prev_cmd;}
@@ -89,6 +90,10 @@ public abstract class NUSALSeqCommand {
 			referees = new LinkedList<NUSALSeqCommand>();
 		}
 		referees.add(ref);
+	}
+	
+	public boolean removeReferee(NUSALSeqCommand ref){
+		return referees.remove(ref);
 	}
 	
 	public void setSubsequentCommand(NUSALSeqCommand next){
@@ -110,12 +115,12 @@ public abstract class NUSALSeqCommand {
 	}
 	
 	public boolean layerUsed(int ch, int layer){
-		int check = (ch << 4) | (layer & 0x3);
+		int check = (ch << 4) | (layer & 0xf);
 		return ch_ctx.contains(check);
 	}
 	
 	public void flagLayerUsed(int ch, int layer){
-		int check = (ch << 4) | (layer & 0x3);
+		int check = (ch << 4) | (layer & 0xf);
 		ch_ctx.add(check);
 	}
 	
@@ -163,17 +168,41 @@ public abstract class NUSALSeqCommand {
 	public String getLabel(){return label;}
 	public void setLabel(String s){label = s;}
 	
+	public int getFirstChannelUsed(){
+		for(int i = 0; i < 16; i++){
+			if(channelUsed(i)) return i;
+		}
+		return -1;
+	}
+	
+	public int[] getFirstUsed(){
+		int[] out = new int[]{-1,-1};
+		if(seq_ctx) return out;
+		out[0] = getFirstChannelUsed();
+		if(out[0] < 0){
+			for(int i = 0; i < 16; i++){
+				for(int j = 0; j < NUSALSeq.MAX_LAYERS_PER_CHANNEL; j++){
+					if(layerUsed(i,j)) {
+						out[0] = i;
+						out[1] = j;
+						break;
+					}
+				}	
+			}
+		}
+		return out;
+	}
+	
 	public String genCtxLabelSuggestion(){
 		if(seq_ctx) return "seq_block";
-		for(int i = 0; i < 16; i++){
-			if(channelUsed(i)) return "ch" + String.format("%X", i) + "_block";
-		}
-		for(int i = 0; i < 16; i++){
-			for(int j = 0; j < 4; j++){
-				if(layerUsed(i,j)) {
-					return "ch" + String.format("%X", i) +
-							"l" + j + "_block";	
-				}
+		int[] chly = getFirstUsed();
+		if(chly[0] >= 0){
+			if(chly[1] >= 0){
+				return "ch" + String.format("%X", chly[0]) +
+						"ly" + chly[1] + "_block";	
+			}
+			else{
+				return "ch" + String.format("%X", chly[0]) + "_block";
 			}
 		}
 		return "lbl";
