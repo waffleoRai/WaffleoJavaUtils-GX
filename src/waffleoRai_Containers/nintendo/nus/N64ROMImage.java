@@ -148,6 +148,42 @@ public class N64ROMImage implements WriterPrintable{
 	public String getName(){return name;}
 	public String getGamecode(){return gamecode;}
 	
+	/*----- Utility -----*/
+	
+	public static int[] calculateCRCs(FileBuffer romdata){
+		//From https://wiki.cloudmodding.com/oot/CRC
+		final long INIT = 0xDF26F436L;
+		final int WORDCOUNT = (0x101000 - 0x1000) >> 2;
+		final long IMASK = 0xFFFFFFFFL;
+		int[] crcs = new int[2];
+		
+		long t1 = INIT, t2 = INIT, t3 = INIT, t4 = INIT, t5 = INIT, t6 = INIT;
+		long word_t = 0;
+		long other_word = 0;
+		romdata.setEndian(true); //Just in case.
+		romdata.setCurrentPosition(0x1000);
+		for(int i = 0; i < WORDCOUNT; i++){
+			//God I hate Java
+			int mypos = (int)romdata.getCurrentPosition();
+			long word = Integer.toUnsignedLong(romdata.nextInt());
+			word_t = (t6 + word) & IMASK;
+			if (word_t < t6) t4++;
+			t4 &= IMASK;
+			t6  = word_t;
+	        t3 ^= word;
+	        word_t = ((word << (word & 0x1F)) & IMASK) | (word >>> (32 - (word & 0x1F)));
+	        t5 += word_t; t5 &= IMASK;
+	        if (t2 > word) t2 ^= word_t;
+	        else t2 ^= (t6 ^ word);
+	        other_word = Integer.toUnsignedLong(romdata.intFromFile(0x750 + (mypos & 0xff)));
+	        t1 += other_word ^ word; t1 &= IMASK;
+		}
+		crcs[0] = (int)(t6 ^ t4 ^ t3);
+	    crcs[1] = (int)(t5 ^ t2 ^ t1);
+		
+		return crcs;
+	}
+	
 	/*----- Debug -----*/
 	
 	public void printToStdErr(){

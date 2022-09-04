@@ -114,7 +114,7 @@ public class N64ZFileTable {
 			e.offset = Integer.toUnsignedLong(table.nextInt());
 			long cend = Integer.toUnsignedLong(table.nextInt());
 
-			if(e.offset == 0xFFFFFFFFL){e.size = 0L; continue;}
+			if(e.offset == 0xFFFFFFFFL){e.size = 0L; e.comp_size = 0L; continue;}
 			if(e.v_start == 0L && e.v_end == 0L){
 				if(e.offset == 0L && cend == 0L){
 					ft.entries.remove(ft.entries.size()-1);
