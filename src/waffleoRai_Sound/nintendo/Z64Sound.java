@@ -72,4 +72,58 @@ public class Z64Sound {
 		return (float)SynthMath.cents2FreqRatio(centdiff);
 	}
 
+	public static String getCodecString(int codec, boolean shortcode){
+		switch(codec){
+		case CODEC_ADPCM:
+			if(shortcode) return "ADP9";
+			return "4-bit V-ADPCM";
+		case CODEC_S8:
+			if(shortcode) return "PCM8";
+			return "8-bit Signed PCM";
+		case CODEC_S16_INMEMORY:
+			if(shortcode) return "MPCM";
+			return "16-bit Signed PCM (In Memory)";
+		case CODEC_SMALL_ADPCM:
+			if(shortcode) return "ADP5";
+			return "2-bit V-ADPCM";
+		case CODEC_REVERB:
+			if(shortcode) return "RVRB";
+			return "Reverb";
+		case CODEC_S16:
+			if(shortcode) return "PCMS";
+			return "16-bit Signed PCM";
+		}
+		
+		if(shortcode) return "UNKN";
+		return "Unknown";
+	}
+	
+	public static String getCacheTypeString(int val){
+		switch(val){
+		case CACHE_PERMANENT:
+			return "Permanent";
+		case CACHE_PERSISTENT:
+			return "Persistent";
+		case CACHE_TEMPORARY:
+			return "Temporary";
+		case CACHE_ANY:
+			return "Any";
+		case CACHE_ANYNOSYNCLOAD:
+			return "Any (No Sync)";
+		}
+		return "Unknown";
+	}
+	
+	public static String getMediumTypeString(int val){
+		switch(val){
+		case MEDIUM_RAM:
+			return "RAM";
+		case MEDIUM_CART:
+			return "Cartridge";
+		case MEDIUM_DISK_DRIVE:
+			return "64DD";
+		}
+		return "Unknown";
+	}
+	
 }
