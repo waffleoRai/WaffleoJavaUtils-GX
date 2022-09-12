@@ -58,6 +58,8 @@ public class NUSALSeqChannel {
 	private int looped;
 	private int loopct;
 	
+	private int max_lyr_used = -1;
+	
 	/*----- Initialization -----*/
 	
 	public NUSALSeqChannel(int index, NUSALSeq parent){
@@ -127,6 +129,7 @@ public class NUSALSeqChannel {
 	public int getLoopEnd(){return looped;}
 	public int getLoopCount(){return loopct;}
 	public boolean loopEnabled(){return loop_enabled;}
+	public int getNumberLayersUsed(){return max_lyr_used;}
 	
 	public int getVarQ(){
 		return parent_seq.getVarQ();
@@ -395,6 +398,7 @@ public class NUSALSeqChannel {
 	
 	public boolean pointLayerTo(int layer_idx, int position){
 		if(layer_idx < 0 || layer_idx > MAX_LAYER_IDX) return false;
+		if(layer_idx > max_lyr_used) max_lyr_used = layer_idx;
 		return layers[layer_idx].jumpTo(position, false);
 	}
 	

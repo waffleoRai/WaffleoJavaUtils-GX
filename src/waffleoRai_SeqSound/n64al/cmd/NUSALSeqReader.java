@@ -39,6 +39,8 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	
 	/*--- Constants ---*/
 	
+	public static final boolean DEBUG_MODE = false;
+	
 	public static final int PARSEMODE_UNDEFINED = 0x0;
 	public static final int PARSEMODE_SEQ = 0x1;
 	public static final int PARSEMODE_CHANNEL = 0x2;
@@ -587,7 +589,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 								if(checkTablePointer(raddr, usech)){
 									if(dcmd.readAsSubPointers() && raddr != 0 && !cmdmap.containsKey(raddr)){
 										ptr_parse_queue.add(new ParseRequest(usech, dcmd.getLayer(), raddr, genPointerTargetLabel(null, usech), dcmd.getTickAddress()));
-										System.err.println(String.format("Table @ 0x%04x added parse request for 0x%04x (point A)", addr, raddr));
+										if(DEBUG_MODE) System.err.println(String.format("Table @ 0x%04x added parse request for 0x%04x (point A)", addr, raddr));
 									}
 								}
 								else break; //Invalid pointer	
@@ -710,7 +712,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 						if(!checkTablePointer(p, usech)) break;
 						if(p != 0 && !cmdmap.containsKey(p) && !data_likely){
 							ptr_parse_queue.add(new ParseRequest(usech, usely, p, genPointerTargetLabel(ctype, usech), referee.getTickAddress()));	
-							System.err.println(String.format("Table @ 0x%04x added parse request for 0x%04x (point B)", addr, p));
+							if(DEBUG_MODE) System.err.println(String.format("Table @ 0x%04x added parse request for 0x%04x (point B)", addr, p));
 						}
 						resize++;
 					}
@@ -879,21 +881,24 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			}
 			//DEBUG PRINT
 			//System.err.println("added to map: 0x" + Integer.toHexString(pos) + " -- " + cmd.toString());
-			System.err.print("NUSALSeqReader.readTrack || ");
-			System.err.print(String.format("0x%04x ", cmd.getAddress()));
-			System.err.print("tick=" + cmd.getTickAddress() + " ");
-			switch(mode){
-			case PARSEMODE_SEQ:
-				System.err.print("SEQ ");
-				break;
-			case PARSEMODE_LAYER:
-				System.err.print("LYR" + lidx + " ");
-			case PARSEMODE_CHANNEL:
-				System.err.print("CHN" + chidx + " ");
-				break;
+			if(DEBUG_MODE){
+				System.err.print("NUSALSeqReader.readTrack || ");
+				System.err.print(String.format("0x%04x ", cmd.getAddress()));
+				System.err.print("tick=" + cmd.getTickAddress() + " ");
+			
+				switch(mode){
+				case PARSEMODE_SEQ:
+					System.err.print("SEQ ");
+					break;
+				case PARSEMODE_LAYER:
+					System.err.print("LYR" + lidx + " ");
+				case PARSEMODE_CHANNEL:
+					System.err.print("CHN" + chidx + " ");
+					break;
+				}
+				System.err.print(cmd.toMMLCommand());
+				System.err.print("\n");
 			}
-			System.err.print(cmd.toMMLCommand());
-			System.err.print("\n");
 			
 			//Analyze logic
 			if(prev_cmd != null) prev_cmd.setSubsequentCommand(cmd);
@@ -1088,7 +1093,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 				pstarts.clear();
 				ParseRequest req = ptr_parse_queue.pop();
 				//System.err.println("Request found: ch = " + req.channel + ", raddr = 0x" + Integer.toHexString(req.address));
-				req.printDebug();
+				if(DEBUG_MODE) req.printDebug();
 				pstarts.add(new int[]{req.address, req.tick});
 				if(req.channel < 0){
 					readTrack(pstarts, clists, null, PARSEMODE_SEQ, -1, -1);

@@ -67,6 +67,8 @@ public class NUSALSeq implements WriterPrintable{
 		{(byte)229, (byte)203, (byte)177, (byte)151, (byte)139, 126, 
 				113, 100, 87, 74, 61, 48, 36, 23, 10, 0};
 	
+	public static final int MAX_NONLOOP_TICKS = 57600; //10 min at 120bpm
+	
 	/*----- Static Variables -----*/
 	
 	protected static boolean dbg_w_mode;
@@ -311,6 +313,20 @@ public class NUSALSeq implements WriterPrintable{
 	}
 	
 	public NUSALSeqCommandSource getCommandSource(){return this.source;}
+	
+	public int getMaxLayersPerChannel(){
+		if(seq_cmds == null || seq_cmds.isEmpty()){
+			playToMapCommands();
+		}
+		int max_vox = -1;
+		for(int i = 0; i < 16; i++){
+			if(channels[i] != null){
+				int hi_lyr = channels[i].getNumberLayersUsed();
+				if(hi_lyr > max_vox) max_vox = hi_lyr;
+			}
+		}
+		return max_vox + 1;
+	}
 	
 	/*----- Setters -----*/
 	
@@ -557,6 +573,7 @@ public class NUSALSeq implements WriterPrintable{
 	
 	public boolean nextTick(boolean savecmd){
 		if(term_flag || error_flag) return false;
+		if(!loop_enabled && current_tick >= MAX_NONLOOP_TICKS) return false;
 		
 		//Seq Itself
 		if(wait_remain > 0) wait_remain--;
