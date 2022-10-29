@@ -74,6 +74,13 @@ public class NUSALSeqDataCommand extends NUSALSeqCommand{
 		data = temp;
 	}
 	
+	public STSResult storeToSelf(int offset, byte value){
+		if(data == null) return STSResult.INVALID;
+		if(offset < 0 || offset >= data.length) return STSResult.OUTSIDE;
+		data[offset] = value;
+		return STSResult.OKAY;
+	}
+	
 	public int getDataValue(int u_pos, boolean sign_extend){
 		int usize = dtype.getUnitSize();
 		int bpos = u_pos * usize;

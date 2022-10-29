@@ -3,6 +3,7 @@ package waffleoRai_SeqSound.n64al;
 import java.util.Deque;
 import java.util.LinkedList;
 
+import waffleoRai_SeqSound.n64al.cmd.STSResult;
 import waffleoRai_SoundSynth.SequenceController;
 import waffleoRai_Threads.SyncedInt;
 
@@ -376,6 +377,16 @@ public class NUSALSeqChannel {
 	}
 	
 	/*----- Actions -----*/
+	
+	public STSResult storeToSelf(int addr, byte value){
+		if(source == null) return STSResult.FAIL;
+		return source.storeToSelf(addr, value);
+	}
+	
+	public STSResult storePToSelf(int addr, short value){
+		if(source == null) return STSResult.FAIL;
+		return source.storePToSelf(addr, value);
+	}
 	
 	public boolean jumpTo(int position, boolean push_return){
 		if(push_return) return_stack.push(pos+3);

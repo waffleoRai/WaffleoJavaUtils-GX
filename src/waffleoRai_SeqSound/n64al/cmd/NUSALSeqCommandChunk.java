@@ -176,6 +176,18 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		linkSequentialCommands();
 	}
 	
+	public STSResult storeToSelf(int offset, byte value){
+		//Find command that includes the target offset.
+		int pos = 0; int end = -1;
+		for(NUSALSeqCommand cmd : commands){
+			end = pos + cmd.getSizeInBytes();
+			if(offset >= pos && offset < end){
+				return cmd.storeToSelf(offset - pos, value);
+			}
+		}
+		return STSResult.OUTSIDE;
+	}
+	
 	public void mapByAddress(Map<Integer, NUSALSeqCommand> map){
 		for(NUSALSeqCommand cmd : commands) cmd.mapByAddress(map);
 	}

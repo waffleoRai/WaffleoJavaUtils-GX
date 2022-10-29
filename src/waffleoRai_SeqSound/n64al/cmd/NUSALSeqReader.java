@@ -37,9 +37,11 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	//TODO still not parsing voice_offset mod params in layer context, except for first in table.
 	//TODO having trouble with some envelopes (0xffa in seq 01)
 	
+	//TODO sts targets getting eaten? (Seq 46) Target was parsed and recognized as target, and linked to sts... then removed from cmd map???
+	
 	/*--- Constants ---*/
 	
-	public static final boolean DEBUG_MODE = false;
+	public static final boolean DEBUG_MODE = true;
 	
 	public static final int PARSEMODE_UNDEFINED = 0x0;
 	public static final int PARSEMODE_SEQ = 0x1;
@@ -493,7 +495,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		List<Integer> alist = new ArrayList<Integer>(cmdmap.size());
 		alist.addAll(cmdmap.keySet());
 		//Collections.sort(alist);
-		
+
 		//Reset label map, then add existing labels.
 		lblmap.clear(); datarefs.clearValues();
 		for(Integer addr : alist){
@@ -605,7 +607,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			alist.clear();
 			alist.addAll(cmdmap.keySet());
 		}
-		
+
 		//Process data
 		if(!datarefs.isEmpty()){
 			alist.clear();
@@ -1120,7 +1122,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			}
 			
 		} while((remaining != null && !remaining.isEmpty()) || !ptr_parse_queue.isEmpty());
-		
+
 		//Find dalloc buffers and extend them to next command
 		List<Integer> addrlist = new ArrayList<Integer>(cmdmap.size()+1);
 		addrlist.addAll(cmdmap.keySet());
@@ -1141,6 +1143,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			}
 			lastaddr = addr;
 		}
+		//System.err.println("[6] cmdmap Contains 0x12c5: " + cmdmap.get(0x12c5));
 	}
 	
 	/*--- Getters ---*/
@@ -1156,6 +1159,17 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	public NUSALSeqCommand getCommandAt(int addr){
 		//This version returns null if not already parsed as it needs context...
 		return cmdmap.get(addr);
+	}
+	
+	public NUSALSeqCommand getCommandOver(int address){
+		int checkAddr = address;
+		NUSALSeqCommand cmd = null;
+		while(checkAddr >= 0){
+			cmd = cmdmap.get(checkAddr);
+			if(cmd != null) return cmd;
+			checkAddr--;
+		}
+		return null;
 	}
 	
 	public NUSALSeqCommand getSeqCommandAt(int addr){
@@ -1257,6 +1271,144 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	}
 	
 	public void clearCachedCommands(){cmdmap.clear();}
+	
+	private STSResult relinkCommand(int addr, NUSALSeqCommand cmd){
+		int coff = addr - cmd.getAddress();
+		if(cmd instanceof NUSALSeqReferenceCommand){
+			NUSALSeqReferenceCommand rcmd = (NUSALSeqReferenceCommand)cmd;
+			int taddr = rcmd.getBranchAddress();
+			NUSALSeqCommand tcmd = getCommandOver(taddr);
+			if(tcmd == null) return STSResult.INVALID;
+			if(tcmd.getAddress() == taddr){
+				rcmd.setReference(tcmd);
+				return STSResult.OKAY;
+			}
+			else{
+				if(cmd instanceof NUSALSeqDataRefCommand){
+					NUSALSeqDataRefCommand drcmd = (NUSALSeqDataRefCommand)cmd;
+					drcmd.setDataOffset(taddr - tcmd.getAddress());
+					drcmd.setReference(tcmd);
+					return STSResult.OKAY;
+				}
+				else return STSResult.INVALID;
+			}
+		}
+		else if (cmd instanceof NUSALSeqPtrTableData){
+			NUSALSeqPtrTableData dcmd = (NUSALSeqPtrTableData)cmd;
+			int tidx = coff >> 1;
+			int taddr = dcmd.getDataValue(tidx, false);
+			NUSALSeqCommand tcmd = getCommandOver(taddr);
+			if(tcmd == null) return STSResult.INVALID;
+			dcmd.setReference(tidx, tcmd);
+			return STSResult.OKAY;
+		}
+		return STSResult.FAIL;
+	}
+	
+	private STSResult reparseCommand(int addr, NUSALSeqCommand cmd){
+		int caddr = cmd.getAddress();
+		cmdmap.remove(caddr);
+		NUSALSeqCommand ncmd = null;
+		if(cmd.seqUsed()){
+			ncmd = SeqCommands.parseSequenceCommand(data.getReferenceAt(caddr));
+			if(ncmd == null) return STSResult.FAIL;
+			ncmd.flagSeqUsed();
+		}
+		else{
+			boolean chuse = false;
+			for(int i = 0; i < 16; i++){
+				if(cmd.channelUsed(i)){
+					chuse = true;
+					break;
+				}
+			}
+			if(chuse){
+				ncmd = ChannelCommands.parseChannelCommand(data.getReferenceAt(caddr));
+				if(ncmd == null) return STSResult.FAIL;
+			}
+			else{
+				//layer
+				ncmd = LayerCommands.parseLayerCommand(data.getReferenceAt(caddr), false);
+				if(ncmd == null) return STSResult.FAIL;
+			}
+		}
+		ncmd.setAddress(caddr);
+		ncmd.setTickAddress(cmd.getTickAddress());
+		ncmd.setSubsequentCommand(cmd.getSubsequentCommand());
+		cmdmap.put(caddr, ncmd);
+		
+		if((ncmd instanceof NUSALSeqReferenceCommand) || (cmd instanceof NUSALSeqPtrTableData)){
+			return relinkCommand(addr, ncmd);
+		}
+		
+		return STSResult.OKAY;
+	}
+	
+	public STSResult storeToSelf(int addr, byte value){
+		NUSALSeqCommand cmd = getCommandOver(addr);
+		if(cmd == null) return STSResult.FAIL;
+		int coff = addr - cmd.getAddress();
+		STSResult res = cmd.storeToSelf(coff, value);
+		switch(res){
+		case FAIL:
+		case INVALID:
+		case OUTSIDE:
+			return res;
+		case OKAY:
+			data.replaceByte(value, addr);
+			return res;
+		case RELINK:
+			res = relinkCommand(addr, cmd);
+			if(res == STSResult.OKAY) data.replaceByte(value, addr);
+			return res;
+		case REPARSE:
+			data.replaceByte(value, addr);
+			return reparseCommand(addr, cmd);
+		default: return null;
+		}
+	}
+	
+	public STSResult storePToSelf(int addr, short value){
+		NUSALSeqCommand cmd = getCommandOver(addr);
+		if(cmd == null) return STSResult.FAIL;
+		int coff = addr - cmd.getAddress();
+		int csz = cmd.getSizeInBytes();
+		if((coff + 1) < csz){
+			STSResult res = cmd.storePToSelf(coff, value);
+			switch(res){
+			case FAIL:
+			case INVALID:
+			case OUTSIDE:
+				return res;
+			case OKAY:
+				data.replaceShort(value, addr);
+				return res;
+			case RELINK:
+				res = relinkCommand(addr, cmd);
+				if(res == STSResult.OKAY) data.replaceShort(value, addr);
+				return res;
+			case REPARSE:
+				data.replaceShort(value, addr);
+				return reparseCommand(addr, cmd);
+			default: return null;
+			}
+		}
+		else{
+			//Two separate commands. Really shouldn't happen.
+			//But just in case.
+			int vali = Short.toUnsignedInt(value);
+			STSResult res1 = this.storeToSelf(addr, (byte)(vali >> 8));
+			switch(res1){
+			case FAIL:
+			case INVALID:
+			case OUTSIDE:
+				return res1;
+			default: break;
+			}
+			STSResult res2 = this.storeToSelf(addr+1, (byte)(vali));
+			return res2;
+		}
+	}
 	
 	/*--- Utils ---*/
 	

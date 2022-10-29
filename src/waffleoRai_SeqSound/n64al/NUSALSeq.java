@@ -27,6 +27,7 @@ import waffleoRai_SeqSound.MIDI;
 import waffleoRai_SeqSound.SeqVoiceCounter;
 import waffleoRai_SeqSound.SoundSeqDef;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqReader;
+import waffleoRai_SeqSound.n64al.cmd.STSResult;
 import waffleoRai_SoundSynth.SequenceController;
 import waffleoRai_Threads.SyncedInt;
 import waffleoRai_Utils.BufferReference;
@@ -35,6 +36,8 @@ import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 public class NUSALSeq implements WriterPrintable{
+	
+	//TODO STILL getting funky behavior when trying to playback > 4 lyr sequences!
 	
 	/*----- Constants -----*/
 	
@@ -483,6 +486,16 @@ public class NUSALSeq implements WriterPrintable{
 		}
 	}
 	
+	public STSResult storeToSelf(int addr, byte value){
+		if(source == null) return STSResult.FAIL;
+		return source.storeToSelf(addr, value);
+	}
+	
+	public STSResult storePToSelf(int addr, short value){
+		if(source == null) return STSResult.FAIL;
+		return source.storePToSelf(addr, value);
+	}
+	
 	public void setMasterVolume(byte vol){
 		master_vol = vol;
 		if(target != null){
@@ -623,7 +636,6 @@ public class NUSALSeq implements WriterPrintable{
 				return false;
 			}
 		}
-		
 		return !term_flag;
 	}
 
@@ -662,7 +674,7 @@ public class NUSALSeq implements WriterPrintable{
 			if(listener != null) listener.advanceTick();
 			//System.err.println("ticks = " + ticks);
 		}
-		
+
 		if(error_flag){
 			//Print error message!
 			System.err.println("NUSALSeq.playTo -- ERROR at tick " + current_tick);

@@ -2,6 +2,7 @@
 package waffleoRai_SeqSound.n64al.cmd;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 
 public abstract class NUSALSeqDataRefCommand extends NUSALSeqReferenceCommand{
 
@@ -30,6 +31,14 @@ public abstract class NUSALSeqDataRefCommand extends NUSALSeqReferenceCommand{
 	
 	public String getLabelPrefix(){return lbl_prefix;}
 	public int getExpectedDataSize(){return data_size;}
+	
+	public void updateAddressParameter(){
+		NUSALSeqCommand ref = super.getBranchTarget();
+		if(ref != null){
+			int newaddr = ref.getAddress() + offset;
+			super.setParam(p_idx_addr, newaddr);
+		}
+	}
 	
 	protected StringBuilder toMMLCommand_child(){
 		StringBuilder sb = super.toMMLCommand_child();

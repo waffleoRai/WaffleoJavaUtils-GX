@@ -539,8 +539,7 @@ public class NinTrack
 		player.setPortamentoControl(trackIndex, value);
 	}
 	
-	protected void setPortamentoOn(boolean b)
-	{
+	protected void setPortamentoOn(boolean b){
 		player.setPortamento(trackIndex, b);
 	}
 	
@@ -579,38 +578,36 @@ public class NinTrack
 		player.setModulationDelay(trackIndex, value);
 	}
 
-	protected void setAttack(int raw)
-	{
-		int a = NinSeqADSR.scaleAttackToMillis(raw);
-		player.setAttackOverride(trackIndex, a);
+	protected void setAttack(int raw){
+		/*int a = NinSeqADSR.scaleAttackToMillis(raw);
+		player.setAttackOverride(trackIndex, a);*/
+		player.setAttackOverride(trackIndex, raw);
 	}
 	
-	protected void setHold(int raw)
-	{
-		int h = NinSeqADSR.scaleHoldToMillis(raw);
-		player.setEnvelopeHold(trackIndex, h);
+	protected void setHold(int raw){
+		/*int h = NinSeqADSR.scaleHoldToMillis(raw);
+		player.setEnvelopeHold(trackIndex, h);*/
+		player.setEnvelopeHold(trackIndex, raw);
 	}
 	
-	protected void setDecay(int raw)
-	{
-		int d = NinSeqADSR.scaleDecayToMillis(raw);
-		player.setDecayOverride(trackIndex, d);
+	protected void setDecay(int raw){
+		/*int d = NinSeqADSR.scaleDecayToMillis(raw);
+		player.setDecayOverride(trackIndex, d);*/
+		player.setDecayOverride(trackIndex, raw);
 	}
 	
-	protected void setSustain(int raw)
-	{
+	protected void setSustain(int raw){
 		int slvl = NinSeqADSR.scaleSustain(raw);
 		player.setSustainOverride(trackIndex, slvl);
 	}
 	
-	protected void setRelease(int raw)
-	{
-		int r = NinSeqADSR.scaleReleaseToMillis(raw);
-		player.setReleaseOverride(trackIndex, r);
+	protected void setRelease(int raw){
+		/*int r = NinSeqADSR.scaleReleaseToMillis(raw);
+		player.setReleaseOverride(trackIndex, r);*/
+		player.setReleaseOverride(trackIndex, raw);
 	}
 	
-	protected void setExpression(int value)
-	{
+	protected void setExpression(int value){
 		player.setExpression(trackIndex, value);
 	}
 	
@@ -653,7 +650,7 @@ public class NinTrack
 	
 	protected void setTimebase(int value)
 	{
-		//TODO: No idea what this does!
+		//TODO: This should be updated in the realtime player at some point.
 		player.setTimebase(trackIndex, value);
 	}
 	

@@ -7,7 +7,7 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 	
 	private NUSALSeqCommand reference;
 	private boolean is_relative;
-	private int p_idx_addr;
+	protected int p_idx_addr;
 
 	protected NUSALSeqReferenceCommand(NUSALSeqCmdType cmd, int value, boolean rel) {
 		super(cmd, cmd.getBaseCommand());
@@ -46,6 +46,16 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 	public boolean isBranch(){return true;}
 	public boolean isRelativeBranch(){return is_relative;}
 	public NUSALSeqCommand getBranchTarget(){return reference;}
+	
+	public STSResult storeToSelf(int offset, byte value){
+		int prev_addr = super.getParam(p_idx_addr);
+		STSResult res = super.storeToSelf(offset, value);
+		if(res == STSResult.OKAY){
+			int now_addr = super.getParam(p_idx_addr);
+			if(prev_addr != now_addr) return STSResult.RELINK;
+		}
+		return res;
+	}
 	
 	//I'm switching this to be absolute
 	public int getBranchAddress(){

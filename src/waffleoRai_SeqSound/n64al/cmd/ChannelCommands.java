@@ -1081,13 +1081,10 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			NUSALSeq seq = channel.getParent();
-			if(seq == null) return false;
 			//TODO is it seq P&Q? Or do channels have their own?
-			int val = seq.getVarQ() + getParam(0);
-			BufferReference ref = seq.getSeqDataReference(getParam(1));
-			ref.writeByte((byte)val);
-			return true;
+			int val = channel.getVarQ() + getParam(0);
+			STSResult res = channel.storeToSelf(getBranchAddress(), (byte)val);
+			return res == STSResult.OKAY;
 		}
 	}
 	
@@ -1204,12 +1201,9 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			NUSALSeq seq = channel.getParent();
-			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
-			BufferReference ref = seq.getSeqDataReference(getParam(0));
-			ref.writeShort((short)seq.getVarP());
-			return true;
+			int val = channel.getVarP();
+			STSResult res = channel.storePToSelf(getBranchAddress(), (short)val);
+			return res == STSResult.OKAY;
 		}
 	}
 	

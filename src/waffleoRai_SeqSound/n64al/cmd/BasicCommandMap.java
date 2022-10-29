@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentMap;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandSource;
+import waffleoRai_Utils.FileBuffer;
 
 public class BasicCommandMap implements NUSALSeqCommandSource{
 
@@ -29,6 +30,17 @@ public class BasicCommandMap implements NUSALSeqCommandSource{
 	
 	public NUSALSeqCommand getCommandAt(int address) {
 		return map.get(address);
+	}
+	
+	public NUSALSeqCommand getCommandOver(int address){
+		int checkAddr = address;
+		NUSALSeqCommand cmd = null;
+		while(checkAddr >= 0){
+			cmd = map.get(checkAddr);
+			if(cmd != null) return cmd;
+			checkAddr--;
+		}
+		return null;
 	}
 	
 	public List<Integer> getAllAddresses(){
@@ -70,6 +82,139 @@ public class BasicCommandMap implements NUSALSeqCommandSource{
 	public void loadIntoMap(NUSALSeqCommand cmd){
 		cmd.mapByAddress(map);
 		cmd.dechunkReference();
+	}
+	
+	private STSResult relinkCommand(int addr, NUSALSeqCommand cmd){
+		int coff = addr - cmd.getAddress();
+		if(cmd instanceof NUSALSeqReferenceCommand){
+			NUSALSeqReferenceCommand rcmd = (NUSALSeqReferenceCommand)cmd;
+			int taddr = rcmd.getBranchAddress();
+			NUSALSeqCommand tcmd = getCommandOver(taddr);
+			if(tcmd == null) return STSResult.INVALID;
+			if(tcmd.getAddress() == taddr){
+				rcmd.setReference(tcmd);
+				return STSResult.OKAY;
+			}
+			else{
+				if(cmd instanceof NUSALSeqDataRefCommand){
+					NUSALSeqDataRefCommand drcmd = (NUSALSeqDataRefCommand)cmd;
+					drcmd.setDataOffset(taddr - tcmd.getAddress());
+					drcmd.setReference(tcmd);
+					return STSResult.OKAY;
+				}
+				else return STSResult.INVALID;
+			}
+		}
+		else if (cmd instanceof NUSALSeqPtrTableData){
+			NUSALSeqPtrTableData dcmd = (NUSALSeqPtrTableData)cmd;
+			int tidx = coff >> 1;
+			int taddr = dcmd.getDataValue(tidx, false);
+			NUSALSeqCommand tcmd = getCommandOver(taddr);
+			if(tcmd == null) return STSResult.INVALID;
+			dcmd.setReference(tidx, tcmd);
+			return STSResult.OKAY;
+		}
+		return STSResult.FAIL;
+	}
+	
+	private STSResult reparseCommand(int addr, int val, NUSALSeqCommand cmd, boolean p){
+		int caddr = cmd.getAddress();
+		map.remove(caddr);
+		NUSALSeqCommand ncmd = null;
+		
+		FileBuffer data = FileBuffer.wrap(cmd.serializeMe());
+		if(p) data.replaceShort((short)val, addr - caddr);
+		else data.replaceByte((byte)val, addr - caddr);
+		
+		if(cmd.seqUsed()){
+			ncmd = SeqCommands.parseSequenceCommand(data.getReferenceAt(0));
+			if(ncmd == null) return STSResult.FAIL;
+			ncmd.flagSeqUsed();
+		}
+		else{
+			boolean chuse = false;
+			for(int i = 0; i < 16; i++){
+				if(cmd.channelUsed(i)){
+					chuse = true;
+					break;
+				}
+			}
+			if(chuse){
+				ncmd = ChannelCommands.parseChannelCommand(data.getReferenceAt(0));
+				if(ncmd == null) return STSResult.FAIL;
+			}
+			else{
+				//layer
+				ncmd = LayerCommands.parseLayerCommand(data.getReferenceAt(0), false);
+				if(ncmd == null) return STSResult.FAIL;
+			}
+		}
+		ncmd.setAddress(caddr);
+		ncmd.setTickAddress(cmd.getTickAddress());
+		ncmd.setSubsequentCommand(cmd.getSubsequentCommand());
+		map.put(caddr, ncmd);
+		
+		if((ncmd instanceof NUSALSeqReferenceCommand) || (cmd instanceof NUSALSeqPtrTableData)){
+			return relinkCommand(addr, ncmd);
+		}
+		
+		return STSResult.OKAY;
+	}
+	
+	public STSResult storeToSelf(int addr, byte value){
+		NUSALSeqCommand cmd = getCommandOver(addr);
+		if(cmd == null) return STSResult.FAIL;
+		int coff = addr - cmd.getAddress();
+		STSResult res = cmd.storeToSelf(coff, value);
+		switch(res){
+		case FAIL:
+		case INVALID:
+		case OUTSIDE:
+		case OKAY:
+			return res;
+		case RELINK:
+			return relinkCommand(addr, cmd);
+		case REPARSE:
+			return reparseCommand(addr, value, cmd, false);
+		default: return null;
+		}
+	}
+	
+	public STSResult storePToSelf(int addr, short value){
+		NUSALSeqCommand cmd = getCommandOver(addr);
+		if(cmd == null) return STSResult.FAIL;
+		int coff = addr - cmd.getAddress();
+		int csz = cmd.getSizeInBytes();
+		if((coff + 1) < csz){
+			STSResult res = cmd.storePToSelf(coff, value);
+			switch(res){
+			case FAIL:
+			case INVALID:
+			case OUTSIDE:
+			case OKAY:
+				return res;
+			case RELINK:
+				return relinkCommand(addr, cmd);
+			case REPARSE:
+				return reparseCommand(addr, value, cmd, true);
+			default: return null;
+			}
+		}
+		else{
+			//Two separate commands. Really shouldn't happen.
+			//But just in case.
+			int vali = Short.toUnsignedInt(value);
+			STSResult res1 = this.storeToSelf(addr, (byte)(vali >> 8));
+			switch(res1){
+			case FAIL:
+			case INVALID:
+			case OUTSIDE:
+				return res1;
+			default: break;
+			}
+			STSResult res2 = this.storeToSelf(addr+1, (byte)(vali));
+			return res2;
+		}
 	}
 	
 	public void printMeTo(Writer out) throws IOException{

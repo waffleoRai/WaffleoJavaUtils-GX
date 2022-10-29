@@ -35,7 +35,9 @@ public class Test_SeqDiagnostics {
 			
 			//Try to output MML
 			System.out.println();
-			nseq.exportMMLScript(new OutputStreamWriter(System.out), true);
+			OutputStreamWriter writer = new OutputStreamWriter(System.out);
+			//nseq.exportMMLScript(writer, true);
+			writer.flush();
 			
 		}catch(Exception ex){
 			ex.printStackTrace();

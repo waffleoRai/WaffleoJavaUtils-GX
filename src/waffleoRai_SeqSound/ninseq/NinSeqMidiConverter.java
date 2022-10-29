@@ -13,6 +13,7 @@ import javax.sound.midi.MidiMessage;
 import javax.sound.midi.Sequence;
 import javax.sound.midi.Track;
 
+import waffleoRai_SeqSound.MIDIControllers;
 import waffleoRai_SeqSound.MidiMessageGenerator;
 
 public class NinSeqMidiConverter implements NinSeqPlayer{
@@ -97,6 +98,7 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 	private volatile boolean end;
 	private volatile boolean running;
 	
+	private int tempo_bpm;
 	private int timebase;
 	private int ticksPerTick;
 	private MidiMessageGenerator mmg;
@@ -124,6 +126,7 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 		mmg = new MidiMessageGenerator();
 		errors = new LinkedList<Exception>();
 		end = false;
+		tempo_bpm = 120;
 		timebase = NinSeq.TICKS_PER_QNOTE;
 		ticksPerTick = 1;
 	}
@@ -215,6 +218,7 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 		if(running) return;
 		
 		synchronized(this){end = false;}
+		tempo_bpm = 120;
 		timebase = NinSeq.TICKS_PER_QNOTE;
 		ticksPerTick = 1;
 		
@@ -244,12 +248,12 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 	
 	private void initializeOutput() throws InvalidMidiDataException
 	{
-		output = new Sequence(Sequence.PPQ, timebaseScan());
+		output = new Sequence(Sequence.PPQ, NinSeq.TICKS_PER_QNOTE);
 		for(int i = 0; i < 16; i++) output.createTrack();
 		outTracks = output.getTracks();
 		for(int i = 0; i < 16; i++) outTracks[i].add(new MidiEvent(mmg.genTrackName(String.format("Track %02d", i)), 0));
 		
-		ticksPerTick = output.getResolution() / timebase;
+		//ticksPerTick = output.getResolution() / timebase;
 	}
 	
 	public void openTrack(int tidx, int addr)
@@ -331,9 +335,10 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 	
 	public void setTempoBPM(int bpm)
 	{
+		tempo_bpm = bpm;
 		try 
 		{
-			MidiMessage msg = mmg.genTempoSet(bpm, NinSeq.TICKS_PER_QNOTE);
+			MidiMessage msg = mmg.genTempoSet(bpm, timebase);
 			addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
@@ -346,13 +351,15 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 		{
 			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_TIMEBASE, value << 7, true);
 			//for(MidiMessage msg : msgs) addMessage(msg, 0);
+			MidiMessage msg = mmg.genTempoSet(tempo_bpm, value);
+			addMessage(msg, 0);
 			
-			MidiMessage msg = mmg.genMarker("Set timebase to " + value + "ppq");
+			msg = mmg.genMarker("Set timebase to " + value + "ppq");
 			addMessage(msg, tidx);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 		
-		ticksPerTick = output.getResolution() / timebase;
+		//ticksPerTick = output.getResolution() / timebase;
 	}
 	
 	public void setTrackPriority(int tidx, int pri)
@@ -481,8 +488,7 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 		return ((a*b) / gcd(a,b));
 	}
 	
-	private int timebaseScan()
-	{
+	private int timebaseScan() {
 		final NSCommand[] time_commands = {NSCommand.PLAY_NOTE, NSCommand.WAIT,
 										   NSCommand.PREFIX_TIME, NSCommand.PREFIX_TIME_RANDOM,
 										   NSCommand.PREFIX_TIME_VARIABLE};
@@ -619,39 +625,41 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void setMasterVolume(int vol)
-	{
-		try 
-		{
+	public void setMasterVolume(int vol){
+		try {
 			List<MidiMessage> msgs = mmg.genNRPN(0, NRPN_MIDI_IDX_MAINVOL, vol, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void setFXSendLevel(int tidx, int send, int level)
-	{
-		int nrpn = 0 ;
-		switch(send)
-		{
-		case 0: nrpn = NRPN_MIDI_IDX_SEND_A; break;
+	public void setFXSendLevel(int tidx, int send, int level){
+		//int nrpn = 0 ;
+		int ctrlr = -1;
+		switch(send){
+		/*case 0: nrpn = NRPN_MIDI_IDX_SEND_A; break;
 		case 1: nrpn = NRPN_MIDI_IDX_SEND_B; break;
-		case 2: nrpn = NRPN_MIDI_IDX_SEND_C; break;
+		case 2: nrpn = NRPN_MIDI_IDX_SEND_C; break;*/
+		case 0: ctrlr = MIDIControllers.EFFECT_DEPTH_1; break;
+		case 1: ctrlr = MIDIControllers.EFFECT_DEPTH_2; break;
+		case 2: ctrlr = MIDIControllers.EFFECT_DEPTH_3; break;
 		}
+		
+		if(ctrlr < 0) return;
 		
 		try 
 		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, nrpn, level << 7, true);
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, nrpn, level << 7, true);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, ctrlr, level << 7, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void setMainSendLevel(int tidx, int level)
-	{
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_SEND_MAIN, level << 7, true);
+	public void setMainSendLevel(int tidx, int level){
+		try {
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_SEND_MAIN, level << 7, true);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.EFFECTS_2, level << 7, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
@@ -679,11 +687,10 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void updateTrackSurroundPan(int tidx, int value)
-	{
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(0, NRPN_MIDI_IDX_SURROUND_PAN, value, true);
+	public void updateTrackSurroundPan(int tidx, int value){
+		try {
+			//List<MidiMessage> msgs = mmg.genNRPN(0, NRPN_MIDI_IDX_SURROUND_PAN, value, true);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.BALANCE, value << 7, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
@@ -742,23 +749,20 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void setMonophony(int tidx, boolean on)
-	{
-		int value = 0;
-		if(on) value = 1 << 7;
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_MONOPHONIC, value, true);
+	public void setMonophony(int tidx, boolean on){
+		int ctrlr = on ? MIDIControllers.SET_MONOPHONIC : MIDIControllers.SET_POLYPHONIC;
+		try {
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, ctrlr, 0, true);
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_MONOPHONIC, value, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void setPitchSweep(int tidx, int value)
-	{
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_PITCH_SWEEP, value, false);
+	public void setPitchSweep(int tidx, int value){
+		try {
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_PITCH_SWEEP, value, false);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.EFFECTS_1, value, false);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
@@ -768,7 +772,8 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 	{
 		try 
 		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_LPF, frequency, false);
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_LPF, frequency, false);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.LPF_CUTOFF_FREQ, frequency << 7, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
@@ -776,10 +781,8 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 	
 	/* ~~ portamento ~~ */
 	
-	public void setPortamentoControl(int tidx, int note)
-	{
-		try 
-		{
+	public void setPortamentoControl(int tidx, int note){
+		try {
 			MidiMessage msg = mmg.genPortamentoControl(tidx, note);
 			addMessage(msg, tidx);
 		}
@@ -808,31 +811,30 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 	
 	/* ~~ modulation ~~ */
 	
-	public void setModulationDepth(int tidx, int value)
-	{
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_MOD_DEPTH, value << 7, true);
+	public void setModulationDepth(int tidx, int value){
+		try {
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_MOD_DEPTH, value << 7, true);
+			double rescale = ((double)value / 127.0) * (double)0x3fff;
+			int wheel_lvl = (int)Math.round(rescale);
+			List<MidiMessage> msgs = mmg.genModWheelLevel(tidx, wheel_lvl);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void setModulationSpeed(int tidx, int value)
-	{
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_MOD_SPEED, value << 7, true);
+	public void setModulationSpeed(int tidx, int value){
+		try {
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_MOD_SPEED, value << 7, true);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.GENERAL_PURPOSE_1, value << 7, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void setModulationType(int tidx, int value)
-	{
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_MOD_TYPE, value << 7, true);
+	public void setModulationType(int tidx, int value){
+		try{
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_MOD_TYPE, value << 7, true);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.GENERAL_PURPOSE_2, value << 7, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
@@ -840,19 +842,17 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 	
 	public void setModulationRange(int tidx, int value)
 	{
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_MOD_RANGE, value << 7, true);
+		try {
+			List<MidiMessage> msgs = mmg.genModDepthRangeSet(tidx, value, 0);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void setModulationDelay(int tidx, int millis)
-	{
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_MOD_DELAY, millis, false);
+	public void setModulationDelay(int tidx, int value){
+		try {
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_MOD_DELAY, millis, false);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.GENERAL_PURPOSE_1, value << 7, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
@@ -860,21 +860,23 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 	
 	/* ~~ envelope ~~ */
 	
-	public void setAttackOverride(int tidx, int millis)
+	public void setAttackOverride(int tidx, int value)
 	{
 		try 
 		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_ATTACK, millis, false);
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_ATTACK, millis, false);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.ATTACK_TIME, value << 7, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void setDecayOverride(int tidx, int millis)
+	public void setDecayOverride(int tidx, int value)
 	{
 		try 
 		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_DECAY, millis, false);
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_DECAY, millis, false);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.DECAY_TIME, value << 7, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
@@ -884,37 +886,34 @@ public class NinSeqMidiConverter implements NinSeqPlayer{
 	{
 		try 
 		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_SUSTAIN, level >> 18, false);
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_SUSTAIN, level >> 18, false);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.SOUND_CTRLR_06, level, false);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void setReleaseOverride(int tidx, int millis)
-	{
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_RELEASE, millis, false);
+	public void setReleaseOverride(int tidx, int value){
+		try{
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_RELEASE, millis, false);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.RELEASE_TIME, value << 7, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void setEnvelopeHold(int tidx, int millis)
-	{
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_ENV_HOLD, millis, false);
+	public void setEnvelopeHold(int tidx, int value){
+		try{
+			//List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_ENV_HOLD, millis, false);
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.SOUND_CTRLR_07, value << 7, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}
 	}
 	
-	public void envelopeReset(int tidx)
-	{
-		try 
-		{
-			List<MidiMessage> msgs = mmg.genNRPN(tidx, NRPN_MIDI_IDX_ENV_RESET, 1<<7, true);
+	public void envelopeReset(int tidx){
+		try {
+			List<MidiMessage> msgs = mmg.genControllerLevelChange(tidx, MIDIControllers.GENERAL_PURPOSE_SWITCH_C, 0x64, true);
 			for(MidiMessage msg : msgs) addMessage(msg, 0);
 		}
 		catch (InvalidMidiDataException e) {handleInvalidMidiDataException(e);}

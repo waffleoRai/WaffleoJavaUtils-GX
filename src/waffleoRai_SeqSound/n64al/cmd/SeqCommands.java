@@ -471,9 +471,11 @@ public class SeqCommands {
 		}
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
-			BufferReference targ = sequence.getSeqDataReference(getParam(1));
-			targ.writeByte((byte)(getParam(0) + sequence.getVarQ()));
-			return true;
+			//BufferReference targ = sequence.getSeqDataReference(getParam(1));
+			//targ.writeByte((byte)(getParam(0) + sequence.getVarQ()));
+			int storeval = super.getParam(0) + sequence.getVarQ();
+			STSResult res = sequence.storeToSelf(getBranchAddress(), (byte)storeval);
+			return res == STSResult.OKAY;
 		}
 	}
 	

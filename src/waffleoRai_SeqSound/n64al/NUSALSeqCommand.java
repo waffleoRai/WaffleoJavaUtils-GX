@@ -8,9 +8,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
+import waffleoRai_SeqSound.n64al.cmd.STSResult;
 import waffleoRai_Utils.FileBuffer;
 
 public abstract class NUSALSeqCommand {
+	
+	protected static final STSResult[] STS_RES_PRI = 
+		{STSResult.FAIL, STSResult.REPARSE, STSResult.INVALID, STSResult.RELINK, STSResult.OKAY, STSResult.OUTSIDE};
 	
 	public static final int SERIALFMT_DUMMY = -1;
 	public static final int SERIALFMT_ = 0; //Just the command byte
@@ -259,6 +263,260 @@ public abstract class NUSALSeqCommand {
 			setReference(head);
 			if(head.getLabel() == null) head.setLabel(ref.getLabel());
 		}
+	}
+	
+	public STSResult storeToSelf(int offset, byte value){
+		int mysize = getSizeInBytes();
+		if(offset >= mysize) return STSResult.OUTSIDE;
+		
+		int cmdi = Byte.toUnsignedInt(command.getBaseCommand());
+		int vali = Byte.toUnsignedInt(value);
+		switch(command.getSerializationType()){
+		case SERIALFMT_DUMMY: return STSResult.FAIL;
+		case SERIALFMT_: return STSResult.REPARSE;
+		case SERIALFMT_L:
+			if((cmdi & 0xf0) == (vali & 0xf0)){
+				params[0] = vali & 0xf;
+				cmdbyte = value;
+				return STSResult.OKAY;
+			}
+			else return STSResult.REPARSE;
+		case SERIALFMT_1:
+			if(offset == 0) return STSResult.REPARSE;
+			params[0] = (int)value;
+			return STSResult.OKAY;
+		case SERIALFMT_L1:
+			if(offset == 0){
+				if((cmdi & 0xf0) == (vali & 0xf0)){
+					params[0] = vali & 0xf;
+					cmdbyte = value;
+					return STSResult.OKAY;
+				}
+				else return STSResult.REPARSE;
+			}
+			else{
+				params[1] = (int)value;
+				return STSResult.OKAY;
+			}
+		case SERIALFMT_2:
+			if(offset == 0) return STSResult.REPARSE;
+			if(offset == 1){
+				params[0] = (params[0] & 0xff) | (vali << 8);
+			}
+			else{
+				params[0] = (params[0] & 0xff00) | vali;
+			}
+			return STSResult.OKAY;
+		case SERIALFMT_L2:
+			if(offset == 0){
+				if((cmdi & 0xf0) == (vali & 0xf0)){
+					params[0] = vali & 0xf;
+					cmdbyte = value;
+					return STSResult.OKAY;
+				}
+				else return STSResult.REPARSE;
+			}
+			if(offset == 1){
+				params[1] = (params[1] & 0xff) | (vali << 8);
+			}
+			else{
+				params[1] = (params[1] & 0xff00) | vali;
+			}
+			return STSResult.OKAY;
+		case SERIALFMT_11:
+			if(offset == 0) return STSResult.REPARSE;
+			params[offset-1] = vali;
+			return STSResult.OKAY;
+		case SERIALFMT_12:
+			switch(offset){
+			case 0: return STSResult.REPARSE;
+			case 1:
+				params[0] = (int)value;
+				return STSResult.OKAY;
+			case 2:
+				params[1] = (params[1] & 0xff) | (vali << 8);
+				return STSResult.OKAY;
+			case 3:
+				params[1] = (params[1] & 0xff00) | vali;
+				return STSResult.OKAY;
+			}
+		case SERIALFMT_21:
+			switch(offset){
+			case 0: return STSResult.REPARSE;
+			case 1:
+				params[0] = (params[0] & 0xff) | (vali << 8);
+				return STSResult.OKAY;
+			case 2:
+				params[0] = (params[0] & 0xff00) | vali;
+				return STSResult.OKAY;
+			case 3:
+				params[1] = (int)value;
+				return STSResult.OKAY;
+			}
+		case SERIALFMT_L11:
+			switch(offset){
+			case 0: 
+				if((cmdi & 0xf0) == (vali & 0xf0)){
+					params[0] = vali & 0xf;
+					cmdbyte = value;
+					return STSResult.OKAY;
+				}
+				else return STSResult.REPARSE;
+			case 1:
+				params[1] = (int)value;
+				return STSResult.OKAY;
+			case 2:
+				params[2] = (int)value;
+				return STSResult.OKAY;
+			}
+		case SERIALFMT_L12:
+			switch(offset){
+			case 0: 
+				if((cmdi & 0xf0) == (vali & 0xf0)){
+					params[0] = vali & 0xf;
+					cmdbyte = value;
+					return STSResult.OKAY;
+				}
+				else return STSResult.REPARSE;
+			case 1:
+				params[1] = (int)value;
+				return STSResult.OKAY;
+			case 2:
+				params[2] = (params[2] & 0xff) | (vali << 8);
+				return STSResult.OKAY;
+			case 3:
+				params[2] = (params[2] & 0xff00) | vali;
+				return STSResult.OKAY;
+			}
+		case SERIALFMT_111:
+			if(offset == 0) return STSResult.REPARSE;
+			params[offset-1] = vali;
+			return STSResult.OKAY;
+		case SERIALFMT_V:
+			if(offset == 0) return STSResult.REPARSE;
+			if(params[0] > 0x7f){
+				//Two byte
+				if(offset == 1){
+					if(vali < 0x80) return STSResult.INVALID; //Expects high bit to be set.
+					params[0] = (params[0] & 0xff) | ((vali & 0x7f) << 8);
+					return STSResult.OKAY;
+				}
+				else if(offset == 2){
+					params[0] = (params[0] & 0xff00) | vali;
+					return STSResult.OKAY;
+				}
+				return STSResult.OUTSIDE;
+			}
+			else{
+				//One byte
+				if(offset != 1) return STSResult.OUTSIDE;
+				if(vali > 0x7f) return STSResult.INVALID;
+				params[0] = vali;
+				return STSResult.OKAY;
+			}
+		case SERIALFMT_NOTE:
+			if(offset == 0){
+				//Can swap as long as same type.
+				if(cmdi < 0x40){
+					if(vali >= 0x40) return STSResult.INVALID;
+				}
+				else if(cmdi < 0x80){
+					if(vali < 0x40 || vali >= 0x80) return STSResult.INVALID;
+				}
+				else{
+					if(vali < 0x40 || vali >= 0x80) return STSResult.INVALID;
+				}
+				cmdbyte = value;
+				params[0] = vali & 0x3f;
+				return STSResult.OKAY;
+			}
+			else{
+				//Need to figure out cmd format...
+				if(cmdi < 0x40){
+					//ndvg
+					if(params[1] > 0x7f){
+						if(offset > 2) params[offset-1] = vali;
+						else{
+							switch(offset){
+							case 1:
+								if(vali < 0x80) return STSResult.INVALID;
+								params[1] = (params[1] & 0xff) | ((vali & 0x7f) << 8);
+								break;
+							case 2:
+								params[1] = (params[1] & 0xff00) | vali;
+								break;
+							}
+						}
+					}
+					else {
+						if(offset == 1){
+							if(vali > 0x7f) return STSResult.INVALID;
+						}
+						params[offset] = vali;
+					}
+				}
+				else if(cmdi < 0x80){
+					//ndv
+					if(params[1] > 0x7f){
+						if(offset > 2) params[offset-1] = vali;
+						else{
+							switch(offset){
+							case 1:
+								if(vali < 0x80) return STSResult.INVALID;
+								params[1] = (params[1] & 0xff) | ((vali & 0x7f) << 8);
+								break;
+							case 2:
+								params[1] = (params[1] & 0xff00) | vali;
+								break;
+							}
+						}
+					}
+					else {
+						if(offset == 1){
+							if(vali > 0x7f) return STSResult.INVALID;
+						}
+						params[offset] = vali;
+					}
+				}
+				else{
+					//nvg
+					params[offset] = vali;
+				}
+				return STSResult.OKAY;
+			}
+		case SERIALFMT_CPARAMS:
+			if(offset == 0) return STSResult.REPARSE;
+			params[offset-1] = vali;
+			return STSResult.OKAY;
+		case SERIALFMT_COPYFILTER:
+			if(offset == 0) return STSResult.REPARSE;
+			params[0] = (vali >>> 4) & 0xf;
+			params[1] = vali & 0xf;
+			return STSResult.OKAY;
+		}
+		
+		return STSResult.FAIL;
+	}
+	
+	public STSResult storePToSelf(int offset, short value){
+		//Maybe just call storeToSelf for each byte?
+		//FAIL > REPARSE > INVALID > RELINK > OKAY > OUTSIDE
+		
+		byte hi = (byte)(Short.toUnsignedInt(value) >>> 8);
+		byte lo = (byte)(Short.toUnsignedInt(value) & 0xff);
+		
+		STSResult res_hi = storeToSelf(offset, hi);
+		if(res_hi == STSResult.FAIL) return res_hi;
+		STSResult res_lo = storeToSelf(offset+1, lo);
+		if(res_lo == STSResult.FAIL) return res_lo;
+		
+		for(int i = 0; i < STS_RES_PRI.length; i++){
+			if(res_hi == STS_RES_PRI[i] || res_lo == STS_RES_PRI[i]){
+				return STS_RES_PRI[i];
+			}
+		}
+		
+		return STSResult.FAIL;
 	}
 	
 	protected String paramsToString(){

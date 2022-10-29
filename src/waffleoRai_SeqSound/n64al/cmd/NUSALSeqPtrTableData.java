@@ -6,12 +6,14 @@ import waffleoRai_SeqSound.n64al.NUSALSeqDataType;
 public class NUSALSeqPtrTableData extends NUSALSeqDataCommand{
 
 	private NUSALSeqCommand[] references;
+	private int[] offsets; //Offsets from references.
 	private int lyr_target = -1;
 	private boolean try_parse_targets = true; //Will read as instruction pointers by default.
 	
 	public NUSALSeqPtrTableData(NUSALSeqDataType data_type, int units) {
 		super(data_type, units);
 		references = new NUSALSeqCommand[units];
+		offsets = new int[units];
 	}
 	
 	public NUSALSeqCommand getReference(int tbl_idx){
@@ -19,9 +21,22 @@ public class NUSALSeqPtrTableData extends NUSALSeqDataCommand{
 		return references[tbl_idx];
 	}
 	
+	public int getReferenceOffset(int tbl_idx){
+		if(tbl_idx < 0 || tbl_idx >= references.length) return -1;
+		return offsets[tbl_idx];
+	}
+	
 	public void setReference(int tbl_idx, NUSALSeqCommand cmd){
 		if(tbl_idx < 0 || tbl_idx >= references.length) return;
+		if(references[tbl_idx] != null){
+			references[tbl_idx].removeReferee(this);
+		}
 		references[tbl_idx] = cmd;
+		if(cmd != null) {
+			cmd.addReferee(this);
+			offsets[tbl_idx] = this.getDataValue(tbl_idx, false) - cmd.getAddress();
+		}
+		else offsets[tbl_idx] = 0;
 	}
 	
 	public boolean isLayerContext(){return lyr_target >= 0;}
@@ -31,6 +46,23 @@ public class NUSALSeqPtrTableData extends NUSALSeqDataCommand{
 	
 	public boolean readAsSubPointers(){return this.try_parse_targets;}
 	public void setReadAsSubPointers(boolean b){this.try_parse_targets = b;}
+	
+	public STSResult storeToSelf(int offset, byte value){
+		if(data == null) return STSResult.INVALID;
+		if(offset < 0 || offset >= data.length) return STSResult.OUTSIDE;
+		data[offset] = value;
+		return STSResult.RELINK;
+	}
+	
+	public STSResult storePToSelf(int offset, short value){
+		if(data == null) return STSResult.INVALID;
+		if(offset < 0 || offset >= data.length) return STSResult.OUTSIDE;
+		if((offset & 0x1) != 0) return STSResult.INVALID;
+		int vali = Short.toUnsignedInt(value);
+		data[offset] = (byte)((vali >>> 8) & 0xff);
+		data[offset + 1] = (byte)(vali & 0xff);
+		return STSResult.RELINK;
+	}
 	
 	public void reallocate(int new_size_bytes){
 		resize(new_size_bytes >>> 1);
