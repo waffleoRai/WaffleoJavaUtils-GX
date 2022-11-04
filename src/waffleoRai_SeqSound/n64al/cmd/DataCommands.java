@@ -1,6 +1,7 @@
 package waffleoRai_SeqSound.n64al.cmd;
 
 import java.util.LinkedList;
+import java.util.List;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
@@ -44,6 +45,7 @@ public class DataCommands {
 			return dcmd;
 		}
 		
+		
 		int exsz = dtype.getTotalSize();
 		int usize = dtype.getUnitSize();
 		if(exsz <= 0){
@@ -81,7 +83,11 @@ public class DataCommands {
 			}
 		}
 		
-		NUSALSeqDataCommand dcmd = new NUSALSeqDataCommand(dtype, exsz/usize);
+		NUSALSeqDataCommand dcmd = null;
+		if(dtype == NUSALSeqDataType.P_TABLE){
+			dcmd = new NUSALSeqPtrTableData(dtype, exsz >> 1);
+		}
+		else dcmd = new NUSALSeqDataCommand(dtype, exsz/usize);
 		byte[] darray = dcmd.getDataArray();
 		for(int i = 0; i < darray.length; i++){
 			darray[i] = dat.nextByte();
@@ -174,7 +180,7 @@ public class DataCommands {
 			return NUSALSeqDataType.Q_TABLE;
 		}
 		else if(cmdtype == NUSALSeqCmdType.LOAD_IMM_P){
-			return NUSALSeqDataType.P_TABLE;
+			return NUSALSeqDataType.BUFFER;
 		}
 		else if(cmdtype == NUSALSeqCmdType.STORE_TO_SELF_P){
 			return NUSALSeqDataType.BUFFER;
@@ -188,6 +194,137 @@ public class DataCommands {
 		else if(cmdtype == NUSALSeqCmdType.L_ENVELOPE){
 			return NUSALSeqDataType.ENVELOPE;
 		}
+		
+		return null;
+	}
+	
+	/*--- Context Prediction - QTBL ---*/
+	
+	private static NUSALSeqCommand guessQUsage(NUSALSeqCommand cmd){
+		//Scan forward to see what a loaded q is used for after cmd sets it
+		NUSALSeqCommand next = cmd.getSubsequentCommand();
+		NUSALSeqCommand ref = null;
+		while(next != null){
+			switch(next.getCommand()){
+			case LOAD_SAMPLE:
+			case STORE_CHIO:
+			case STORE_IO:
+			case VOICE_OFFSET_TABLE:
+			case DYNTABLE_READ:
+			case DYNTABLE_LOAD:
+			case SHIFT_DYNTABLE:
+			case CALL_DYNTABLE:
+			case CALL_TABLE:
+				return next;
+			case LOAD_FROM_SELF:
+				return guessQUsage(next);
+			case STORE_TO_SELF:
+				ref = next.getBranchTarget();
+				if(ref != null){
+					return ref;
+				}
+				break;
+			default: break;
+			}
+			next = next.getSubsequentCommand();
+		}
+		return null;
+	}
+	
+	public static NUSALSeqCommand guessQTableUsage(NUSALSeqCommand qtbl){
+		//TODO
+		return null;
+	}
+	
+	/*--- Context Prediction - PTBL ---*/
+	
+	private static NUSALSeqCommand guessPUsage(NUSALSeqCommand cmd){
+		//Scan forward to see what a loaded p is used for after cmd sets it
+		NUSALSeqCommand next = cmd.getSubsequentCommand();
+		NUSALSeqCommand ref = null;
+		while(next != null){
+			switch(next.getCommand()){
+			case STORE_TO_SELF_P:
+				//See what the stps is modifying.
+				//Might be a command param
+				//Might be data
+				ref = next.getBranchTarget();
+				if(ref != null) return ref;
+				break;
+			case LOAD_SAMPLE_P:
+				return next;
+			case DYNTABLE_WRITE: //p2dyntable
+				return guessDyntableUsage(next);
+			default: break;
+			}
+			next = next.getSubsequentCommand();
+		}
+		return null;
+	}
+	
+	private static NUSALSeqCommand guessDyntableUsage(NUSALSeqCommand cmd){
+		//Scan forward to see what the dyntable is used for
+		//dynstartlayer, dyncall, p2dyntable, dyntable2p, dynsetdyntable
+		NUSALSeqCommand next = null;
+		NUSALSeqCommand ret = null;
+		next = cmd.getSubsequentCommand();
+		while(next != null){
+			switch(next.getCommand()){
+			case VOICE_OFFSET_TABLE:
+				return next;
+			case DYNTABLE_READ:
+				//The dyntable is just another ptable WHY
+				ret = guessPUsage(next);
+				if (ret != null) return ret;
+				break;
+			case DYNTABLE_LOAD:
+				//The dyntable is a Q table.
+				ret = guessQUsage(next);
+				if (ret != null) return ret;
+				break;
+			case SHIFT_DYNTABLE:
+				//I am not exactly sure what to do with this...
+				//Keep going maybe? I'll leave the case here just in case.
+				break;
+			case CALL_DYNTABLE:
+				//dyntable is table of pointers to channel code
+				return next;
+			default: break;
+			}
+			next = next.getSubsequentCommand();
+		}
+		return null;
+	}
+	
+	public static NUSALSeqCommand guessPTableUsage(NUSALSeqCommand ptbl){
+		List<NUSALSeqCommand> referees = ptbl.getReferees();
+ 		if(referees.isEmpty()) return null;
+ 		NUSALSeqCommand next = null;
+ 		NUSALSeqCommand ret = null;
+ 		for(NUSALSeqCommand referee : referees){
+ 			//Look for one we can use to figure it out.
+ 			//These are commands likely to reference the table itself.
+ 			//	What the table is for might not be in that command, but a nearby one.
+ 			switch(referee.getCommand()){
+ 			case CALL_TABLE: 
+ 				//Probably seq subroutines.
+ 				return referee;
+ 			case LOAD_IMM_P: 
+ 			case RANDP: 
+ 			case ADD_RAND_IMM_P: 
+ 			case LOAD_P_TABLE: 
+ 				//Scan forward to see where p is next applied.
+ 				// stps, loadsplp, p2dyntable, addp, 
+ 				ret = guessPUsage(referee);
+ 				if(ret != null) return ret;
+ 				break;
+ 			case SET_DYNTABLE: 
+ 				ret = guessDyntableUsage(next);
+ 				if(ret != null) return ret;
+ 				break;
+ 			default: return null;
+ 			}
+ 		}
 		
 		return null;
 	}
