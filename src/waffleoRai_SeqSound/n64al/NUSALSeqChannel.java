@@ -18,6 +18,8 @@ public class NUSALSeqChannel {
 	private Deque<Integer> return_stack;
 	private int ch_idx;
 	
+	private SyncedInt q;
+	private SyncedInt p;
 	private SyncedInt[] seqIO;
 	private int dyntable_addr = -1;
 	private int filter_addr = -1;
@@ -72,6 +74,8 @@ public class NUSALSeqChannel {
 		parent_seq = parent;
 		seqIO = new SyncedInt[8];
 		for(int i = 0; i < 8; i++) seqIO[i] = new SyncedInt(0);
+		q = new SyncedInt(0);
+		p = new SyncedInt(0);
 		reset();
 	}
 	
@@ -133,11 +137,11 @@ public class NUSALSeqChannel {
 	public int getNumberLayersUsed(){return max_lyr_used;}
 	
 	public int getVarQ(){
-		return parent_seq.getVarQ();
+		return q.get();
 	}
 	
 	public int getVarP(){
-		return parent_seq.getVarP();
+		return p.get();
 	}
 	
 	public int getSeqIOValue(int idx){
@@ -181,6 +185,9 @@ public class NUSALSeqChannel {
 		seqIO[idx].set(value);
 	}
 	
+	public void setQ(byte value){q.set((int)value);}
+	public void setP(short value){p.set(Short.toUnsignedInt(value));}
+	
 	public void setDynTable(int addr){
 		dyntable_addr = addr;
 	}
@@ -203,14 +210,14 @@ public class NUSALSeqChannel {
 	
 	public void setCommandSource(NUSALSeqCommandSource src){
 		source = src;
-		for(int i = 0; i < 4; i++) {
+		for(int i = 0; i < LAYER_COUNT; i++) {
 			if(layers[i] != null) layers[i].setCommandSource(source);
 		}
 	}
 	
 	public void setListener(SequenceController listener){
 		target = listener;
-		for(int i = 0; i < 4; i++){
+		for(int i = 0; i < LAYER_COUNT; i++){
 			if(layers[i] != null) layers[i].setListener(target);
 		}
 	}
@@ -371,7 +378,7 @@ public class NUSALSeqChannel {
 	
 	public void clearSavedCommands(){
 		if(ch_cmds != null) ch_cmds.clearCommands();
-		for(int i = 0; i < 4; i++){
+		for(int i = 0; i < LAYER_COUNT; i++){
 			if(layers[i] != null) layers[i].clearSavedCommands();
 		}
 	}
@@ -504,6 +511,7 @@ public class NUSALSeqChannel {
 		while(wait_remain <= 0 && !term_flag){
 			if(source == null) return false;
 			NUSALSeqCommand cmd = source.getCommandAt(pos);
+			//if(this.ch_idx == 15) System.err.println("Doing command: " + cmd.toMMLCommand());
 			if(cmd == null) {
 				err_addr = pos;
 				err_layer = -1;
@@ -515,7 +523,7 @@ public class NUSALSeqChannel {
 				err_addr = mypos;
 				//bad_cmd = cmd;
 				err_layer = -1;
-				System.err.println("NUSALSeqChannel.nextTick || Command @ 0x" + Integer.toHexString(err_addr) + " -- " + cmd.toMMLCommand() + " returned error.");
+				System.err.println("NUSALSeqChannel.nextTick || Channel Command @ 0x" + Integer.toHexString(err_addr) + " -- " + cmd.toMMLCommand() + " returned error.");
 				return false;
 			}
 			if(pos == mypos){
@@ -533,7 +541,7 @@ public class NUSALSeqChannel {
 					err_addr = layers[i].getErrorAddress();
 					//bad_cmd = layers[i].getErrorCommand();
 					err_layer = i;
-					System.err.println("NUSALSeqChannel.nextTick || Command @ 0x" + Integer.toHexString(err_addr) + " -- returned error.");
+					System.err.println("NUSALSeqChannel.nextTick || Layer Command @ 0x" + Integer.toHexString(err_addr) + " -- returned error.");
 					return false;
 				}
 			}

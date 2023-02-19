@@ -197,6 +197,34 @@ public abstract class NUSALSeqCommand {
 		return out;
 	}
 	
+	public void addContextFlagsFrom(NUSALSeqCommand other){
+		if(other == null) return;
+		if(other.seq_ctx) this.seq_ctx = true;
+		for(int i = 0; i < 16; i++){
+			if(other.channelUsed(i)) this.flagChannelUsed(i);
+			for(int j = 0; j < 8; j++){
+				if(other.layerUsed(i, j)) this.flagLayerUsed(i, j);
+			}
+		}
+	}
+	
+	public boolean isSeqCommand(){
+		return this.seqUsed();
+	}
+	
+	public boolean isChannelCommand(){
+		return this.getFirstChannelUsed() >= 0;
+	}
+	
+	public boolean isLayerCommand(){
+		for(int i = 0; i < 16; i++){
+			for(int j = 0; j < NUSALSeq.MAX_LAYERS_PER_CHANNEL; j++){
+				if(this.layerUsed(i, j)) return true;
+			}
+		}
+		return false;
+	}
+	
 	public String genCtxLabelSuggestion(){
 		if(seq_ctx) return "seq_block";
 		int[] chly = getFirstUsed();
@@ -517,6 +545,20 @@ public abstract class NUSALSeqCommand {
 		}
 		
 		return STSResult.FAIL;
+	}
+	
+	public String printContextFlags(){
+		StringBuilder sb = new StringBuilder(512);
+		if(this.seqUsed()) sb.append("[SEQ]");
+		for(int i = 0; i < 16; i++){
+			if(this.channelUsed(i)) sb.append(String.format("[CH%02d]", i));
+		}
+		for(int i = 0; i < 16; i++){
+			for(int j = 0; j < 8; j++){
+				if(this.layerUsed(i, j)) sb.append(String.format("[C%02dL%d]", i, j));
+			}
+		}
+		return sb.toString();
 	}
 	
 	protected String paramsToString(){

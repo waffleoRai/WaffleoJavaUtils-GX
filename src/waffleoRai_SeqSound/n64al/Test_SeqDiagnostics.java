@@ -15,14 +15,14 @@ public class Test_SeqDiagnostics {
 			System.err.println("Reading Sequence...");
 			NUSALSeq nseq = NUSALSeq.readNUSALSeq(FileBuffer.createBuffer(inpath, true));
 			
-			System.err.println("Running through voice counter (playthrough)");
+			/*System.err.println("Running through voice counter (playthrough)");
 			SeqVoiceCounter vctr = new SeqVoiceCounter();
 			nseq.playTo(vctr, false);
 			System.err.println("Voice load found: " + vctr.getMaxTotalVoiceCount());
 			
 			System.err.println("Counting max layers per channel...");
 			int lyrch = nseq.getMaxLayersPerChannel();
-			System.err.println("Layer count: " + lyrch);
+			System.err.println("Layer count: " + lyrch);*/
 			
 			System.err.println("Testing serialization...");
 			FileBuffer seqdat = nseq.getSerializedData();
@@ -36,7 +36,7 @@ public class Test_SeqDiagnostics {
 			//Try to output MML
 			System.out.println();
 			OutputStreamWriter writer = new OutputStreamWriter(System.out);
-			//nseq.exportMMLScript(writer, true);
+			nseq.exportMMLScript(writer, true);
 			writer.flush();
 			
 		}catch(Exception ex){

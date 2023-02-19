@@ -84,7 +84,7 @@ public class DataCommands {
 		}
 		
 		NUSALSeqDataCommand dcmd = null;
-		if(dtype == NUSALSeqDataType.P_TABLE){
+		if(dtype == NUSALSeqDataType.P_TABLE || dtype == NUSALSeqDataType.CALLTABLE){
 			dcmd = new NUSALSeqPtrTableData(dtype, exsz >> 1);
 		}
 		else dcmd = new NUSALSeqDataCommand(dtype, exsz/usize);
@@ -299,7 +299,6 @@ public class DataCommands {
 	public static NUSALSeqCommand guessPTableUsage(NUSALSeqCommand ptbl){
 		List<NUSALSeqCommand> referees = ptbl.getReferees();
  		if(referees.isEmpty()) return null;
- 		NUSALSeqCommand next = null;
  		NUSALSeqCommand ret = null;
  		for(NUSALSeqCommand referee : referees){
  			//Look for one we can use to figure it out.
@@ -319,7 +318,7 @@ public class DataCommands {
  				if(ret != null) return ret;
  				break;
  			case SET_DYNTABLE: 
- 				ret = guessDyntableUsage(next);
+ 				ret = guessDyntableUsage(referee);
  				if(ret != null) return ret;
  				break;
  			default: return null;

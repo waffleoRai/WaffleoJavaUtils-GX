@@ -21,6 +21,10 @@ public abstract class NUSALSeqDataRefCommand extends NUSALSeqReferenceCommand{
 	}
 	
 	protected void setLabelPrefix(String s){lbl_prefix = s;}
+	
+	public int getBranchAddress(){
+		return super.getBranchAddress() + offset;
+	}
 
 	public boolean isBranch(){return false;}
 	public NUSALSeqCmdType getRelativeCommand() {return null;}

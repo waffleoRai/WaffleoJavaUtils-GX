@@ -643,7 +643,7 @@ public class ChannelCommands {
 			if(seq == null) return false;
 			NUSALSeqChannel ch = seq.getChannel(getParam(0));
 			if(ch == null) return false;
-			ch.setSeqIOValue(getParam(1), seq.getVarQ()); //TODO is it seq Q? Or do channels have their own?
+			ch.setSeqIOValue(getParam(1), channel.getVarQ());
 			return true;
 		}
 	}
@@ -661,8 +661,7 @@ public class ChannelCommands {
 			if(seq == null) return false;
 			NUSALSeqChannel ch = seq.getChannel(getParam(0));
 			if(ch == null) return false;
-			//TODO is it seq Q? Or do channels have their own?
-			seq.setVarQ(ch.getSeqIOValue(getParam(1)));
+			channel.setQ((byte)ch.getSeqIOValue(getParam(1)));
 			return true;
 		}
 	}
@@ -675,10 +674,7 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			NUSALSeq seq = channel.getParent();
-			if(seq == null) return false;
-			//TODO is it seq Q? Or do channels have their own?
-			seq.setVarQ(seq.getVarQ() - channel.getSeqIOValue(getParam(0)));
+			channel.setQ((byte)(channel.getVarQ() - channel.getSeqIOValue(getParam(0))));
 			return true;
 		}
 	}
@@ -691,10 +687,7 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			NUSALSeq seq = channel.getParent();
-			if(seq == null) return false;
-			//TODO is it seq Q? Or do channels have their own?
-			seq.setVarQ(channel.getSeqIOValue(getParam(0)));
+			channel.setQ((byte)channel.getSeqIOValue(getParam(0)));
 			return true;
 		}
 	}
@@ -707,10 +700,7 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			NUSALSeq seq = channel.getParent();
-			if(seq == null) return false;
-			//TODO is it seq Q? Or do channels have their own?
-			channel.setSeqIOValue(getParam(0), seq.getVarQ());
+			channel.setSeqIOValue(getParam(0), channel.getVarQ());
 			return true;
 		}
 	}
@@ -738,8 +728,7 @@ public class ChannelCommands {
 			flagChannelUsed(channel.getIndex());
 			NUSALSeq seq = channel.getParent();
 			if(seq == null) return false;
-			//TODO is it seq Q? Or do channels have their own?
-			seq.setVarQ(channel.getLayerStatus(getParam(0)));
+			channel.setQ((byte)channel.getLayerStatus(getParam(0)));
 			return true;
 		}
 	}
@@ -779,8 +768,7 @@ public class ChannelCommands {
 			flagChannelUsed(channel.getIndex());
 			NUSALSeq seq = channel.getParent();
 			if(seq == null) return false;
-			//TODO is it seq Q? Or do channels have their own?
-			int off = seq.getVarQ() << 1;
+			int off = channel.getVarQ() << 1;
 			BufferReference ref = seq.getSeqDataReference(channel.getDynTableAddress()+ off);
 			return channel.pointLayerTo(getParam(0), Short.toUnsignedInt(ref.getShort()));
 		}
@@ -821,10 +809,9 @@ public class ChannelCommands {
 			flagChannelUsed(channel.getIndex());
 			NUSALSeq seq = channel.getParent();
 			if(seq == null) return false;
-			//TODO is it seq Q? Or do channels have their own?
-			int off = seq.getVarQ() << 1;
+			int off = channel.getVarQ() << 1;
 			BufferReference ref = seq.getSeqDataReference(this.getBranchAddress() + off);
-			seq.setVarP(Short.toUnsignedInt(ref.getShort()));
+			channel.setP(ref.getShort());
 			return true;
 		}
 	}
@@ -847,8 +834,7 @@ public class ChannelCommands {
 			flagChannelUsed(channel.getIndex());
 			NUSALSeq seq = channel.getParent();
 			if(seq == null) return false;
-			//TODO is it seq P? Or do channels have their own?
-			BufferReference ref = seq.getSeqDataReference(seq.getVarP());
+			BufferReference ref = seq.getSeqDataReference(channel.getVarP());
 			channel.setDynTable(Short.toUnsignedInt(ref.getShort()));
 			return true;
 		}
@@ -863,11 +849,10 @@ public class ChannelCommands {
 			flagChannelUsed(channel.getIndex());
 			NUSALSeq seq = channel.getParent();
 			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
 			int ptr = channel.getDynTableAddress();
-			ptr += seq.getVarQ() << 1;
+			ptr += channel.getVarQ() << 1;
 			BufferReference ref = seq.getSeqDataReference(ptr);
-			seq.setVarP(Short.toUnsignedInt(ref.getShort()));
+			channel.setP(ref.getShort());
 			return true;
 		}
 	}
@@ -881,11 +866,10 @@ public class ChannelCommands {
 			flagChannelUsed(channel.getIndex());
 			NUSALSeq seq = channel.getParent();
 			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
 			int ptr = channel.getDynTableAddress();
-			ptr += seq.getVarQ() << 1;
+			ptr += channel.getVarQ() << 1;
 			BufferReference ref = seq.getSeqDataReference(ptr);
-			seq.setVarQ(Byte.toUnsignedInt(ref.getByte(1))); //dyntable should be a u16[], so not sure if read both bytes, first or second?
+			seq.setVarQ(ref.getByte(1)); //dyntable should be a u16[], so not sure if read both bytes, first or second?
 			return true;
 		}
 	}
@@ -900,11 +884,10 @@ public class ChannelCommands {
 			flagChannelUsed(channel.getIndex());
 			NUSALSeq seq = channel.getParent();
 			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
 			int max = getParam(0);
 			if(max < 1) max = 0xFFFF;
 			int val = seq.getRNG().nextInt(max);
-			seq.setVarP(val);
+			channel.setP((short)val);
 			return true;
 		}
 	}
@@ -919,11 +902,10 @@ public class ChannelCommands {
 			flagChannelUsed(channel.getIndex());
 			NUSALSeq seq = channel.getParent();
 			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
 			int max = getParam(0);
 			if(max < 1) max = 0xFF;
 			int val = seq.getRNG().nextInt(max);
-			seq.setVarQ(val);
+			channel.setQ((byte)val);
 			return true;
 		}
 	}
@@ -963,10 +945,7 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			NUSALSeq seq = channel.getParent();
-			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
-			seq.setVarP(seq.getVarP() + getParam(0));
+			channel.setP((short)(channel.getVarP() + getParam(0)));
 			return true;
 		}
 	}
@@ -982,11 +961,11 @@ public class ChannelCommands {
 			flagChannelUsed(channel.getIndex());
 			NUSALSeq seq = channel.getParent();
 			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
 			int max = getParam(0);
 			if(max < 1) max = 0xFFFF;
 			int val = seq.getRNG().nextInt(max);
-			seq.setVarP((val + getParam(1)) | 0x8000);
+			val = (val + getParam(1)) | 0x8000;
+			channel.setP((short)val);
 			return true;
 		}
 	}
@@ -1048,10 +1027,7 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			NUSALSeq seq = channel.getParent();
-			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
-			int shamt = seq.getVarQ();
+			int shamt = channel.getVarQ();
 			if(shamt < 0) return true;
 			shamt <<= 1;
 			channel.setDynTable(channel.getDynTableAddress() + shamt);
@@ -1081,7 +1057,6 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			//TODO is it seq P&Q? Or do channels have their own?
 			int val = channel.getVarQ() + getParam(0);
 			STSResult res = channel.storeToSelf(getBranchAddress(), (byte)val);
 			return res == STSResult.OKAY;
@@ -1096,10 +1071,8 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			NUSALSeq seq = channel.getParent();
-			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
-			seq.setVarQ(seq.getVarQ() - getParam(0));
+			int val = channel.getVarQ() - getParam(0);
+			channel.setQ((byte)val);
 			return true;
 		}
 	}
@@ -1112,10 +1085,8 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			NUSALSeq seq = channel.getParent();
-			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
-			seq.setVarQ(seq.getVarQ() & getParam(0));
+			int val = channel.getVarQ() & getParam(0);
+			channel.setQ((byte)val);
 			return true;
 		}
 		protected StringBuilder toMMLCommand_child(){
@@ -1143,9 +1114,8 @@ public class ChannelCommands {
 			flagChannelUsed(channel.getIndex());
 			NUSALSeq seq = channel.getParent();
 			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
-			BufferReference ref = seq.getSeqDataReference(getParam(0) + seq.getVarQ());
-			seq.setVarQ((int)ref.getByte());
+			BufferReference ref = seq.getSeqDataReference(getParam(0) + channel.getVarQ());
+			channel.setQ(ref.getByte());
 			return true;
 		}
 	}
@@ -1158,10 +1128,7 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			NUSALSeq seq = channel.getParent();
-			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
-			seq.setVarQ(getParam(0));
+			channel.setQ((byte)getParam(0));
 			return true;
 		}
 	}
@@ -1186,10 +1153,7 @@ public class ChannelCommands {
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			NUSALSeq seq = channel.getParent();
-			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
-			seq.setVarP(getParam(0));
+			channel.setP((short)getParam(0));
 			return true;
 		}
 	}
@@ -1445,8 +1409,7 @@ public class ChannelCommands {
 			flagChannelUsed(channel.getIndex());
 			NUSALSeq seq = channel.getParent();
 			if(seq == null) return false;
-			//TODO is it seq P&Q? Or do channels have their own?
-			int q = seq.getVarQ();
+			int q = channel.getVarQ();
 			if(q < 0) return true;
 			q <<= 1;
 			BufferReference ref = seq.getSeqDataReference(channel.getDynTableAddress() + q);
