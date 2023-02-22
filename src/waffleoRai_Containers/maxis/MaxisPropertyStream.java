@@ -90,6 +90,11 @@ public class MaxisPropertyStream {
 		return MaxisTypes.readMaxisString(strref);
 	}
 	
+	public byte[] getFieldAsBlob(int key){
+		//TODO
+		return null;
+	}
+	
 	public MaxisPropertyStream getChildStream(int key){
 		Integer offset = propertyMap.get(key);
 		if(offset == null) return null;
@@ -205,6 +210,12 @@ public class MaxisPropertyStream {
 	}
 	
 	public boolean addString(String value, int key){
+		//TODO
+		if(readOnly) return false;
+		return true;
+	}
+	
+	public boolean addBlob(byte[] value, int key){
 		//TODO
 		if(readOnly) return false;
 		return true;

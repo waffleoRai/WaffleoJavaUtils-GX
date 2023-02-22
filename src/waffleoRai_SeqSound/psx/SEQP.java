@@ -27,6 +27,7 @@ import waffleoRai_SeqSound.SoundSeqDef;
 import waffleoRai_SeqSound.MIDI.MessageType;
 import waffleoRai_Utils.BitStreamer;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.MultiFileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 
 public class SEQP {
@@ -81,6 +82,13 @@ public class SEQP {
 	public SEQP(FileBuffer file, long stpos) throws UnsupportedFileTypeException, InvalidMidiDataException
 	{
 		parseSEQ(file, stpos);
+	}
+	
+	public static SEQP fromMIDI(MIDI mid) throws InvalidMidiDataException{
+		SEQP seq = new SEQP();
+		seq.TicksPerQNote = mid.getTPQN();
+		seq.contents = mid.getSequence();
+		return seq;
 	}
 	
 	public static MessageType getMessageType(byte stat)
@@ -527,6 +535,22 @@ public class SEQP {
 		return true;
 	}
 	
+	public FileBuffer serializeSEQ() throws IOException, InvalidMidiDataException{
+		FileBuffer header = new FileBuffer(15, true);
+		header.printASCIIToFile(MAGIC);
+		header.addToFile(version);
+		header.addToFile((short)TicksPerQNote);
+		header.add24ToFile(MicrosecondsPerQNote);
+		header.addToFile((byte)timeSigNumerator);
+		header.addToFile((byte)timeSigDenominator);
+		
+		MultiFileBuffer out = new MultiFileBuffer(2);
+		out.addToFile(header);
+		out.addToFile(serializeData());
+		
+		return out;
+	}
+	
 	public void writeSEQ(String path) throws IOException, InvalidMidiDataException
 	{
 		//FileBuffer seq = serializeSEQ();
@@ -672,6 +696,11 @@ public class SEQP {
 	public Sequence getSequence()
 	{
 		return contents;
+	}
+	
+	public void writeMIDI(OutputStream out) throws IOException{
+		MIDI midi = new MIDI(contents);
+		midi.serializeTo(out);
 	}
 	
 	public void writeMIDI(String path) throws IOException
