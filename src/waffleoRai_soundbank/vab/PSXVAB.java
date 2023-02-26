@@ -451,7 +451,7 @@ public class PSXVAB implements SynthBank{
 			reverb = false;
 			volume = 0;
 			pan = 0;
-			unityKey = 0;
+			unityKey = 60;
 			tune = 0;
 			keyRangeBot = 0;
 			keyRangeTop = 0;
@@ -1506,6 +1506,19 @@ public class PSXVAB implements SynthBank{
 	
 	public void setName(String s){name = s;}
 	
+	public void setVersion(int val){version = val;}
+	public void setMasterVolume(byte val){masterVolume = val;}
+	public void setMasterPan(byte val){masterPan = val;}
+	public void setBankAttr1(byte val){att1 = val;}
+	public void setBankAttr2(byte val){att2 = val;}
+	
+	public Program newProgram(int index){
+		if(index < 0) return null;
+		if(index >= 128) return null;
+		programs[index] = new Program();
+		return programs[index];
+	}
+	
 	/* ----- Playback ----- */
 	
 	public void setOneBasedIndexing(boolean b)
@@ -1986,7 +1999,6 @@ public class PSXVAB implements SynthBank{
 		public String toString(){return FileTypeDefinition.stringMe(this);}
 		
 	}
-	
 	
 	public static VABPDef getDefinition(){
 		if(stat_def == null) stat_def = new VABPDef();
