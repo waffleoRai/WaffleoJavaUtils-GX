@@ -615,9 +615,6 @@ public class QXImage {
 			color_table = new FileBuffer(16 << 2, false);
 			for(int i = 0; i < 16; i++){
 				int color = argb_palette[i + offset];
-				int a = (color >> 24) & 0xff;
-				color <<= 8;
-				color |= a;
 				color_table.addToFile(color);
 			}
 		}
@@ -626,9 +623,6 @@ public class QXImage {
 			color_table = new FileBuffer(256 << 2, false);
 			for(int i = 0; i < 256; i++){
 				int color = argb_palette[i + offset];
-				int a = (color >> 24) & 0xff;
-				color <<= 8;
-				color |= a;
 				color_table.addToFile(color);
 			}
 		}
