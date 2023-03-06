@@ -1,22 +1,71 @@
 package waffleoRai_Compression.lz77;
 
 import java.io.BufferedOutputStream;
+import java.io.BufferedWriter;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Writer;
+import java.nio.ByteBuffer;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 
 import waffleoRai_Compression.ArrayWindow;
 import waffleoRai_Compression.definitions.AbstractCompDef;
+import waffleoRai_Compression.lz77.LZCompCore.RunMatch;
 import waffleoRai_Utils.ByteBufferStreamer;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.StreamWrapper;
+
+/*
+ * Encoding Scheme...
+ * I think of it as a "control stream" and "data stream" interleaved.
+ * If the decoder needs another control bit, then the next byte pulled is
+ * part of the control stream. If the decoder needs data, then the next
+ * byte pulled is part of the data stream.
+ * 
+ * The control stream is interpreted one bit at a time.
+ * If the first bit pulled for an instruction is set, this means copy the next
+ * byte from the data stream to the output stream. If it is unset, this is
+ * a backreference. The reference may be encoded using a combination of the
+ * control and data streams.
+ * 
+ * Commands...
+ * [1] - Copy next byte as-is.
+ * 
+ * [01] - Long reference encoding
+ * Pulls 2-3 bytes from data stream to determine offset/runlen
+ * oooo oooo oooo olll (llll llll)
+ * If lll in the second byte is 0, then read the third byte.
+ * 
+ * offset = (b0 << 5) | (b1 >> 3)
+ * Offsets will be negative numbers, they are relative to the output stream position.
+ * 
+ * if ((b1 & 0x7) != 0)
+ * 	len = (b1 & 0x7) + 2
+ * else
+ * 	len = b2 + 1
+ * This means theoretically the shortest run that can be encoded is 1, but obviously
+ * that would be stupid to use three data bytes to encode one.
+ * Min length is 3 for the 2 byte variation.
+ * Practically, min length is probably 4 for the 3 byte variation.
+ * 
+ * [00nn] - Short reference encoding
+ * Pulls one byte from data stream to determine offset.
+ * Runlen is encoded in the command in the control stream (as n above)
+ * 	len = nn + 2 (Range is 2-5)
+ * 	offset = b0
+ * Offset is also negative here
+ * 
+ */
 
 public class LZMu {
 	
 	/*--- Constants ---*/
 	
-	public static final int BACK_WINDOW_SIZE = 0x1FFF;
+	//public static final int BACK_WINDOW_SIZE = 0x1FFF;
+	public static final int BACK_WINDOW_SIZE = 0x1000; //If treated as signed 13 bit, then -4096 is most negative value
 	public static final int MIN_RUN_SIZE = 0x2;
 	public static final int MAX_RUN_SIZE_SMALL = 0x5;
 	public static final int MAX_RUN_SIZE_LARGE = 0xFF;
@@ -26,10 +75,20 @@ public class LZMu {
 	public static final int CTRLTYPE_REFSHORT = 2;
 	public static final int CTRLTYPE_REFLONG = 3;
 	
+	public static final int COMP_STRAT_DEFAULT = 0;
+	public static final int COMP_STRAT_FAST = 1;
+	public static final int COMP_LOOKAHEAD_SCANALL_GREEDY = 2;
+	
 	/*--- Instance Variables ---*/
+	
+	private int comp_appr = COMP_STRAT_DEFAULT;
+	private int comp_lookahead = 2;
 	
 	private ArrayWindow back_window;
 	private StreamWrapper output;
+	
+	private ByteBuffer dataBuffer;
+	private FileBuffer output_fb;
 	
 	//Control stream...
 	private int ctrlbyte;
@@ -43,7 +102,11 @@ public class LZMu {
 	
 	/*--- Debug ---*/
 	
-	private Set<Integer> offsets_short;
+	private Writer debug_log; //TODO No, don't write direct. Save events.
+	
+	private List<LZCompressionEvent> dbg_events;
+	
+	/*private Set<Integer> offsets_short;
 	private Set<Integer> offsets_long;
 	private Set<Integer> runs_long;
 	private int debug_counter;
@@ -52,8 +115,8 @@ public class LZMu {
 	public Set<Integer> getOffsetsShort(){return offsets_short;}
 	public Set<Integer> getOffsetsLong(){return offsets_long;}
 	public Set<Integer> getRunsLong(){return runs_long;}
-	public int getDebugCounter(){return debug_counter;}
-	
+	public int getDebugCounter(){return debug_counter;}*/
+		
 	/*--- Decode ---*/
 	
 	public long getBytesRead(){return bytesRead;}
@@ -97,7 +160,10 @@ public class LZMu {
 		debug_counter = 0;
 		last_ctrl_type = CTRLTYPE_NONE;*/
 		
-
+		/*--- DEBUG LOG ---*/
+		int dbg_lit_count = 0;
+		/*--- DEBUG LOG ---*/
+		
 		bytesRead = 0;
 		if(input == null) return;
 		back_window = new ArrayWindow(8192);
@@ -106,16 +172,18 @@ public class LZMu {
 		bytesRead++;
 		bitmask = 0x80;
 		
-		while(!input.isEmpty() && (bytesWritten < decompSize))
-		{
+		while(!input.isEmpty() && (bytesWritten < decompSize)){
 			//Get the next bit of the ctrlbyte to decide what to do
 			boolean bit = nextControlBit(input);
-			if(bit)
-			{
+			if(bit){
 				//Just copy the next byte to output
 				addByteToOutput(input.get());
 				bytesRead++;
 				//last_ctrl_type = CTRLTYPE_LITERAL;
+				
+				/*--- DEBUG LOG ---*/
+				dbg_lit_count++;
+				/*--- DEBUG LOG ---*/
 			}
 			else
 			{
@@ -132,11 +200,23 @@ public class LZMu {
 					if(last_ctrl_type == CTRLTYPE_LITERAL) debug_counter++;
 				}*/
 				
+				/*--- DEBUG LOG ---*/
+				if(dbg_lit_count > 0){
+					if(debug_log != null){
+						try {
+							debug_log.write(String.format("[0x%08x]\tLIT %d\n", (bytesWritten - dbg_lit_count), dbg_lit_count));
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
+					dbg_lit_count = 0;
+				}
+				/*--- DEBUG LOG ---*/
+				
 				//Blegh
 				//System.err.println("ref");
 				bit = nextControlBit(input);
-				if(bit)
-				{
+				if(bit){
 					//Okay. So this is annoying.
 					//I think it's 13 bits for offset (wow)
 					//Then 3 bits (+2) for n...
@@ -157,6 +237,19 @@ public class LZMu {
 					//offsets_long.add(backset);
 					//runs_long.add(n);
 					//last_ctrl_type = CTRLTYPE_REFLONG;
+					
+					/*--- DEBUG LOG ---*/
+					if(debug_log != null){
+						long mypos = bytesWritten - n;
+						long backpos = mypos - backset - 1;
+						try {
+							debug_log.write(String.format("[0x%08x]\tLBCPY %d from 0x%x\n", mypos, n, backpos));
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
+					/*--- DEBUG LOG ---*/
+					
 				}
 				else
 				{
@@ -171,17 +264,42 @@ public class LZMu {
 					backset = ~backset & 0xFF;
 					//System.err.println("\tBackset: " + backset);
 					//System.err.println("\tn: " + n);
-					for(int i = 0; i < n; i++)
-					{
+					for(int i = 0; i < n; i++){
 						byte b = back_window.getFromBack(backset);
 						addByteToOutput(b);
 					}
 					//offsets_short.add(backset);
 					//last_ctrl_type = CTRLTYPE_REFSHORT;
+					
+					/*--- DEBUG LOG ---*/
+					if(debug_log != null){
+						long mypos = bytesWritten - n;
+						long backpos = mypos - backset - 1;
+						try {
+							debug_log.write(String.format("[0x%08x]\tSBCPY %d from 0x%x\n", mypos, n, backpos));
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
+					/*--- DEBUG LOG ---*/
 				}
 			}
 			
 		}
+		
+		
+		/*--- DEBUG LOG ---*/
+		if(dbg_lit_count > 0){
+			if(debug_log != null){
+				try {
+					debug_log.write(String.format("[0x%08x]\tLIT %d\n", (bytesWritten - dbg_lit_count), dbg_lit_count));
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+			dbg_lit_count = 0;
+		}
+		/*--- DEBUG LOG ---*/
 		
 	}
 	
@@ -197,26 +315,257 @@ public class LZMu {
 	
 	/*--- Encode ---*/
 	
+	public static class MuLZCompCore extends LZCompCore{
+
+		public MuLZCompCore(){
+			super.min_run_len = MIN_RUN_SIZE;
+			super.max_run_len = MAX_RUN_SIZE_LARGE;
+			super.max_back_len = BACK_WINDOW_SIZE;
+		}
+		
+		protected boolean currentMatchEncodable() {
+			long backoff = super.current_pos - super.match_pos;
+			if(super.match_run < 3){
+				//Can't be more than 128 bytes back.
+				//Byte before current pos is -1
+				if(backoff > 128) return false;
+			}
+			if(backoff > 4096) return false;
+			if(match_run > 255) return false;
+			
+			return true;
+		}
+
+		protected boolean matchEncodable(RunMatch match) {
+			long backoff = match.encoder_pos - match.match_pos;
+			if(match.match_run < 3){
+				//Can't be more than 128 bytes back.
+				//Byte before current pos is -1
+				if(backoff > 128) return false;
+			}
+			if(backoff > 4096) return false;
+			if(match.match_run > 255) return false;
+			
+			return true;
+		}
+		
+	}
+	
+	public long getLastDecompressedSize(){
+		return this.decompSize;
+	}
+	
+	public long getBytesWritten(){
+		return this.bytesWritten;
+	}
+	
+	public void setCompressionStrategy(int val){this.comp_appr = val;}
+	public void setCompressionLookahead(int bytes){this.comp_lookahead = bytes;}
+	
+	private void dumpDataBuffer(){
+		dataBuffer.rewind();
+		while(dataBuffer.hasRemaining()){
+			output_fb.addToFile(dataBuffer.get());
+			bytesWritten++;
+		}
+		dataBuffer.clear();
+	}
+	
+	private void writeControlBit(boolean bit){
+		if(bit) ctrlbyte |= bitmask;
+		bitmask >>= 1;
+		if(bitmask < 1){
+			//Dump
+			output_fb.addToFile((byte)ctrlbyte);
+			bytesWritten++;
+			dumpDataBuffer();
+			
+			ctrlbyte = 0;
+			bitmask = 0x80;
+		}
+	}
+	
+	private void writeDataByte(byte b){
+		dataBuffer.put(b);
+	}
+	
+	private void encodeNext(FileBuffer input, MuLZCompCore compressor){
+		int runlen = compressor.getMatchRun();
+		if(runlen < 2){
+			//Copy as is
+			writeControlBit(true);
+			writeDataByte(input.getByte(compressor.current_pos));
+			
+			/*--- DEBUG LOG ---*/
+			/*--- DEBUG LOG ---*/
+		}
+		else{
+			//Backref
+			int pdiff = (int)(compressor.current_pos - compressor.match_pos);
+			if(runlen <= 5){
+				//See if short encoding is an option
+				//Offset must be <= 128 in magnitude.
+				if(pdiff <= 128){
+					writeControlBit(false);
+					writeControlBit(false);
+					
+					runlen -= 2;
+					writeControlBit((runlen & 0x2)!= 0);
+					writeControlBit((runlen & 0x1)!= 0);
+					
+					writeDataByte((byte)(-pdiff));
+					
+					return;
+				}
+			}
+			
+			//Long reference
+			writeControlBit(false);
+			writeControlBit(true);
+			
+			int b0 = ((-pdiff) >> 5) & 0xff; //sra
+			int b1 = ((-pdiff) << 3) & 0xff;
+			writeDataByte((byte)b0);
+			if(runlen > 9){
+				//Need third byte
+				writeDataByte((byte)b1);
+				writeDataByte((byte)runlen);
+			}
+			else{
+				runlen -= 2;
+				b1 |= (runlen & 0x7);
+				writeDataByte((byte)b1);
+			}
+		}
+	}
+	
+	private void encodeNext(FileBuffer input, RunMatch match){
+		//This one needs to read the match's copy amount and encode all those bytes too.
+		for(int i = 0; i < match.copy_amt; i++){
+			writeControlBit(true);
+			writeDataByte(input.getByte(match.encoder_pos + i));
+		}
+	
+		int runlen = match.match_run;
+		if(runlen < 2){
+			//Copy as is
+			writeControlBit(true);
+			writeDataByte(input.getByte(match.encoder_pos));
+		}
+		else{
+			//Backref
+			int pdiff = (int)(match.encoder_pos - match.match_pos);
+			if(runlen <= 5){
+				//See if short encoding is an option
+				//Offset must be <= 128 in magnitude.
+				if(pdiff <= 128){
+					writeControlBit(false);
+					writeControlBit(false);
+					
+					runlen -= 2;
+					writeControlBit((runlen & 0x2)!= 0);
+					writeControlBit((runlen & 0x1)!= 0);
+					
+					writeDataByte((byte)(-pdiff));
+					
+					return;
+				}
+			}
+			
+			//Long reference
+			writeControlBit(false);
+			writeControlBit(true);
+			
+			int b0 = ((-pdiff) >> 5) & 0xff; //sra
+			int b1 = ((-pdiff) << 3) & 0xff;
+			writeDataByte((byte)b0);
+			if(runlen > 9){
+				//Need third byte
+				writeDataByte((byte)b1);
+				writeDataByte((byte)runlen);
+			}
+			else{
+				runlen -= 2;
+				b1 |= (runlen & 0x7);
+				writeDataByte((byte)b1);
+			}
+		}
+	}
+	
+	public FileBuffer encode(FileBuffer input){
+		if(input == null) return null;
+		int alloc = (int)input.getFileSize();
+		output_fb = new FileBuffer(alloc, false);
+		output_fb.addToFile(alloc); //First word is decomped size
+		this.decompSize = alloc;
+		
+		bytesRead = 0;
+		bytesWritten = 4;
+		ctrlbyte = 0;
+		bitmask = 0x80;
+		
+		MuLZCompCore compressor = new MuLZCompCore();
+		compressor.setData(input);
+		
+		dataBuffer = ByteBuffer.allocate(128);
+		
+		if(comp_appr == COMP_LOOKAHEAD_SCANALL_GREEDY){
+			//FOR set of lookahead bytes until end...
+			while(!compressor.atEnd()){
+				List<RunMatch> finds = compressor.findMatchesLookaheadGreedy(comp_lookahead);
+				for(RunMatch match : finds){
+					encodeNext(input, match);
+				}
+				compressor.incrementPos(comp_lookahead);
+				bytesRead += comp_lookahead;
+				if(bytesRead >= decompSize) bytesRead = decompSize;
+			}
+		}
+		else if(comp_appr == COMP_STRAT_FAST){
+			while(!compressor.atEnd()){
+				//Find match
+				compressor.firstMeetsReq();
+				bytesRead++;
+				
+				//Encode
+				encodeNext(input, compressor);
+				compressor.incrementPos(1);
+			}
+		}
+		else{
+			//Default
+			while(!compressor.atEnd()){
+				//Find match
+				compressor.findMatchCurrentPosOnly();
+				bytesRead++;
+				
+				//Encode
+				encodeNext(input, compressor);
+				compressor.incrementPos(1);
+			}
+		}
+		
+		return output_fb;
+	}
+	
+	/*--- Encode Old ---*/
+	
 	//private int debug_ct;
 	
-	private boolean longEncode(int back_off, int run_len)
-	{
-		if(back_off > 0xFF)
-		{
+	private boolean longEncode_old(int back_off, int run_len){
+		if(back_off > 0xFF){
 			//Can't be short
 			//At least 3 bytes for run length
 			if(run_len < 3) return false;
 			return true;
 		}
-		else
-		{
+		else{
 			//Only if run length is more than 5
 			return (run_len > 5);
 		}
 	}
 	
-	private void writeEncode(int ctrlchar, LinkedList<Byte> outbuffer)
-	{
+	private void writeEncode_old(int ctrlchar, LinkedList<Byte> outbuffer){
 		//debug_ct++;
 		output.put((byte)ctrlchar); bytesWritten++;
 		while(!outbuffer.isEmpty()) {output.put(outbuffer.pop()); bytesWritten++;}
@@ -224,8 +573,7 @@ public class LZMu {
 		//if(debug_ct >= 2) System.exit(2);
 	}
 	
-	private void encode(StreamWrapper in)
-	{
+	private void encode_old(StreamWrapper in){
 		LinkedList<Byte> outbuffer = new LinkedList<Byte>();
 		decompSize = 0;
 		bytesWritten = 0;
@@ -260,7 +608,7 @@ public class LZMu {
 					outbuffer.add((byte)0);
 					
 					bitmask = bitmask >>> 1;
-					if(bitmask == 0) writeEncode(ctrlchar, outbuffer);
+					if(bitmask == 0) writeEncode_old(ctrlchar, outbuffer);
 				}
 				continue;
 			}
@@ -318,20 +666,20 @@ public class LZMu {
 				bitmask = bitmask >>> 1;
 				if(bitmask == 0)
 				{
-					writeEncode(ctrlchar, outbuffer);
+					writeEncode_old(ctrlchar, outbuffer);
 					bitmask = 0x80; ctrlchar = 0;
 				}
 			}
 			else
 			{
 				//if(max_idx >= 0xFF || max_run > MAX_RUN_SIZE_SMALL)
-				if(longEncode(max_idx, max_run))
+				if(longEncode_old(max_idx, max_run))
 				{
 					//Write 01 to ctrlchar
 					bitmask = bitmask >>> 1;
 					if(bitmask == 0)
 					{
-						writeEncode(ctrlchar, outbuffer);
+						writeEncode_old(ctrlchar, outbuffer);
 						bitmask = 0x80; ctrlchar = 0;
 					}
 					
@@ -349,7 +697,7 @@ public class LZMu {
 					bitmask = bitmask >>> 1;
 					if(bitmask == 0)
 					{
-						writeEncode(ctrlchar, outbuffer);
+						writeEncode_old(ctrlchar, outbuffer);
 						bitmask = 0x80; ctrlchar = 0;
 					}
 				}
@@ -361,7 +709,7 @@ public class LZMu {
 					bitmask = bitmask >>> 1;
 					if(bitmask == 0)
 					{
-						writeEncode(ctrlchar, outbuffer);
+						writeEncode_old(ctrlchar, outbuffer);
 						bitmask = 0x80; ctrlchar = 0;
 					}
 					//Second 0...
@@ -369,7 +717,7 @@ public class LZMu {
 					bitmask = bitmask >>> 1;
 					if(bitmask == 0)
 					{
-						writeEncode(ctrlchar, outbuffer);
+						writeEncode_old(ctrlchar, outbuffer);
 						bitmask = 0x80; ctrlchar = 0;
 					}
 					
@@ -380,7 +728,7 @@ public class LZMu {
 					bitmask = bitmask >>> 1;
 					if(bitmask == 0)
 					{
-						writeEncode(ctrlchar, outbuffer);
+						writeEncode_old(ctrlchar, outbuffer);
 						bitmask = 0x80; ctrlchar = 0;
 					}
 					
@@ -395,7 +743,7 @@ public class LZMu {
 					
 					if(bitmask == 0)
 					{
-						writeEncode(ctrlchar, outbuffer);
+						writeEncode_old(ctrlchar, outbuffer);
 						bitmask = 0x80; ctrlchar = 0;
 					}
 				}
@@ -418,22 +766,11 @@ public class LZMu {
 			
 		}
 	}
-	
-	public long getLastDecompressedSize()
-	{
-		return this.decompSize;
-	}
-	
-	public long getBytesWritten()
-	{
-		return this.bytesWritten;
-	}
-	
-	public StreamWrapper encode(StreamWrapper input, int allocate)
-	{
+		
+	public StreamWrapper encode_old(StreamWrapper input, int allocate){
 		decompSize = 0;
 		output = new ByteBufferStreamer(allocate);
-		encode(input);
+		encode_old(input);
 		
 		output.rewind();
 		return output;

@@ -47,10 +47,10 @@ public class TestLzMu {
 					int decsz = file.intFromFile(0);
 					lz.decode(new FileBufferStreamer(file.createReadOnlyCopy(4, file.getFileSize())), decsz);
 					
-					count += lz.getDebugCounter();
+					/*count += lz.getDebugCounter();
 					short_off.addAll(lz.getOffsetsShort());
 					long_off.addAll(lz.getOffsetsLong());
-					long_rl.addAll(lz.getRunsLong());
+					long_rl.addAll(lz.getRunsLong());*/
 				}
 			}
 		}

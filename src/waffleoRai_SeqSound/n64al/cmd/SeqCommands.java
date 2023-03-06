@@ -448,6 +448,7 @@ public class SeqCommands {
 	
 	/*--- 0xb0:0xbf loadseq ---*/
 	public static class C_S_LoadSeq extends CMD_IgnoredCommand{
+		//TODO change to data reference command...
 		public C_S_LoadSeq(int io_idx, int seq_idx, int addr) {
 			super(NUSALSeqCmdType.LOAD_SEQ);
 			super.setParam(0, io_idx);
