@@ -5,11 +5,9 @@ import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.Writer;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Set;
 
 import waffleoRai_Compression.ArrayWindow;
 import waffleoRai_Compression.definitions.AbstractCompDef;
@@ -102,8 +100,7 @@ public class LZMu {
 	
 	/*--- Debug ---*/
 	
-	private Writer debug_log; //TODO No, don't write direct. Save events.
-	
+	private LZCompressionEvent dbg_last_event; //For combining literals easier
 	private List<LZCompressionEvent> dbg_events;
 	
 	/*private Set<Integer> offsets_short;
@@ -117,6 +114,44 @@ public class LZMu {
 	public Set<Integer> getRunsLong(){return runs_long;}
 	public int getDebugCounter(){return debug_counter;}*/
 		
+	private void debug_logEvent(LZCompressionEvent event){
+		if(dbg_events == null) dbg_events = new LinkedList<LZCompressionEvent>();
+		dbg_events.add(event);
+		dbg_last_event = event;
+	}
+	
+	private void debug_logLiteralEvent(long event_addr, int amt){
+		if(dbg_last_event != null && !dbg_last_event.isReference()){
+			dbg_last_event.setCopyAmount(dbg_last_event.getCopyAmount() + amt);
+		}
+		else{
+			LZCompressionEvent event = new LZCompressionEvent();
+			event.setIsReference(false);
+			event.setCopyAmount(amt);
+			event.setPlaintextPosition(event_addr);
+			debug_logEvent(event);
+		}
+	}
+	
+	private void debug_logReferenceEvent(long event_addr, long ref_addr, int amt){
+		LZCompressionEvent event = new LZCompressionEvent();
+		event.setIsReference(true);
+		event.setCopyAmount(amt);
+		event.setPlaintextPosition(event_addr);
+		event.setRefPosition(ref_addr);
+		debug_logEvent(event);
+	}
+	
+	public void debug_dumpLoggedEvents(String outpath) throws IOException{
+		BufferedWriter bw = new BufferedWriter(new FileWriter(outpath));
+		for(LZCompressionEvent event : dbg_events){
+			event.printTo(bw);
+			bw.write("\n");
+		}
+		bw.close();
+		dbg_events.clear();
+	}
+	
 	/*--- Decode ---*/
 	
 	public long getBytesRead(){return bytesRead;}
@@ -152,17 +187,12 @@ public class LZMu {
 		//System.err.println("Byte Added: 0x" + String.format("%02x", b));
 	}
 	
-	private void decode(StreamWrapper input)
-	{
+	private void decode(StreamWrapper input){
 		/*offsets_short = new TreeSet<Integer>();
 		offsets_long = new TreeSet<Integer>();
 		runs_long = new TreeSet<Integer>();
 		debug_counter = 0;
 		last_ctrl_type = CTRLTYPE_NONE;*/
-		
-		/*--- DEBUG LOG ---*/
-		int dbg_lit_count = 0;
-		/*--- DEBUG LOG ---*/
 		
 		bytesRead = 0;
 		if(input == null) return;
@@ -176,17 +206,16 @@ public class LZMu {
 			//Get the next bit of the ctrlbyte to decide what to do
 			boolean bit = nextControlBit(input);
 			if(bit){
+				/*--- DEBUG LOG ---*/
+				debug_logLiteralEvent(bytesWritten, 1);
+				/*--- DEBUG LOG ---*/
+				
 				//Just copy the next byte to output
 				addByteToOutput(input.get());
 				bytesRead++;
 				//last_ctrl_type = CTRLTYPE_LITERAL;
-				
-				/*--- DEBUG LOG ---*/
-				dbg_lit_count++;
-				/*--- DEBUG LOG ---*/
 			}
-			else
-			{
+			else{
 				//Debug
 				/*if(bitmask == 0) //The last bit we read was the last of the previous ctrl byte
 				{
@@ -199,20 +228,7 @@ public class LZMu {
 					
 					if(last_ctrl_type == CTRLTYPE_LITERAL) debug_counter++;
 				}*/
-				
-				/*--- DEBUG LOG ---*/
-				if(dbg_lit_count > 0){
-					if(debug_log != null){
-						try {
-							debug_log.write(String.format("[0x%08x]\tLIT %d\n", (bytesWritten - dbg_lit_count), dbg_lit_count));
-						} catch (IOException e) {
-							e.printStackTrace();
-						}
-					}
-					dbg_lit_count = 0;
-				}
-				/*--- DEBUG LOG ---*/
-				
+
 				//Blegh
 				//System.err.println("ref");
 				bit = nextControlBit(input);
@@ -239,15 +255,9 @@ public class LZMu {
 					//last_ctrl_type = CTRLTYPE_REFLONG;
 					
 					/*--- DEBUG LOG ---*/
-					if(debug_log != null){
-						long mypos = bytesWritten - n;
-						long backpos = mypos - backset - 1;
-						try {
-							debug_log.write(String.format("[0x%08x]\tLBCPY %d from 0x%x\n", mypos, n, backpos));
-						} catch (IOException e) {
-							e.printStackTrace();
-						}
-					}
+					long mypos = bytesWritten - n;
+					long backpos = mypos - backset - 1;
+					debug_logReferenceEvent(mypos, backpos, n);
 					/*--- DEBUG LOG ---*/
 					
 				}
@@ -272,35 +282,15 @@ public class LZMu {
 					//last_ctrl_type = CTRLTYPE_REFSHORT;
 					
 					/*--- DEBUG LOG ---*/
-					if(debug_log != null){
-						long mypos = bytesWritten - n;
-						long backpos = mypos - backset - 1;
-						try {
-							debug_log.write(String.format("[0x%08x]\tSBCPY %d from 0x%x\n", mypos, n, backpos));
-						} catch (IOException e) {
-							e.printStackTrace();
-						}
-					}
+					long mypos = bytesWritten - n;
+					long backpos = mypos - backset - 1;
+					debug_logReferenceEvent(mypos, backpos, n);
 					/*--- DEBUG LOG ---*/
+					
 				}
 			}
 			
 		}
-		
-		
-		/*--- DEBUG LOG ---*/
-		if(dbg_lit_count > 0){
-			if(debug_log != null){
-				try {
-					debug_log.write(String.format("[0x%08x]\tLIT %d\n", (bytesWritten - dbg_lit_count), dbg_lit_count));
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			}
-			dbg_lit_count = 0;
-		}
-		/*--- DEBUG LOG ---*/
-		
 	}
 	
 	public StreamWrapper decode(StreamWrapper input, int allocate)
@@ -397,9 +387,14 @@ public class LZMu {
 			writeDataByte(input.getByte(compressor.current_pos));
 			
 			/*--- DEBUG LOG ---*/
+			debug_logLiteralEvent(compressor.current_pos, 1);
 			/*--- DEBUG LOG ---*/
 		}
 		else{
+			/*--- DEBUG LOG ---*/
+			debug_logReferenceEvent(compressor.current_pos, compressor.match_pos, compressor.match_run);
+			/*--- DEBUG LOG ---*/
+			
 			//Backref
 			int pdiff = (int)(compressor.current_pos - compressor.match_pos);
 			if(runlen <= 5){
@@ -445,14 +440,28 @@ public class LZMu {
 			writeControlBit(true);
 			writeDataByte(input.getByte(match.encoder_pos + i));
 		}
+		
+		/*--- DEBUG LOG ---*/
+		if(match.copy_amt > 0){
+			debug_logLiteralEvent(match.encoder_pos, match.copy_amt);
+		}
+		/*--- DEBUG LOG ---*/
 	
 		int runlen = match.match_run;
 		if(runlen < 2){
 			//Copy as is
 			writeControlBit(true);
 			writeDataByte(input.getByte(match.encoder_pos));
+			
+			/*--- DEBUG LOG ---*/
+			debug_logLiteralEvent(match.encoder_pos, 1);
+			/*--- DEBUG LOG ---*/
 		}
 		else{
+			/*--- DEBUG LOG ---*/
+			debug_logReferenceEvent(match.encoder_pos, match.match_pos, match.match_run);
+			/*--- DEBUG LOG ---*/
+			
 			//Backref
 			int pdiff = (int)(match.encoder_pos - match.match_pos);
 			if(runlen <= 5){
