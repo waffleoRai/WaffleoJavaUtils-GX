@@ -447,14 +447,17 @@ public class SeqCommands {
 	}
 	
 	/*--- 0xb0:0xbf loadseq ---*/
-	public static class C_S_LoadSeq extends CMD_IgnoredCommand{
-		//TODO change to data reference command...
+	public static class C_S_LoadSeq extends NUSALSeqDataRefCommand{
+		//Don't bother overriding the callbacks until actually need to write player
+		//Because it's like a pain and stuff
 		public C_S_LoadSeq(int io_idx, int seq_idx, int addr) {
-			super(NUSALSeqCmdType.LOAD_SEQ);
+			super(NUSALSeqCmdType.LOAD_SEQ, 0, 0);
 			super.setParam(0, io_idx);
 			super.setParam(1, seq_idx);
 			super.setParam(2, addr);
+			p_idx_addr = 2;
 		}
+		
 		protected StringBuilder toMMLCommand_child(){
 			StringBuilder sb = new StringBuilder(256);
 			sb.append("loadseq ");
@@ -463,6 +466,7 @@ public class SeqCommands {
 			sb.append(String.format("0x%04x", super.getParam(2)));
 			return sb;
 		}
+		
 	}
 	
 	/*--- 0xc7 sts ---*/

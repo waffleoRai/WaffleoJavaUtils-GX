@@ -64,9 +64,9 @@ public class LZMu {
 	
 	//public static final int BACK_WINDOW_SIZE = 0x1FFF;
 	public static final int BACK_WINDOW_SIZE = 0x1000; //If treated as signed 13 bit, then -4096 is most negative value
-	public static final int MIN_RUN_SIZE = 0x2;
-	public static final int MAX_RUN_SIZE_SMALL = 0x5;
-	public static final int MAX_RUN_SIZE_LARGE = 0xFF;
+	public static final int MIN_RUN_SIZE = 2;
+	public static final int MAX_RUN_SIZE_SMALL = 5;
+	public static final int MAX_RUN_SIZE_LARGE = 256;
 	
 	public static final int CTRLTYPE_NONE = 0;
 	public static final int CTRLTYPE_LITERAL = 1;
@@ -87,6 +87,7 @@ public class LZMu {
 	
 	private ByteBuffer dataBuffer;
 	private FileBuffer output_fb;
+	private int dataBufferUsed = 0;
 	
 	//Control stream...
 	private int ctrlbyte;
@@ -95,6 +96,7 @@ public class LZMu {
 	private long bytesRead;
 	private long bytesWritten;
 	private long decompSize;
+	private long lastCtrlCharPos = -1L; //In compressed stream
 	
 	/*--- General ---*/
 	
@@ -120,7 +122,7 @@ public class LZMu {
 		dbg_last_event = event;
 	}
 	
-	private void debug_logLiteralEvent(long event_addr, int amt){
+	private void debug_logLiteralEvent(long event_addr, long comp_addr, int amt){
 		if(dbg_last_event != null && !dbg_last_event.isReference()){
 			dbg_last_event.setCopyAmount(dbg_last_event.getCopyAmount() + amt);
 		}
@@ -128,16 +130,18 @@ public class LZMu {
 			LZCompressionEvent event = new LZCompressionEvent();
 			event.setIsReference(false);
 			event.setCopyAmount(amt);
+			event.setCompressedPosition(comp_addr);
 			event.setPlaintextPosition(event_addr);
 			debug_logEvent(event);
 		}
 	}
 	
-	private void debug_logReferenceEvent(long event_addr, long ref_addr, int amt){
+	private void debug_logReferenceEvent(long event_addr, long comp_addr, long ref_addr, int amt){
 		LZCompressionEvent event = new LZCompressionEvent();
 		event.setIsReference(true);
 		event.setCopyAmount(amt);
 		event.setPlaintextPosition(event_addr);
+		event.setCompressedPosition(comp_addr);
 		event.setRefPosition(ref_addr);
 		debug_logEvent(event);
 	}
@@ -156,13 +160,13 @@ public class LZMu {
 	
 	public long getBytesRead(){return bytesRead;}
 	
-	private boolean nextControlBit(StreamWrapper input)
-	{
+	private boolean nextControlBit(StreamWrapper input){
 		if(bitmask == 0)
 		{
 			bitmask = 0x80;
 			ctrlbyte = input.getFull();
 			//System.err.println("New Control Byte: 0x" + String.format("%02x", ctrlbyte) + " at 0x" + Long.toHexString(bytesRead));
+			lastCtrlCharPos = bytesRead + 4;
 			bytesRead++;
 		}
 		
@@ -201,13 +205,14 @@ public class LZMu {
 		ctrlbyte = input.getFull();
 		bytesRead++;
 		bitmask = 0x80;
+		lastCtrlCharPos = 4;
 		
 		while(!input.isEmpty() && (bytesWritten < decompSize)){
 			//Get the next bit of the ctrlbyte to decide what to do
 			boolean bit = nextControlBit(input);
 			if(bit){
 				/*--- DEBUG LOG ---*/
-				debug_logLiteralEvent(bytesWritten, 1);
+				debug_logLiteralEvent(bytesWritten, lastCtrlCharPos, 1);
 				/*--- DEBUG LOG ---*/
 				
 				//Just copy the next byte to output
@@ -257,7 +262,7 @@ public class LZMu {
 					/*--- DEBUG LOG ---*/
 					long mypos = bytesWritten - n;
 					long backpos = mypos - backset - 1;
-					debug_logReferenceEvent(mypos, backpos, n);
+					debug_logReferenceEvent(mypos, lastCtrlCharPos, backpos, n);
 					/*--- DEBUG LOG ---*/
 					
 				}
@@ -284,7 +289,7 @@ public class LZMu {
 					/*--- DEBUG LOG ---*/
 					long mypos = bytesWritten - n;
 					long backpos = mypos - backset - 1;
-					debug_logReferenceEvent(mypos, backpos, n);
+					debug_logReferenceEvent(mypos, lastCtrlCharPos, backpos, n);
 					/*--- DEBUG LOG ---*/
 					
 				}
@@ -321,7 +326,7 @@ public class LZMu {
 				if(backoff > 128) return false;
 			}
 			if(backoff > 4096) return false;
-			if(match_run > 255) return false;
+			if(match_run > MAX_RUN_SIZE_LARGE) return false;
 			
 			return true;
 		}
@@ -334,7 +339,7 @@ public class LZMu {
 				if(backoff > 128) return false;
 			}
 			if(backoff > 4096) return false;
-			if(match.match_run > 255) return false;
+			if(match.match_run > MAX_RUN_SIZE_LARGE) return false;
 			
 			return true;
 		}
@@ -354,45 +359,86 @@ public class LZMu {
 	
 	private void dumpDataBuffer(){
 		dataBuffer.rewind();
-		while(dataBuffer.hasRemaining()){
+		while(dataBufferUsed-- > 0){
 			output_fb.addToFile(dataBuffer.get());
 			bytesWritten++;
 		}
 		dataBuffer.clear();
+		dataBufferUsed = 0;
 	}
 	
-	private void writeControlBit(boolean bit){
+	private boolean writeControlBit(boolean bit, boolean cmdend){
 		if(bit) ctrlbyte |= bitmask;
 		bitmask >>= 1;
 		if(bitmask < 1){
 			//Dump
+			lastCtrlCharPos = output_fb.getFileSize();
 			output_fb.addToFile((byte)ctrlbyte);
 			bytesWritten++;
-			dumpDataBuffer();
+			
+			//if cmdend, hold flush...
+			if(!cmdend) dumpDataBuffer();
 			
 			ctrlbyte = 0;
 			bitmask = 0x80;
+			return true;
 		}
+		return false;
 	}
 	
 	private void writeDataByte(byte b){
 		dataBuffer.put(b);
+		dataBufferUsed++;
+	}
+	
+	private void finishWrite(){
+		//TODO Fills and flushes the last command, tidies up the output
+		if(bitmask == 0x80){
+			//Just pad to 4
+			while((output_fb.getFileSize() & 0x3) != 0) output_fb.addToFile(FileBuffer.ZERO_BYTE);
+		}
+		else{
+			//TODO This is probably going to have to be tweaked a lot to match.
+			//Command stream needs to be padded out too, I guess
+			int total_size = dataBufferUsed + 1 + (int)output_fb.getFileSize();
+			int data_pad = (4 - (total_size & 0x3)) & 0x3;
+			int ctrl_bits_rem = 0;
+			int mask = bitmask;
+			while(mask > 0){
+				ctrl_bits_rem++;
+				mask >>>= 1;
+			}
+			
+			if((data_pad == 3) && (ctrl_bits_rem >= 2)){
+				bitmask >>>= 1;
+				ctrlbyte |= bitmask;
+				bitmask >>>= 1;
+				for(int i = 0; i < 3; i++){
+					writeDataByte((byte)0);
+				}
+			}
+			
+			output_fb.addToFile((byte)ctrlbyte);
+			dumpDataBuffer();
+		}
 	}
 	
 	private void encodeNext(FileBuffer input, MuLZCompCore compressor){
 		int runlen = compressor.getMatchRun();
+		boolean mflush = false;
 		if(runlen < 2){
 			//Copy as is
-			writeControlBit(true);
+			mflush = writeControlBit(true, true);
 			writeDataByte(input.getByte(compressor.current_pos));
+			if(mflush) dumpDataBuffer();
 			
 			/*--- DEBUG LOG ---*/
-			debug_logLiteralEvent(compressor.current_pos, 1);
+			debug_logLiteralEvent(compressor.current_pos, lastCtrlCharPos, 1);
 			/*--- DEBUG LOG ---*/
 		}
 		else{
 			/*--- DEBUG LOG ---*/
-			debug_logReferenceEvent(compressor.current_pos, compressor.match_pos, compressor.match_run);
+			debug_logReferenceEvent(compressor.current_pos, lastCtrlCharPos, compressor.match_pos, compressor.match_run);
 			/*--- DEBUG LOG ---*/
 			
 			//Backref
@@ -401,22 +447,23 @@ public class LZMu {
 				//See if short encoding is an option
 				//Offset must be <= 128 in magnitude.
 				if(pdiff <= 128){
-					writeControlBit(false);
-					writeControlBit(false);
+					writeControlBit(false, false);
+					writeControlBit(false, false);
 					
 					runlen -= 2;
-					writeControlBit((runlen & 0x2)!= 0);
-					writeControlBit((runlen & 0x1)!= 0);
+					writeControlBit((runlen & 0x2)!= 0, false);
+					mflush = writeControlBit((runlen & 0x1)!= 0, true);
 					
 					writeDataByte((byte)(-pdiff));
+					if(mflush) dumpDataBuffer();
 					
 					return;
 				}
 			}
 			
 			//Long reference
-			writeControlBit(false);
-			writeControlBit(true);
+			writeControlBit(false, false);
+			mflush = writeControlBit(true, true);
 			
 			int b0 = ((-pdiff) >> 5) & 0xff; //sra
 			int b1 = ((-pdiff) << 3) & 0xff;
@@ -424,42 +471,44 @@ public class LZMu {
 			if(runlen > 9){
 				//Need third byte
 				writeDataByte((byte)b1);
-				writeDataByte((byte)runlen);
+				writeDataByte((byte)(runlen-1));
 			}
 			else{
 				runlen -= 2;
 				b1 |= (runlen & 0x7);
 				writeDataByte((byte)b1);
 			}
+			if(mflush) dumpDataBuffer();
 		}
 	}
 	
 	private void encodeNext(FileBuffer input, RunMatch match){
+		//TODO mflush
 		//This one needs to read the match's copy amount and encode all those bytes too.
 		for(int i = 0; i < match.copy_amt; i++){
-			writeControlBit(true);
+			writeControlBit(true, true);
 			writeDataByte(input.getByte(match.encoder_pos + i));
 		}
 		
 		/*--- DEBUG LOG ---*/
 		if(match.copy_amt > 0){
-			debug_logLiteralEvent(match.encoder_pos, match.copy_amt);
+			debug_logLiteralEvent(match.encoder_pos, lastCtrlCharPos, match.copy_amt);
 		}
 		/*--- DEBUG LOG ---*/
 	
 		int runlen = match.match_run;
 		if(runlen < 2){
 			//Copy as is
-			writeControlBit(true);
+			writeControlBit(true, true);
 			writeDataByte(input.getByte(match.encoder_pos));
 			
 			/*--- DEBUG LOG ---*/
-			debug_logLiteralEvent(match.encoder_pos, 1);
+			debug_logLiteralEvent(match.encoder_pos, lastCtrlCharPos, 1);
 			/*--- DEBUG LOG ---*/
 		}
 		else{
 			/*--- DEBUG LOG ---*/
-			debug_logReferenceEvent(match.encoder_pos, match.match_pos, match.match_run);
+			debug_logReferenceEvent(match.encoder_pos, lastCtrlCharPos, match.match_pos, match.match_run);
 			/*--- DEBUG LOG ---*/
 			
 			//Backref
@@ -468,12 +517,12 @@ public class LZMu {
 				//See if short encoding is an option
 				//Offset must be <= 128 in magnitude.
 				if(pdiff <= 128){
-					writeControlBit(false);
-					writeControlBit(false);
+					writeControlBit(false, false);
+					writeControlBit(false, false);
 					
 					runlen -= 2;
-					writeControlBit((runlen & 0x2)!= 0);
-					writeControlBit((runlen & 0x1)!= 0);
+					writeControlBit((runlen & 0x2)!= 0, false);
+					writeControlBit((runlen & 0x1)!= 0, true);
 					
 					writeDataByte((byte)(-pdiff));
 					
@@ -482,8 +531,8 @@ public class LZMu {
 			}
 			
 			//Long reference
-			writeControlBit(false);
-			writeControlBit(true);
+			writeControlBit(false, false);
+			writeControlBit(true,true);
 			
 			int b0 = ((-pdiff) >> 5) & 0xff; //sra
 			int b1 = ((-pdiff) << 3) & 0xff;
@@ -522,11 +571,14 @@ public class LZMu {
 			//FOR set of lookahead bytes until end...
 			while(!compressor.atEnd()){
 				List<RunMatch> finds = compressor.findMatchesLookaheadGreedy(comp_lookahead);
+				int amt = 0;
 				for(RunMatch match : finds){
+					if(match.match_run > 1) amt += match.match_run;
+					else amt++;
 					encodeNext(input, match);
 				}
-				compressor.incrementPos(comp_lookahead);
-				bytesRead += comp_lookahead;
+				compressor.incrementPos(amt);
+				bytesRead += amt;
 				if(bytesRead >= decompSize) bytesRead = decompSize;
 			}
 		}
@@ -534,11 +586,15 @@ public class LZMu {
 			while(!compressor.atEnd()){
 				//Find match
 				compressor.firstMeetsReq();
-				bytesRead++;
+				
+				//Determine size
+				int amt = compressor.getMatchRun();
+				if(amt < 2) amt = 1;
+				bytesRead += amt;
 				
 				//Encode
 				encodeNext(input, compressor);
-				compressor.incrementPos(1);
+				compressor.incrementPos(amt);
 			}
 		}
 		else{
@@ -546,14 +602,19 @@ public class LZMu {
 			while(!compressor.atEnd()){
 				//Find match
 				compressor.findMatchCurrentPosOnly();
-				bytesRead++;
+				
+				//Determine size
+				int amt = compressor.getMatchRun();
+				if(amt < 2) amt = 1;
+				bytesRead += amt;
 				
 				//Encode
 				encodeNext(input, compressor);
-				compressor.incrementPos(1);
+				compressor.incrementPos(amt);
 			}
+			finishWrite();
 		}
-		
+			
 		return output_fb;
 	}
 	

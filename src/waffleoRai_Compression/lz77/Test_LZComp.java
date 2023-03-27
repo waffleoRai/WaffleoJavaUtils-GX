@@ -39,6 +39,7 @@ public class Test_LZComp {
 		long fend = arcdata.getFileSize();
 		
 		//Extract
+		System.err.println("-> Extracting files from archive...");
 		String outdir_a = outdir + File.separator + "a";
 		String compHashesPath = outdir + File.separator + "chashes.txt";
 		String[] compHashes = new String[fcount];
@@ -72,6 +73,7 @@ public class Test_LZComp {
 		bw.close();
 
 		//Decompress
+		System.err.println("-> Decompressing files...");
 		String outdir_b = outdir + File.separator + "b";
 		String decHashesPath = outdir + File.separator + "dhashes.txt";
 		String[] decHashes = new String[fcount];
@@ -117,6 +119,7 @@ public class Test_LZComp {
 		bw.close();
 		
 		//Recompress
+		System.err.println("-> Attempting recompression of files...");
 		String outdir_c = outdir + File.separator + "c";
 		if(!FileBuffer.directoryExists(outdir_c)) {
 			Files.createDirectories(Paths.get(outdir_c));
@@ -172,6 +175,7 @@ public class Test_LZComp {
 		matched_files = 0;
 		
 		//Redecompress
+		System.err.println("-> Decompressing re-compressed files to check compression validity...");
 		String outdir_d = outdir + File.separator + "d";
 		if(!FileBuffer.directoryExists(outdir_d)) {
 			Files.createDirectories(Paths.get(outdir_d));
@@ -234,6 +238,7 @@ public class Test_LZComp {
 	public static void main(String[] args) {
 		if(args.length < 2) {
 			System.err.println("Usage: [jar/class] (input file) (output dir)");
+			System.exit(1);
 		}
 		String inpath = args[0];
 		String outdir = args[1];

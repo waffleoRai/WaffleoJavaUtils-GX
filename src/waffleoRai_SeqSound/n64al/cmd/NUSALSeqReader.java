@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -82,6 +83,8 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	//Linking
 	private Set<Integer> rchecked;
 	private Set<Integer> rskip;
+	private boolean requeue_data = false;
+	private boolean linkagain_flag = false; //If set, try running another link round
 	
 	private CoverageMap1D cmd_coverage;
 	private CoverageMap1D[] ch_shortnotes;
@@ -390,7 +393,13 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  			System.err.println("[DEBUG] reflink_GuessPtblContext || DataCommands returned " + target);
  		}
  	
- 		if(target == null) return null;
+ 		if(target == null){
+ 			if(DEBUG_MODE){
+ 	 			System.err.println("[DEBUG] reflink_GuessPtblContext || Couldn't work out context. Requeuing...");
+ 	 		}
+ 			this.linkagain_flag = true;
+ 			return null;
+ 		}
  		NUSALSeqCmdType ctype = target.getCommand();
  		
  		if(DEBUG_MODE){
@@ -576,6 +585,26 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		else rchecked.add(addr);
  	}
  	
+ 	private boolean refCycleCont(boolean check_rskip){
+ 		//Can't contain all if smaller.
+ 		if(rchecked.size() < cmdmap.size()) return true;
+ 		
+ 		//All commands have definitely been checked.
+ 		if(rchecked.containsAll(cmdmap.keySet())) return false;
+ 		
+ 		//What is in cmdmap, but not rchecked? Is it in rskip?
+ 		if(!check_rskip) return true;
+ 		Collection<Integer> cmdkeys = cmdmap.keySet();
+ 		for(Integer addr : cmdkeys){
+ 			if(!rchecked.contains(addr)){
+ 				//If in neither, then we need to continue.
+ 				if(!rskip.contains(addr)) return true;
+ 			}
+ 		}
+ 		
+ 		return false;
+ 	}
+ 	
  	private void referenceLinkCycle(){
  		//Because this may dig up some new "ParseLaters" from branches
  		//	discovered in pointer tables, may need to be called multiple times.
@@ -604,21 +633,25 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  			System.err.println("\trskip: " + rskip.size());
  			System.err.println("\tcmdmap: " + cmdmap.size());
  		}
-		while((rchecked.size() + rskip.size()) < cmdmap.size()){
+		boolean cont = refCycleCont(false); //Never check rskip the first round.
+		while(cont){
 			for(Integer addr : alist){
 				if(rchecked.contains(addr)) continue;
 				referenceLinkCycleScanCommand(addr);
 			}
 			alist.clear();
 			alist.addAll(cmdmap.keySet());
+			
+			cont = refCycleCont(true);
 		}
 		
 		//Datarefs.
-		if (DEBUG_MODE){
- 			System.err.println("referenceLinkCycle || Entering data linking cycle");
- 			System.err.println("\tUnhandled data links: " + data_parse.size());
- 		}
-		if(!data_parse.isEmpty()){
+		while(!data_parse.isEmpty()){
+			if (DEBUG_MODE){
+	 			System.err.println("referenceLinkCycle || Entering data linking cycle");
+	 			System.err.println("\tUnhandled data links: " + data_parse.size());
+	 		}
+			
 			alist.clear();
 			alist.addAll(data_parse.keySet());
 			Collections.sort(alist);
@@ -631,8 +664,10 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 				//If so, should it be shortened?
 				//If not, try to read.
 				//Also note that some overlaps are allowed (like an STS)
+				requeue_data = false;
+				
 				NUSALSeqCommand dcmd = cmdmap.get(addr);
-				DataLater ndat = data_parse.get(addr);
+				DataLater ndat = data_parse.remove(addr);
 				if (DEBUG_MODE){
 		 			System.err.println("[DEBUG] referenceLinkCycle || Now processing data request @0x" + Integer.toHexString(addr));
 		 			System.err.println("\tPre-existing command found: " + (dcmd != null));
@@ -704,6 +739,10 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 						//New data command.
 						addNewDataAndLink(ndat);
 					}
+				}
+				
+				if(requeue_data){
+					data_parse.put(addr, ndat);
 				}
 			}
 		}
@@ -1237,7 +1276,9 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			}
 			
 			//Try linkage...
+			linkagain_flag = false;
 			referenceLinkCycle();
+			if(linkagain_flag) referenceLinkCycle();
 		}
 		NUSALSeqCommand entrycmd = cmdmap.get(0);
 		if(entrycmd != null){
