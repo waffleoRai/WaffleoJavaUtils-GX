@@ -6,6 +6,21 @@ public class Z64Sound {
 	
 	public static final int DEFO_SAMPLERATE = 32000;
 	
+	public static final int REFRESH_RATE_NTSC = 60;
+	public static final int REFRESH_RATE_PAL = 50;
+	
+	public static final int SAMPLES_PER_FRAME_NTSC = ((DEFO_SAMPLERATE/REFRESH_RATE_NTSC) + 0xf) & ~0xf;
+	public static final int SAMPLES_PER_FRAME_PAL = ((DEFO_SAMPLERATE/REFRESH_RATE_PAL) + 0xf) & ~0xf;
+	
+	public static final int UPDATES_PER_FRAME_NTSC = ((SAMPLES_PER_FRAME_NTSC + 0x10)/0xd0) + 1;
+	public static final int UPDATES_PER_FRAME_PAL = ((SAMPLES_PER_FRAME_PAL + 0x10)/0xd0) + 1;
+	
+	public static final double UPDATES_PER_FRAME_SCALED_NTSC = (double)UPDATES_PER_FRAME_NTSC/4.0;
+	public static final double UPDATES_PER_FRAME_SCALED_PAL = (double)UPDATES_PER_FRAME_PAL/4.0;
+	
+	public static final double MS_PER_UPDATE_NTSC = 1000.0 / ((double)REFRESH_RATE_NTSC * (double)UPDATES_PER_FRAME_NTSC);
+	public static final double MS_PER_UPDATE_PAL = 1000.0 / ((double)REFRESH_RATE_PAL * (double)UPDATES_PER_FRAME_PAL);
+	
 	public static final int CODEC_ADPCM = 0;
 	public static final int CODEC_S8 = 1;
 	public static final int CODEC_S16_INMEMORY = 2;
@@ -34,6 +49,11 @@ public class Z64Sound {
 	public static final int ENVCMD__ADSR_RESTART = -3;
 	
 	public static final int ENVCMD__UNSET = Short.MIN_VALUE;
+	public static final int ENV_MAX_DELTA_MS = 32700 * (int)MS_PER_UPDATE_PAL;
+	
+	//Should only be minor difference, but here anyway
+	private static int[] DECAY_TABLE_MS_PAL = null;
+	private static int[] DECAY_TABLE_MS_NTSC = null;
 	
 	public static class Z64Tuning{
 		//Tuning for 32kHz
@@ -50,6 +70,7 @@ public class Z64Sound {
 			
 			return false;
 		}
+	
 	}
 	
 	public static Z64Tuning calculateTuning(byte midi_note, float tune_value){
@@ -70,6 +91,13 @@ public class Z64Sound {
 		int centdiff = mytune - ((int)midi_note*100);
 		//return (float)(1.0/SynthMath.cents2FreqRatio(centdiff));
 		return (float)SynthMath.cents2FreqRatio(centdiff);
+	}
+	
+	public static float calculateTuning(byte midi_note, byte rootKey, byte fineTune){
+		Z64Tuning tune = new Z64Tuning();
+		tune.root_key = rootKey;
+		tune.fine_tune = fineTune;
+		return calculateTuning(midi_note, tune);
 	}
 
 	public static String getCodecString(int codec, boolean shortcode){
@@ -124,6 +152,100 @@ public class Z64Sound {
 			return "64DD";
 		}
 		return "Unknown";
+	}
+	
+	public static int envelopeDeltaToMillis(int val){
+		//See Audio_AdsrUpdate (in audio_effects.c)
+		//I THINK the delta counts PAL audio thread updates
+		//There are 200 per second (4 per vsync @ 50hz) so this would
+		//	put delta values in units of 5ms?
+		return val * (int)MS_PER_UPDATE_PAL;
+	}
+	
+	public static int envelopeMillisToDelta(int val){
+		double divraw = (double)val / MS_PER_UPDATE_PAL;
+		return (int)Math.round(divraw);
+	}
+	
+	private static void genDecayTable(){
+		DECAY_TABLE_MS_PAL = new int[256];
+		DECAY_TABLE_MS_NTSC = new int[256];
+		double[][] vel_table = new double[2][256]; //levels per update
+		
+		for(int i = 0; i < 2; i++){
+			vel_table[i][255] = 0.25;
+			vel_table[i][254] = 0.33;
+			vel_table[i][253] = 0.5;
+			vel_table[i][252] = 0.66;
+			vel_table[i][251] = 0.75;
+			vel_table[i][0] = 0.0;
+		}
+		
+		for (int i = 128; i < 251; i++) {
+			double sinv = 251.0 - (double)i;
+			vel_table[0][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_NTSC);
+			vel_table[1][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_PAL);
+	    }
+
+	    for (int i = 16; i < 128; i++) {
+	    	double sinv = (143.0 - (double)i) * 4.0;
+			vel_table[0][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_NTSC);
+			vel_table[1][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_PAL);
+	    }
+
+	    for (int i = 1; i < 16; i++) {
+	    	double sinv = (23.0 - (double)i) * 60.0;
+			vel_table[0][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_NTSC);
+			vel_table[1][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_PAL);
+	    }
+		
+	    for(int i = 0; i < 256; i++){
+	    	//Calculate how many updates required to reach 0
+	    	double uraw = (double)0x7fff / vel_table[0][i];
+	    	int ucount = (int)Math.ceil(uraw);
+	    	DECAY_TABLE_MS_NTSC[i] = (int)Math.round((double)ucount * MS_PER_UPDATE_NTSC);
+	    	
+	    	//Repeat with PAL
+	    	uraw = (double)0x7fff / vel_table[1][i];
+	    	ucount = (int)Math.ceil(uraw);
+	    	DECAY_TABLE_MS_PAL[i] = (int)Math.round((double)ucount * MS_PER_UPDATE_PAL);
+	    }
+	    
+	}
+	
+	//Defaults to NTSC
+	public static int releaseValueToMillis(int val){
+		return releaseValueToMillis_NTSC(val);
+	}
+	
+	public static int releaseValueToMillis_NTSC(int val){
+		if(val < 0 || val > 255) return -1;
+		if(DECAY_TABLE_MS_NTSC == null) genDecayTable();
+		return DECAY_TABLE_MS_NTSC[val];
+	}
+	
+	public static int releaseValueToMillis_PAL(int val){
+		if(val < 0 || val > 255) return -1;
+		if(DECAY_TABLE_MS_PAL == null) genDecayTable();
+		return DECAY_TABLE_MS_PAL[val];
+	}
+	
+	public static int releaseMillisToValue(int val){
+		//Don't use this.
+		//Use the table directly.
+		//But I put this func here anyway.
+		if(DECAY_TABLE_MS_NTSC == null) genDecayTable();
+		int minval = Integer.MAX_VALUE;
+		int minidx = -1;
+		for(int i = 0; i < 256; i++){
+			int diff = Math.abs(val - DECAY_TABLE_MS_NTSC[i]);
+			if(diff < minval){
+				minidx = 1;
+				minval = diff;
+			}
+		}
+		
+		return DECAY_TABLE_MS_NTSC[minidx];
 	}
 	
 }

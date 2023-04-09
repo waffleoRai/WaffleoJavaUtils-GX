@@ -16,6 +16,15 @@ public class Z64Envelope extends Labelable{
 	
 	public Z64Envelope(){events = new LinkedList<short[]>();}
 	
+	public static Z64Envelope newDefaultEnvelope(){
+		Z64Envelope env = new Z64Envelope();
+		env.addEvent((short)1, (short)32700);
+		env.addEvent((short)1000, (short)32700);
+		env.addEvent((short)Z64Sound.ENVCMD__ADSR_HANG, (short)0);
+		env.addEvent((short)Z64Sound.ENVCMD__ADSR_DISABLE, (short)0);
+		return env;
+	}
+	
 	public static float eventAsFloat(short[] event){
 		if(event == null || event.length != 2) return Float.NaN;
 		int i = 0;
@@ -114,7 +123,10 @@ public class Z64Envelope extends Labelable{
 		short[] event = new short[]{command, value};
 		if(!eventValid(event)) return false;
 		if(eventTerminal(event)){
-			if(hasTerminal()) return false;
+			//If there already is a "terminal", move it up and replace.
+			if(hasTerminal()){
+				events.add(new short[]{(short)terminator, 0});
+			}
 			terminator = (int)command;
 			return true;
 		}
