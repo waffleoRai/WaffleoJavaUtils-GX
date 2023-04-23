@@ -144,6 +144,19 @@ public class Z64Envelope extends Labelable{
 		return events.size();
 	}
 
+	public Z64Envelope copy(){
+		Z64Envelope copy = new Z64Envelope();
+		copy.terminator = this.terminator;
+		copy.id = this.id;
+		for(short[] event : this.events){
+			short[] ecpy = new short[2];
+			ecpy[0] = event[0];
+			ecpy[1] = event[1];
+			copy.events.add(ecpy);
+		}
+		return copy;
+	}
+	
 	public int getID(){return id;}
 	public void setID(int val){id = val;}
 	

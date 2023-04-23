@@ -180,7 +180,7 @@ public class NUSALSeq implements WriterPrintable{
 		detectLoop();
 	}
 	
-	private void parseDataForCommands(){
+	private void parseDataForCommands() throws InterruptedException{
 		NUSALSeqReader parser = new NUSALSeqReader(data);
 		parser.preParse();
 		source = parser;
@@ -208,7 +208,7 @@ public class NUSALSeq implements WriterPrintable{
 		}
 	}
 	
-	public static NUSALSeq readNUSALSeq(FileBuffer srcdat){
+	public static NUSALSeq readNUSALSeq(FileBuffer srcdat) throws InterruptedException{
 		NUSALSeq seq = new NUSALSeq();
 		try{
 			seq.data = srcdat.createCopy(0, srcdat.getFileSize());
@@ -740,9 +740,12 @@ public class NUSALSeq implements WriterPrintable{
 	}
 	
 	public FileBuffer getSerializedData(){
-		if(data == null) return null;
+		if(data == null){
+			this.serializeCommandsToData();
+			if(data == null) return null;
+		}
 		int fsize = (int)data.getFileSize();
-		int outsize = (fsize + 0xF) & 0xF;
+		int outsize = (fsize + 0xF) & ~0xF;
 		FileBuffer buff = new FileBuffer(outsize, true);
 		for(int i = 0; i < fsize; i++) buff.addToFile(data.getByte(i));
 		int padding = outsize - fsize;
@@ -839,14 +842,17 @@ public class NUSALSeq implements WriterPrintable{
 				throws IOException, UnsupportedFileTypeException {
 			if (input == null) throw new UnsupportedFileTypeException("Input is null");
 			input.setEndian(true);
-			NUSALSeq nusseq = NUSALSeq.readNUSALSeq(input);
 			try{
+				NUSALSeq nusseq = NUSALSeq.readNUSALSeq(input);
 				MIDI mid = nusseq.toMidi();
 				mid.writeMIDI(outpath);
 			}
 			catch(InvalidMidiDataException ex){
 				ex.printStackTrace();
 				throw new UnsupportedFileTypeException("Attempt to convert to midi resulted in invalid midi data");
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+				throw new UnsupportedFileTypeException("Parser thread was interrupted, likely due to being caught in an endless loop.");
 			}
 		}
 

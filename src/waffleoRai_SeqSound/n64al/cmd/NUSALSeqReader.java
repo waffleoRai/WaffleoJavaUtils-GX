@@ -42,7 +42,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	
 	/*--- Constants ---*/
 	
-	public static final boolean DEBUG_MODE = true;
+	public static final boolean DEBUG_MODE = false;
 	
 	public static final int PARSEMODE_UNDEFINED = 0x0;
 	public static final int PARSEMODE_SEQ = 0x1;
@@ -605,7 +605,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		return false;
  	}
  	
- 	private void referenceLinkCycle(){
+ 	private void referenceLinkCycle() throws InterruptedException{
  		//Because this may dig up some new "ParseLaters" from branches
  		//	discovered in pointer tables, may need to be called multiple times.
  		if(cmdmap.isEmpty()) return;
@@ -643,6 +643,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			alist.addAll(cmdmap.keySet());
 			
 			cont = refCycleCont(true);
+			if(Thread.interrupted()) throw new InterruptedException("NUSALSeqReader.referenceLinkCycle || Parser thread interrupted. Parse attempt terminated.");
 		}
 		
 		//Datarefs.
@@ -745,6 +746,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 					data_parse.put(addr, ndat);
 				}
 			}
+			if(Thread.interrupted()) throw new InterruptedException("NUSALSeqReader.referenceLinkCycle || Parser thread interrupted. Parse attempt terminated.");
 		}
  	}
  	
@@ -812,7 +814,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		return false;
  	}
  	 	
- 	private ParseResult handleCallCommand(int target_addr, ParseContext context){
+ 	private ParseResult handleCallCommand(int target_addr, ParseContext context) throws InterruptedException{
  		ParseResult sub = subroutines.get(target_addr);
  		if(sub != null) return sub;
  		
@@ -861,7 +863,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		return cmd;
  	}
  	
- 	private ParseResult parseCodeBranch(int pos_start, int tick_start, ParseContext context){
+ 	private ParseResult parseCodeBranch(int pos_start, int tick_start, ParseContext context) throws InterruptedException{
  		ParseResult res = new ParseResult();
  		NUSALSeqCommand tail = null;
  		NUSALSeqCommand ncmd = null;
@@ -980,6 +982,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  	 				else now_tick = -1;
  	 			}	
  			}
+ 			if(Thread.interrupted()) throw new InterruptedException("NUSALSeqReader.parseCodeBranch || Parser thread interrupted. Parse attempt terminated.");
  		}
  		
  		if((res.end_type == BRANCHEND_UNK) && (now_addr >= data_end)) res.end_type = BRANCHEND_DATA_END;
@@ -1258,7 +1261,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		return reader;
 	}
 		
-	public void preParse(){
+	public void preParse() throws InterruptedException{
 		initPreparse();
 		ParseContext pctx = new ParseContext();
 		pctx.setAsSeq();
@@ -1273,12 +1276,14 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			while(!branch_queue.isEmpty()){
 				preq = branch_queue.pop();
 				parseCodeBranch(preq.address, preq.tick, preq.context);
+				if(Thread.interrupted()) throw new InterruptedException("NUSALSeqReader.preParse || Parser thread interrupted. Parse attempt terminated.");
 			}
 			
 			//Try linkage...
 			linkagain_flag = false;
 			referenceLinkCycle();
 			if(linkagain_flag) referenceLinkCycle();
+			if(Thread.interrupted()) throw new InterruptedException("NUSALSeqReader.preParse || Parser thread interrupted. Parse attempt terminated.");
 		}
 		NUSALSeqCommand entrycmd = cmdmap.get(0);
 		if(entrycmd != null){

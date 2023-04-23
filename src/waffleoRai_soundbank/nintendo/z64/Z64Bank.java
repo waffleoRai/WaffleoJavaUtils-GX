@@ -914,6 +914,27 @@ public class Z64Bank implements WriterPrintable{
 		
 	}
 	
+	public FileBuffer serializeMe(){
+		updateICount();
+		updatePCount();
+		updateXCount();
+		
+		int allocsize = 8;
+		//WAY over allocs for worst case scenario.
+		//I should probably make this like more efficient or something but eh
+		//	everyone has like 20GB of RAM nowadays right?
+		allocsize += icount * (0x24 + 0x180);
+		allocsize += pcount * (0x10 + 0x60);
+		allocsize += xcount * (0x8 + 0x50);
+		
+		if(sermode_64) allocsize <<= 1;
+		allocsize += 16;
+		FileBuffer buff = new FileBuffer(allocsize, true);
+		serializeTo(buff);
+		
+		return buff;
+	}
+	
 	private void serializeDrumUBNK(Z64Drum drum, int min, int max, FileBuffer target){
 		//System.err.println("drum is null: " + (drum == null));
 		//System.err.println("target is null: " + (target == null));
