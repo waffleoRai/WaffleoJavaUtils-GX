@@ -24,6 +24,10 @@ class Z64DrumPool {
 	
 	/*----- Write -----*/
 	
+	public void relink(Z64WavePool wavePool, Z64EnvPool envPool, int waveRefType){
+		//TODO
+	}
+	
 	public boolean repackSerial(int section_start, boolean target_64){
 		//TODO
 		return false;
@@ -36,6 +40,11 @@ class Z64DrumPool {
 	}
 	
 	/*----- Getters -----*/
+	
+	public int getUniqueDrumCount(){
+		//TODO
+		return 0;
+	}
 	
 	public int getSerializedSlotCount(){
 		//TODO
@@ -52,7 +61,22 @@ class Z64DrumPool {
 		return 0;
 	}
 	
+	public int[][] getDrumRegionBoundaries(){
+		//TODO
+		return null;
+	}
+	
+	public List<Z64Drum> getAllDrums(){
+		//TODO
+		return null;
+	}
+	
 	public List<PercBlock> getAllPercBlocks(){
+		//TODO
+		return null;
+	}
+	
+	public String getSlotEnumString(int slot){
 		//TODO
 		return null;
 	}
@@ -63,4 +87,24 @@ class Z64DrumPool {
 		//TODO
 	}
 
+	public Z64Drum addToPool(Z64Drum drum){
+		//TODO
+		return null;
+	}
+	
+	public PercBlock setSlot(PercBlock block, int slot){
+		//TODO
+		return null;
+	}
+	
+	public PercBlock[] assignDrumToSlots(Z64Drum drum, int slotMin, int slotMax){
+		//TODO
+		//Provided drum ref must be EXACT INSTANCE of one in pool, otherwise will not work.
+		return null;
+	}
+	
+	public void setSlotEnumString(String value, int slot){
+		//TODO
+	}
+	
 }

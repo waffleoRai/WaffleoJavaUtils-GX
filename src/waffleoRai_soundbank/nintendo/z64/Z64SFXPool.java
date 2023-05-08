@@ -25,6 +25,10 @@ class Z64SFXPool {
 	
 	/*----- Write -----*/
 	
+	public void relink(Z64WavePool wavePool, int waveRefType){
+		//TODO
+	}
+	
 	public boolean repackSerial(int section_start, boolean target_64){
 		//TODO
 		return false;
@@ -47,12 +51,22 @@ class Z64SFXPool {
 		return 0;
 	}
 	
+	public SFXBlock getSlot(int slot){
+		//TODO
+		return null;
+	}
+	
 	public List<SFXBlock> getAllSFXBlocks(){
 		//TODO
 		return null;
 	}
 	
 	/*----- Setters -----*/
+	
+	public SFXBlock setToSlot(SFXBlock block, int slot){
+		//TODO
+		return null;
+	}
 	
 	public void updateMaps(){
 		//TODO

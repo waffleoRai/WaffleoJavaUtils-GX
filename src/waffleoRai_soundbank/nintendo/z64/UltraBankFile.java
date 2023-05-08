@@ -1,13 +1,28 @@
 package waffleoRai_soundbank.nintendo.z64;
 
+import java.io.BufferedOutputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 
+import waffleoRai_Sound.nintendo.Z64Sound;
+import waffleoRai_Sound.nintendo.Z64Sound.Z64Tuning;
+import waffleoRai_Sound.nintendo.Z64WaveInfo;
+import waffleoRai_Utils.BinFieldSize;
+import waffleoRai_Utils.BufferReference;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+import waffleoRai_Utils.MultiFileBuffer;
 import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.EnvelopeBlock;
+import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.InstBlock;
+import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.PercBlock;
+import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.SFXBlock;
+import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.WaveInfoBlock;
 
 public class UltraBankFile {
 	
@@ -20,6 +35,8 @@ public class UltraBankFile {
 	public static final int UWSD_VERSION_MAJOR = 2;
 	public static final int UWSD_VERSION_MINOR = 0;
 	
+	public static final int OP_LINK_WAVES_UID = 0x1;
+	
 	/*----- Instance Variables -----*/
 	
 	private String magic_main = null;
@@ -29,6 +46,8 @@ public class UltraBankFile {
 	private int wsd_id = 0;
 	private int meta_flags = 0;
 	private EnvelopeBlock[] envs = null;
+	private InstBlock[] allinst = null; //Stored for label application
+	private Z64Drum[] allperc = null; //Stored for label application
 	
 	private Map<String, FileBuffer> chunks;
 	
@@ -129,71 +148,222 @@ public class UltraBankFile {
 	}
 	
 	private boolean readINST(Z64Bank bank){
-		//TODO
+		if(bank == null) return false;
 		FileBuffer data = chunks.get("INST");
 		if(data == null) return false;
 		
+		Z64InstPool instPool = bank.getInstPool();
+		if(instPool == null) return false;
 		
+		data.setCurrentPosition(0L);
+		int uniqueCount = data.nextInt();
+		int[] slots = new int[126];
+		
+		for(int i = 0; i < 126; i++){
+			slots[i] = Short.toUnsignedInt(data.nextShort());
+		}
+		data.skipBytes(4L);
+		
+		int istart = (int)data.getCurrentPosition();
+		allinst = new InstBlock[uniqueCount];
+		for(int i = 0; i < uniqueCount; i++){
+			int pos = (int)data.getCurrentPosition();
+			allinst[i] = InstBlock.readFrom(data.getReferenceAt(pos));
+			data.skipBytes(32L);
+			
+			//Sync data in block
+			allinst[i].addr = pos;
+			if(allinst[i].off_env >= 0){
+				allinst[i].envelope = envs[allinst[i].off_env];
+				allinst[i].data.setEnvelope(allinst[i].envelope.data);
+			}
+			
+			//Okay, so wave ids are not stored in Z64Instruments
+			//So that linking needs to be done outside this parser.
+			
+			allinst[i] = instPool.addToPool(allinst[i]);
+		}
+		
+		//Assign slots in pool
+		for(int i = 0; i < 126; i++){
+			if(slots[i] <= 0) continue;
+			int instidx = (slots[i] - istart) >>> 5;
+			instPool.assignToSlot(allinst[instidx], i);
+		}
 		
 		return true;
 	}
 	
 	private boolean readPERC(Z64Bank bank){
-		//TODO
+		if(bank == null) return false;
 		FileBuffer data = chunks.get("PERC");
 		if(data == null) return false;
 		
+		Z64DrumPool drumPool = bank.getDrumPool();
+		if(drumPool == null) return false;
 		
+		data.setCurrentPosition(0L);
+		int uniqueCount = data.nextInt();
+		allperc = new Z64Drum[uniqueCount];
+		
+		int[] sampleRefs = new int[uniqueCount];
+		for(int i = 0; i < uniqueCount; i++){
+			Z64Drum drum = new Z64Drum();
+			drum.setDecay(data.nextByte());
+			drum.setPan(data.nextByte());
+			
+			int regBot = Byte.toUnsignedInt(data.nextByte());
+			int regTop = Byte.toUnsignedInt(data.nextByte());
+			
+			sampleRefs[i] = data.nextInt();
+			
+			int envidx = -1;
+			if((ver_major < 2) || ((ver_major == 2) && (ver_minor < 1))){
+				float tuneRaw = Float.intBitsToFloat(data.nextInt());
+				envidx = data.nextInt();
+				
+				Z64Tuning tuning = Z64Drum.localToCommonTuning(Z64Sound.MIDDLE_C - Z64Sound.STDRANGE_BOTTOM, tuneRaw);
+				drum.setTuning(tuning);
+				
+				if(envidx >= 0){
+					drum.setEnvelope(envs[envidx].data);
+				}
+			}
+			else{
+				Z64Tuning tuning = new Z64Tuning();
+				tuning.root_key = data.nextByte();
+				tuning.fine_tune = data.nextByte();
+				drum.setTuning(tuning);
+				
+				envidx = Short.toUnsignedInt(data.nextShort());
+				if(envidx >= 0){
+					drum.setEnvelope(envs[envidx].data);
+				}
+			}
+			
+			//Add to pool.
+			allperc[i] = drum;
+			drumPool.addToPool(drum);
+			
+			for(int j = regBot; j <= regTop; j++){
+				PercBlock block = new PercBlock(drum, j);
+				block.updateLocalTuning();
+				block.off_env = envidx;
+				block.addr = (i << 8) | j;
+				if(envidx >= 0){
+					block.envelope = envs[envidx];
+				}
+				block.off_snd = sampleRefs[i];
+				drumPool.setSlot(block, j);
+			}
+		}
 		
 		return true;
 	}
 	
 	private boolean readDATA(Z64Bank bank){
-		//TODO
+		if(bank == null) return false;
 		FileBuffer data = chunks.get("DATA");
 		if(data == null) return false;
 		
+		Z64SFXPool sfxPool = bank.getSFXPool();
+		if(sfxPool == null) return false;
 		
+		data.setCurrentPosition(0L);
+		int sfxCount = data.nextInt();
+		for(int i = 0; i < sfxCount; i++){
+			int pos = (int)data.getCurrentPosition();
+			int word1 = data.nextInt();
+			int word2 = data.nextInt();
+			if(word1 == 0 && word2 == 0) continue;
+			
+			SFXBlock block = new SFXBlock();
+			block.addr = pos;
+			
+			block.off_snd = word1;
+			block.data.setTuning(Float.intBitsToFloat(word2));
+			sfxPool.setToSlot(block, i);
+		}
 		
 		return true;
 	}
 	
 	private boolean readLABL(Z64Bank bank){
-		//TODO
+		if(bank == null) return false;
 		FileBuffer data = chunks.get("LABL");
 		if(data == null) return false;
 		
+		if(allinst == null && allperc == null) return false;
 		
+		BufferReference ref = data.getReferenceAt(0L);
+		if(allinst != null){
+			for(int i = 0; i < allinst.length; i++){
+				String lbl = ref.nextVariableLengthString("UTF8", BinFieldSize.WORD, 2);
+				if(allinst[i] != null) allinst[i].data.setName(lbl);
+			}
+		}
+		
+		if(allperc != null){
+			for(int i = 0; i < allperc.length; i++){
+				String lbl = ref.nextVariableLengthString("UTF8", BinFieldSize.WORD, 2);
+				if(allperc[i] != null) allperc[i].setName(lbl);
+			}
+		}
 		
 		return true;
 	}
 	
 	private boolean readIENM(Z64Bank bank){
-		//TODO
+		if(bank == null) return false;
 		FileBuffer data = chunks.get("IENM");
 		if(data == null) return false;
 		
-		
+		Z64InstPool instPool = bank.getInstPool();
+		if(instPool == null) return false;
+
+		BufferReference ref = data.getReferenceAt(0L);
+		for(int i = 0; i < 126; i++){
+			String lbl = ref.nextVariableLengthString("UTF8", BinFieldSize.WORD, 2);
+			instPool.setSlotEnumString(lbl, i);
+		}
 		
 		return true;
 	}
 	
 	private boolean readPENM(Z64Bank bank){
-		//TODO
+		if(bank == null) return false;
 		FileBuffer data = chunks.get("PENM");
 		if(data == null) return false;
 		
+		Z64DrumPool drumPool = bank.getDrumPool();
+		if(drumPool == null) return false;
 		
+		BufferReference ref = data.getReferenceAt(0L);
+		for(int i = 0; i < 64; i++){
+			String lbl = ref.nextVariableLengthString("UTF8", BinFieldSize.WORD, 2);
+			drumPool.setSlotEnumString(lbl, i);
+		}
 		
 		return true;
 	}
 	
 	private boolean readENUM(Z64Bank bank){
-		//TODO
+		if(bank == null) return false;
 		FileBuffer data = chunks.get("ENUM");
 		if(data == null) return false;
 		
+		Z64SFXPool sfxPool = bank.getSFXPool();
+		if(sfxPool == null) return false;
 		
+		int sfxCount = sfxPool.getSerializedSlotCount();
+		BufferReference ref = data.getReferenceAt(0L);
+		for(int i = 0; i < sfxCount; i++){
+			String lbl = ref.nextVariableLengthString("UTF8", BinFieldSize.WORD, 2);
+			SFXBlock block = sfxPool.getSlot(i);
+			if(block != null){
+				block.enm_str = lbl;
+			}
+		}
 		
 		return true;
 	}
@@ -234,6 +404,38 @@ public class UltraBankFile {
 		return false;
 	}
 	
+	public void linkWaves(Z64Bank bank, Collection<Z64WaveInfo> waves){
+		if(bank == null || waves == null) return;
+		
+		//Build wave pool
+		Z64WavePool wavePool = bank.getWavePool();
+		if(wavePool == null) return;
+		for(Z64WaveInfo winfo : waves){
+			wavePool.addToPool(winfo);
+		}
+		wavePool.updateMaps();
+		
+		int waveRefType = waveRefsByUID() ? Z64Bank.REFTYPE_UID : Z64Bank.REFTYPE_OFFSET_GLOBAL;
+		
+		//Link sfx...
+		Z64SFXPool sfxPool = bank.getSFXPool();
+		if(sfxPool != null){
+			sfxPool.relink(wavePool, waveRefType);
+		}
+		
+		//Link drums...
+		Z64DrumPool drumPool = bank.getDrumPool();
+		if(drumPool != null){
+			drumPool.relink(wavePool, null, waveRefType);
+		}
+		
+		//Link inst...
+		Z64InstPool instPool = bank.getInstPool();
+		if(instPool != null){
+			instPool.relink(wavePool, null, waveRefType);
+		}
+	}
+	
 	public void close(){
 		//Dispose of all values and clear map.
 		try{
@@ -247,20 +449,491 @@ public class UltraBankFile {
 	
 	/*----- Write -----*/
 	
-	public static void writeUBNK(Z64Bank bank, String path){
-		//TODO
+	private static int ubnkWriter_resolveWaveRef(InstBlock iblock, int which, int flags){
+		if(iblock == null) return 0;
+		
+		boolean useuid = (flags & OP_LINK_WAVES_UID) != 0;
+		
+		//Prioritizes finding the winfo.
+		//Then the wave block
+		//Then whatever is stored in the inst block
+		WaveInfoBlock wblock = null;
+		Z64WaveInfo winfo = null;
+		
+		switch(which){
+		case 0:
+			//low
+			if(iblock.data != null){
+				winfo = iblock.data.getSampleLow();
+			}
+			wblock = iblock.snd_lo;
+			break;
+		case 1:
+			//mid
+			if(iblock.data != null){
+				winfo = iblock.data.getSampleMiddle();
+			}
+			wblock = iblock.snd_med;
+			break;
+		case 2:
+			//high
+			if(iblock.data != null){
+				winfo = iblock.data.getSampleHigh();
+			}
+			wblock = iblock.snd_hi;
+			break;
+		}
+		
+		if(winfo == null && wblock != null){
+			winfo = wblock.getWaveInfo();
+		}
+		
+		if(winfo != null){
+			if(useuid) return winfo.getUID();
+			else return winfo.getWaveOffset();
+		}
+		
+		switch(which){
+		case 0: return iblock.off_snd_lo;
+		case 1: return iblock.off_snd_med;
+		case 2: return iblock.off_snd_hi;
+		}
+		
+		return 0;
 	}
 	
-	public static void writeUBNK(Z64Bank bank, OutputStream output){
-		//TODO
+	private static FileBuffer writeUBNK_META(Z64Bank bank, int flags){
+		FileBuffer buff = new FileBuffer(32, true);
+		buff.printASCIIToFile("META");
+		buff.addToFile(0); //Size placeholder
+		buff.addToFile(bank.getUID());
+		buff.addToFile((byte)bank.getMedium());
+		buff.addToFile((byte)bank.getCachePolicy());
+		buff.addToFile((byte)flags);
+		buff.addToFile((byte)2);
+		buff.addToFile((byte)bank.getPrimaryWaveArcIndex());
+		buff.addToFile((byte)bank.getSecondaryWaveArcIndex());
+		while((buff.getFileSize() & 0x3) != 0) buff.addToFile((byte)0);
+		buff.addToFile(0); //WSD reference, too lazy to handle now.
+		
+		buff.replaceInt((int)(buff.getFileSize() - 8L), 4L);
+		
+		return buff;
 	}
 	
-	public static void writeUWSD(Z64Bank bank, String path){
-		//TODO
+	private static FileBuffer writeUBNK_ENVL(Z64Bank bank){
+		Z64EnvPool envPool = bank.getEnvPool();
+		int ecount = envPool.getEnvelopeCount();
+		int sizeest = envPool.getTotalSerializedSize();
+		
+		FileBuffer buff = new MultiFileBuffer(2);
+		FileBuffer head = new FileBuffer(32 + (ecount << 1), true);
+		head.printASCIIToFile("ENVL");
+		head.addToFile(0); //Size placeholder
+		head.addToFile((short)ecount);
+		int datstart = (int)head.getFileSize() + (ecount << 1);
+		
+		int i = 0;
+		FileBuffer edat = new FileBuffer(sizeest + 16, true);
+		List<EnvelopeBlock> eblocks = envPool.getAllEnvBlocks();
+		for(EnvelopeBlock block : eblocks){
+			block.pool_id = i++;
+			int chunk_pos = datstart + (int)edat.getFileSize();
+			head.addToFile((short)chunk_pos);
+			block.serializeTo(edat, false);
+		}
+		
+		
+		//Pad edat to a multiple of 4.
+		while((edat.getFileSize() & 0x3) != 0) edat.addToFile((byte)0);
+		
+		head.replaceInt((int)(head.getFileSize() + edat.getFileSize() - 8L), 4L);
+		
+		buff.addToFile(head);
+		buff.addToFile(edat);
+		return buff;
 	}
 	
-	public static void writeUWSD(Z64Bank bank, OutputStream output){
-		//TODO
+	private static FileBuffer writeUBNK_INST(Z64Bank bank, int flags){
+		Z64InstPool instPool = bank.getInstPool();
+		if(instPool == null) return null;
+		int i_slot_count = instPool.getSerializedSlotCount();
+		if(i_slot_count < 1) return null;
+		int icount = instPool.getUniqueInstCount();
+		
+		final int idatstart = 12 + 256;
+		final long otblstart = 12;
+		
+		FileBuffer buff = new FileBuffer(idatstart + (icount << 5) + 16, true);
+		buff.printASCIIToFile("INST");
+		buff.addToFile(0); //Size placeholder
+		buff.addToFile(icount);
+		for(int i = 0; i < 64; i++) buff.addToFile(0); //Inst slot table placeholders
+		
+		//Instrument section
+		List<InstBlock> instlist = instPool.getAllInstBlocks();
+		int i = 0;
+		for(InstBlock block : instlist){
+			block.pool_id = i++;
+			buff.addToFile((byte)0);
+			buff.addToFile(block.data.getLowRangeTop());
+			buff.addToFile(block.data.getHighRangeBottom());
+			buff.addToFile(block.data.getDecay());
+			
+			if(block.envelope != null) buff.addToFile(block.envelope.pool_id);
+			else buff.addToFile(0);
+			
+			int wref = ubnkWriter_resolveWaveRef(block, 0, flags);
+			buff.addToFile(wref);
+			if(wref != 0 && wref != -1) Float.floatToRawIntBits(block.data.getTuningLow());
+			else buff.addToFile(0);
+			
+			wref = ubnkWriter_resolveWaveRef(block, 1, flags);
+			buff.addToFile(wref);
+			if(wref != 0 && wref != -1) Float.floatToRawIntBits(block.data.getTuningMiddle());
+			else buff.addToFile(0);
+			
+			wref = ubnkWriter_resolveWaveRef(block, 2, flags);
+			buff.addToFile(wref);
+			if(wref != 0 && wref != -1) Float.floatToRawIntBits(block.data.getTuningHigh());
+			else buff.addToFile(0);
+		}
+		
+		//Update slot table
+		InstBlock[] slots = instPool.getSlots();
+		for(i = 0; i < slots.length; i++){
+			if(slots[i] != null){
+				long tpos = otblstart + (i << 1);
+				int datpos = idatstart + (i << 5);
+				buff.replaceInt(datpos, tpos);
+			}
+		}
+		
+		buff.replaceInt((int)(buff.getFileSize() - 8L), 4L);
+		return buff;
+	}
+	
+	private static FileBuffer writeUBNK_PERC(Z64Bank bank, int flags){
+		Z64DrumPool drumPool = bank.getDrumPool();
+		if(drumPool == null) return null;
+		if(drumPool.getSerializedSlotCount() < 1) return null;
+		int pcount = drumPool.getUniqueDrumCount();
+		boolean useuid = (flags & OP_LINK_WAVES_UID) != 0;
+		
+		List<Z64Drum> drums = drumPool.getAllDrums();
+		int[][] bounds = drumPool.getDrumRegionBoundaries();
+		
+		FileBuffer buff = new FileBuffer(12 + (12 * pcount) + 16, true);
+		buff.printASCIIToFile("PERC");
+		buff.addToFile(0); //Size placeholder
+		buff.addToFile(pcount);
+		
+		int i = 0;
+		for(Z64Drum drum : drums){
+			buff.addToFile(drum.getDecay());
+			buff.addToFile(drum.getPan());
+			
+			int[] reg = bounds[i++];
+			buff.addToFile((byte)reg[0]);
+			buff.addToFile((byte)reg[1]);
+			
+			Z64WaveInfo winfo = drum.getSample();
+			if(winfo != null){
+				if(useuid) buff.addToFile(winfo.getUID());
+				else buff.addToFile(winfo.getWaveOffset());
+			}
+			else buff.addToFile(0);
+			
+		}
+		
+		buff.replaceInt((int)(buff.getFileSize() - 8L), 4L);
+		return buff;
+	}
+	
+	private static FileBuffer writeUBNK_LABL(Z64Bank bank){
+		int alloc = 0;
+		List<String> lbls = new LinkedList<String>();
+		
+		Z64InstPool instPool = bank.getInstPool();
+		if(instPool != null){
+			List<InstBlock> instlist = instPool.getAllInstBlocks();
+			for(InstBlock block : instlist){
+				if(block.data != null){
+					String iname = block.data.getName();
+					if(iname != null){
+						alloc += 3 + iname.length() * 3;
+						lbls.add(iname);
+					}
+					else{
+						alloc += 2;
+						lbls.add("");
+					}
+				}
+				else{
+					alloc += 2;
+					lbls.add("");
+				}
+			}
+		}
+		
+		Z64DrumPool drumPool = bank.getDrumPool();
+		if(drumPool != null){
+			List<Z64Drum> drums = drumPool.getAllDrums();
+			for(Z64Drum drum : drums){
+				String pname = drum.getName();
+				if(pname != null){
+					alloc += 3 + pname.length() * 3;
+					lbls.add(pname);
+				}
+				else{
+					alloc += 2;
+					lbls.add("");
+				}
+			}
+		}
+		
+		FileBuffer buff = new FileBuffer(alloc + 16, true);
+		buff.printASCIIToFile("LABL");
+		buff.addToFile(0); //Size placeholder
+		for(String s : lbls){
+			if(s.isEmpty()) buff.addToFile((short)0);
+			else{
+				buff.addVariableLengthString("UTF8", s, BinFieldSize.WORD, 2);
+			}
+		}
+		
+		while((buff.getFileSize() & 0x3) != 0) buff.addToFile((byte)0);
+		
+		buff.replaceInt((int)(buff.getFileSize() - 8L), 4L);
+		return buff;
+	}
+	
+	private static FileBuffer writeUBNK_IENM(Z64Bank bank){
+		Z64InstPool instPool = bank.getInstPool();
+		if(instPool == null) return null;
+		
+		int alloc = 0;
+		String[] estr = new String[126];
+		
+		for(int i = 0; i < 126; i++){
+			estr[i] = instPool.getSlotEnumString(i);
+			if(estr[i] != null){
+				alloc += 3 + estr[i].length();
+			}
+			else alloc += 2;
+		}
+		
+		FileBuffer buff = new FileBuffer(alloc + 16, true);
+		buff.printASCIIToFile("IENM");
+		buff.addToFile(0); //Size placeholder
+		for(int i = 0; i < 126; i++){
+			if(estr[i] != null){
+				buff.addVariableLengthString(estr[i], BinFieldSize.WORD, 2);
+			}
+			else buff.addToFile((short)0);
+		}
+		while((buff.getFileSize() & 0x3) != 0) buff.addToFile((byte)0);
+		
+		buff.replaceInt((int)(buff.getFileSize() - 8L), 4L);
+		return buff;
+	}
+	
+	private static FileBuffer writeUBNK_PENM(Z64Bank bank){
+		Z64DrumPool drumPool = bank.getDrumPool();
+		if(drumPool == null) return null;
+		
+		int alloc = 0;
+		String[] estr = new String[64];
+		
+		for(int i = 0; i < 64; i++){
+			estr[i] = drumPool.getSlotEnumString(i);
+			if(estr[i] != null){
+				alloc += 3 + estr[i].length();
+			}
+			else alloc += 2;
+		}
+		
+		FileBuffer buff = new FileBuffer(alloc + 16, true);
+		buff.printASCIIToFile("PENM");
+		buff.addToFile(0); //Size placeholder
+		for(int i = 0; i < 64; i++){
+			if(estr[i] != null){
+				buff.addVariableLengthString(estr[i], BinFieldSize.WORD, 2);
+			}
+			else buff.addToFile((short)0);
+		}
+		while((buff.getFileSize() & 0x3) != 0) buff.addToFile((byte)0);
+		
+		buff.replaceInt((int)(buff.getFileSize() - 8L), 4L);
+		return buff;
+	}
+	
+	public static void writeUBNK(Z64Bank bank, String path, int flags) throws IOException{
+		if(bank == null) return;
+		BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(path));
+		writeUBNK(bank, bos, flags);
+		bos.close();
+	}
+	
+	public static void writeUBNK(Z64Bank bank, OutputStream output, int flags) throws IOException{
+		if(bank == null) return;
+		if(output == null) return;
+		bank.tidy();
+		
+		FileBuffer c_meta = writeUBNK_META(bank, flags);
+		FileBuffer c_envl = writeUBNK_ENVL(bank);
+		FileBuffer c_inst = writeUBNK_INST(bank, flags);
+		FileBuffer c_perc = writeUBNK_PERC(bank, flags);
+		FileBuffer c_labl = writeUBNK_LABL(bank);
+		FileBuffer c_ienm = writeUBNK_IENM(bank);
+		FileBuffer c_penm = writeUBNK_PENM(bank);
+		
+		//Go through and calculate size.
+		int totalSize = 0;
+		int chunkCount = 0;
+		if(c_meta != null){totalSize += (int)c_meta.getFileSize(); chunkCount++;}
+		if(c_envl != null){totalSize += (int)c_envl.getFileSize(); chunkCount++;}
+		if(c_inst != null){totalSize += (int)c_inst.getFileSize(); chunkCount++;}
+		if(c_perc != null){totalSize += (int)c_perc.getFileSize(); chunkCount++;}
+		if(c_labl != null){totalSize += (int)c_labl.getFileSize(); chunkCount++;}
+		if(c_ienm != null){totalSize += (int)c_ienm.getFileSize(); chunkCount++;}
+		if(c_penm != null){totalSize += (int)c_penm.getFileSize(); chunkCount++;}
+		
+		FileBuffer header = new FileBuffer(32, true);
+		header.printASCIIToFile(UBNK_MAGIC);
+		header.addToFile((short)0xfeff);
+		header.addToFile((byte)UBNK_VERSION_MAJOR);
+		header.addToFile((byte)UBNK_VERSION_MINOR);
+		header.addToFile(0);
+		header.addToFile((short)0);
+		header.addToFile((short)chunkCount);
+		
+		int hdrsize = (int)header.getFileSize();
+		header.replaceInt(hdrsize + totalSize, 8L);
+		header.replaceShort((short)hdrsize, 12L);
+		
+		header.writeToStream(output);
+		if(c_meta != null) c_meta.writeToStream(output);
+		if(c_envl != null) c_envl.writeToStream(output);
+		if(c_inst != null) c_inst.writeToStream(output);
+		if(c_perc != null) c_perc.writeToStream(output);
+		if(c_labl != null) c_labl.writeToStream(output);
+		if(c_ienm != null) c_ienm.writeToStream(output);
+		if(c_penm != null) c_penm.writeToStream(output);
+	}
+	
+	public static void writeUWSD(Z64Bank bank, String path, int flags) throws IOException{
+		if(bank == null) return;
+		BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(path));
+		writeUWSD(bank, bos, flags);
+		bos.close();
+	}
+	
+	public static void writeUWSD(Z64Bank bank, OutputStream output, int flags) throws IOException{
+		if(bank == null) return;
+		if(output == null) return;
+		
+		Z64SFXPool sfxPool = bank.getSFXPool();
+		if(sfxPool == null) return;
+		int totalSize = 0;
+		int chunkCount = 0;
+		boolean waveUIDs = (flags & OP_LINK_WAVES_UID) != 0;
+		
+		//META
+		FileBuffer meta = new FileBuffer(24, true);
+		meta.printASCIIToFile("META");
+		meta.addToFile(0); //Chunk size placeholder
+		meta.addToFile(bank.getUID());
+		meta.addToFile((byte)flags);
+		meta.addToFile((byte)2);
+		meta.addToFile((byte)bank.getPrimaryWaveArcIndex());
+		meta.addToFile((byte)bank.getSecondaryWaveArcIndex());
+		meta.replaceInt((int)(meta.getFileSize() - 8L), 4L);
+		totalSize += (int)meta.getFileSize();
+		chunkCount++;
+		
+		//DATA
+		int sfxCount = sfxPool.getSerializedSlotCount();
+		String[] enumStr = new String[sfxCount];
+		boolean needEnumChunk = false;
+		FileBuffer data = new FileBuffer(32 + (8 * sfxCount), true);
+		data.printASCIIToFile("DATA");
+		data.addToFile(0); //Chunk size placeholder
+		data.addToFile(sfxCount);
+		for(int i = 0; i < sfxCount; i++){
+			SFXBlock block = sfxPool.getSlot(i);
+			if(block != null){
+				Z64WaveInfo winfo = block.data.getSample();
+				if(winfo != null){
+					if(waveUIDs) data.addToFile(winfo.getUID());
+					else data.addToFile(winfo.getWaveOffset());
+				}
+				else{
+					//Just have to take whatever is in the block...
+					if(block.sample != null){
+						winfo = block.sample.getWaveInfo();
+						if(winfo != null){
+							if(waveUIDs) data.addToFile(winfo.getUID());
+							else data.addToFile(winfo.getWaveOffset());
+						}
+						else data.addToFile(block.sample.addr); //Gross
+					}
+					else data.addToFile(block.off_snd);
+				}
+				data.addToFile(Float.floatToRawIntBits(block.data.getTuning()));
+				if(block.enm_str != null){
+					needEnumChunk = true;
+					enumStr[i] = block.enm_str;
+				}
+			}
+			else data.addToFile(0L);
+		}
+		data.replaceInt((int)(data.getFileSize() - 8L), 4L);
+		totalSize += (int)data.getFileSize();
+		chunkCount++;
+		
+		//ENUM (If applicable)
+		FileBuffer xenm = null;
+		if(needEnumChunk){
+			int alloc = 0;
+			for(int i = 0; i < enumStr.length; i++){
+				alloc += 2;
+				if(enumStr[i] != null){
+					alloc += 1 + (enumStr[i].length());
+				}
+			}
+			xenm = new FileBuffer(alloc, true);
+			xenm.printASCIIToFile("ENUM");
+			xenm.addToFile(0); //Chunk size placeholder
+			for(int i = 0; i < sfxCount; i++){
+				if(enumStr[i] != null){
+					xenm.addVariableLengthString(enumStr[i], BinFieldSize.WORD, 2);
+				}
+				else xenm.addToFile((short)0);
+			}
+			xenm.replaceInt((int)(xenm.getFileSize() - 8L), 4L);
+			totalSize += (int)xenm.getFileSize();
+			chunkCount++;
+		}
+		
+		//Header
+		FileBuffer header = new FileBuffer(24, true);
+		header.printASCIIToFile(UWSD_MAGIC);
+		header.addToFile((short)0xfeff);
+		header.addToFile((byte)UWSD_VERSION_MAJOR);
+		header.addToFile((byte)UWSD_VERSION_MINOR);
+		header.addToFile(0); //Size placeholder
+		header.addToFile((short)0); //Size placeholder
+		header.addToFile((short)chunkCount);
+		totalSize += (int)header.getFileSize();
+		header.replaceInt(totalSize, 8L);
+		header.replaceShort((short)header.getFileSize(), 12L);
+		
+		//Write
+		header.writeToStream(output);
+		meta.writeToStream(output);
+		data.writeToStream(output);
+		if(xenm != null) xenm.writeToStream(output);
 	}
 	
 	/*----- Getters -----*/
@@ -279,7 +952,7 @@ public class UltraBankFile {
 	public int getMinorVersion(){return this.ver_minor;}
 	
 	public int getWSDID(){return wsd_id;}
-	public boolean waveRefsByUID(){return (meta_flags & 0x1) != 0;}
+	public boolean waveRefsByUID(){return (meta_flags & OP_LINK_WAVES_UID) != 0;}
 	
 	/*----- Setters -----*/
 

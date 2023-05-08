@@ -18,7 +18,7 @@ public class Z64Drum extends Labelable{
 	private Z64Envelope envelope;
 	private Z64WaveInfo sample;
 	
-	protected int id;
+	protected int pool_id;
 	
 	public byte getDecay(){return decay;}
 	public byte getPan(){return pan;}
@@ -31,11 +31,11 @@ public class Z64Drum extends Labelable{
 	public void setTuning(Z64Tuning val){common_tune = val;}
 	public void setEnvelope(Z64Envelope val){envelope = val;}
 	public void setSample(Z64WaveInfo val){sample = val;}
-	public void setID(int val){id = val;}
+	public void setPoolID(int val){pool_id = val;}
 	
-	public void setIDRandom(){
+	public void setPoolIDRandom(){
 		Random r = new Random();
-		id = r.nextInt();
+		pool_id = r.nextInt();
 	}
 	
 	public static float commonToLocalTuning(int slot_idx, Z64Tuning value){

@@ -40,6 +40,10 @@ public class Z64Bank implements WriterPrintable{
 	public static final int MAPORDER_OFFSET_GLOBAL = 1;
 	public static final int MAPORDER_OFFSET_LOCAL = 2;
 	
+	public static final int REFTYPE_UID = 0;
+	public static final int REFTYPE_OFFSET_GLOBAL = 1;
+	public static final int REFTYPE_OFFSET_LOCAL = 2;
+	
 	public static final int STDRANGE_BOTTOM = Z64Sound.STDRANGE_BOTTOM;
 	public static final int STDRANGE_SIZE = Z64Sound.STDRANGE_SIZE;
 	public static final int MIDDLE_C = Z64Sound.MIDDLE_C;
@@ -264,8 +268,8 @@ public class Z64Bank implements WriterPrintable{
 		intlist.addAll(wavRefCache);
 		Collections.sort(intlist);
 		for(Integer ref : intlist){
-			myBank.envPool.importInstFromBin(
-					data.getReferenceAt(ref), options.src64, options.srcLE);
+			myBank.envPool.importFromBin(
+					data.getReferenceAt(ref));
 		}
 		myBank.envPool.updateMaps();
 		
@@ -597,12 +601,18 @@ public class Z64Bank implements WriterPrintable{
 		//TODO
 	}
 	
-	/*----- Backdoor Setters -----*/
+	/*----- Backdoor -----*/
 	
 	protected EnvelopeBlock addEnvelope(EnvelopeBlock env){
 		//TODO
 		return null;
 	}
+	
+	protected Z64WavePool getWavePool(){return wavePool;}
+	protected Z64EnvPool getEnvPool(){return envPool;}
+	protected Z64InstPool getInstPool(){return instPool;}
+	protected Z64DrumPool getDrumPool(){return drumPool;}
+	protected Z64SFXPool getSFXPool(){return sfxPool;}
 	
 	/*----- Conversion -----*/
 	

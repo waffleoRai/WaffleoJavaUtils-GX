@@ -24,6 +24,10 @@ class Z64InstPool {
 	
 	/*----- Write -----*/
 	
+	public void relink(Z64WavePool wavePool, Z64EnvPool envPool, int waveRefType){
+		//TODO
+	}
+	
 	public boolean repackSerial(int section_start, boolean target_64){
 		//TODO
 		return false;
@@ -35,6 +39,11 @@ class Z64InstPool {
 	}
 	
 	/*----- Getters -----*/
+	
+	public int getUniqueInstCount(){
+		//TODO
+		return 0;
+	}
 	
 	public int getSerializedSlotCount(){
 		//TODO
@@ -56,7 +65,26 @@ class Z64InstPool {
 		return null;
 	}
 	
+	public String getSlotEnumString(int slot){
+		//TODO
+		return null;
+	}
+	
 	/*----- Setters -----*/
+	
+	public InstBlock addToPool(InstBlock block){
+		//TODO
+		return null;
+	}
+	
+	public InstBlock assignToSlot(InstBlock block, int slot){
+		//TODO
+		return null;
+	}
+	
+	public void setSlotEnumString(String value, int slot){
+		//TODO
+	}
 	
 	public void updateMaps(){
 		//TODO

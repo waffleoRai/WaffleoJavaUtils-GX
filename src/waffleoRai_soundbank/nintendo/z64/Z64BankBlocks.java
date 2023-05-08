@@ -27,6 +27,7 @@ class Z64BankBlocks {
 		protected int addr;
 		protected boolean flag = false;
 		protected String enm_str;
+		protected int pool_id = -1;
 		
 		public abstract int serialSize();
 		public abstract int serialSize(boolean target64);

@@ -33,6 +33,7 @@ public class Z64WaveInfo {
 	private float tuning = 1.0f;
 	private String name;
 	private int uid;
+	private int pool_id = -1;
 	
 	/*--- Init ---*/
 	
@@ -74,6 +75,7 @@ public class Z64WaveInfo {
 	public String getName(){return name;}
 	public int getUID(){return uid;}
 	public int getFrameCount(){return frame_count;}
+	public int getPoolID(){return pool_id;}
 	
 	public byte getFlagsField(){
 		int flags = 0;
@@ -104,6 +106,8 @@ public class Z64WaveInfo {
 	public void setLoopCount(int val){loop_count = val;}
 	public void setADPCMBook(N64ADPCMTable book){adpcm_book = book;}
 	public void setLoopState(short[] state){loop_state = state;}
+	
+	public void setPoolID(int val){pool_id = val;}
 	
 	public void setFrameCount(int val){
 		frame_count = val;

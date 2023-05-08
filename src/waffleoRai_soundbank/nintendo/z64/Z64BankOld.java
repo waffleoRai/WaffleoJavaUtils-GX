@@ -301,7 +301,7 @@ class Z64BankOld {
 					winfo.wave_info.setTuning(1.0f);
 				}	
 				
-				perc.data.id = offset;
+				perc.data.pool_id = offset;
 				perc.data.setName("drum_" + String.format("%08x", perc.addr));
 				bank.perc_pool.put(offset, perc.data);
 			}
@@ -477,7 +477,7 @@ class Z64BankOld {
 				for(int i = 0; i < bank.pcount; i++){
 					int addr = (int)cstart;
 					Z64Drum drum = new Z64Drum();
-					drum.id = addr;
+					drum.pool_id = addr;
 					drum.setDecay(data.nextByte());
 					drum.setPan(data.nextByte());
 					int min = Byte.toUnsignedInt(data.nextByte());
@@ -491,7 +491,7 @@ class Z64BankOld {
 					//int envref = data.nextInt();
 					int envref = (int)data.nextShort();
 					
-					bank.perc_pool.put(drum.id, drum);
+					bank.perc_pool.put(drum.pool_id, drum);
 					for(int j = min; j <= max; j++){
 						PercBlock pblock = new PercBlock(j);
 						pblock.data = drum;
@@ -1652,7 +1652,7 @@ class Z64BankOld {
 		if(drum == null) return;
 		Z64Drum match = findDrum(drum);
 		if(match == null){
-			perc_pool.put(drum.id, drum);
+			perc_pool.put(drum.pool_id, drum);
 			match = drum;
 		}
 		
@@ -1850,15 +1850,15 @@ class Z64BankOld {
 				PercBlock other = perc_slots[j];
 				if(other == null) continue;
 				if(block.data == other.data) continue;
-				if(iset.contains(other.data.id)) continue;
+				if(iset.contains(other.data.pool_id)) continue;
 				if(block.data.drumEquals(other.data)){
 					//System.err.println("Z64BankOld DEBUG: Drum merge detected -- slot " + i + " to " + j);
-					perc_pool.remove(block.data.id);
+					perc_pool.remove(block.data.pool_id);
 					block.data = other.data;
 					block.updateLocalTuning();
 					break;
 				}
-				else iset.add(other.data.id);
+				else iset.add(other.data.pool_id);
 			}
 			iset.clear();
 		}
@@ -2072,18 +2072,18 @@ class Z64BankOld {
 				if(oinst == null || oinst.data == null) continue;
 				if(tinst.data.drumEquals(oinst.data)){
 					//Replace oinst.data with tinst.data
-					other.perc_pool.remove(oinst.data.id);
+					other.perc_pool.remove(oinst.data.pool_id);
 					oinst.data = tinst.data;
-					int id = tinst.data.id;
-					while(other.perc_pool.containsKey(tinst.data.id)){
+					int id = tinst.data.pool_id;
+					while(other.perc_pool.containsKey(tinst.data.pool_id)){
 						//Need to reassign ID
-						tinst.data.id++;
+						tinst.data.pool_id++;
 					}
-					if(tinst.data.id != id){
+					if(tinst.data.pool_id != id){
 						perc_pool.remove(id);
-						perc_pool.put(tinst.data.id, tinst.data);
+						perc_pool.put(tinst.data.pool_id, tinst.data);
 					}
-					other.perc_pool.put(oinst.data.id, oinst.data);
+					other.perc_pool.put(oinst.data.pool_id, oinst.data);
 				}
 			}
 		}
@@ -2606,7 +2606,7 @@ class Z64BankOld {
 			if(block != null){
 				String n = block.data.getName();
 				if(n == null){
-					n = "PERC_" + Integer.toHexString(block.data.id);
+					n = "PERC_" + Integer.toHexString(block.data.pool_id);
 					block.data.setName(n);
 				}
 				out.write(n + "\t" + block.tune + "\n");
