@@ -141,6 +141,7 @@ class Z64BankBlocks {
 	}
 	
 	protected static class EnvelopeBlock extends BankBlock{
+		//TODO Force pad to 16 per envelope?
 		
 		protected Z64Envelope data;
 		
@@ -362,6 +363,36 @@ class Z64BankBlocks {
 			return block;
 		}
 		
+		public static InstBlock readFrom64(BufferReference ptr){
+			InstBlock block = new InstBlock();
+			ptr.increment();
+			block.data.setLowRangeTop(ptr.nextByte());
+			block.data.setHighRangeBottom(ptr.nextByte());
+			block.data.setDecay(ptr.nextByte());
+			ptr.add(4L);
+			block.off_env = (int)ptr.nextLong();
+			
+			block.off_snd_lo = (int)ptr.nextLong();
+			if(block.off_snd_lo != 0){
+				block.data.setTuningLow(Float.intBitsToFloat(ptr.nextInt()));
+				ptr.add(4L);
+			}
+			else ptr.add(8L);
+			
+			block.off_snd_med = (int)ptr.nextLong();
+			block.data.setTuningMiddle(Float.intBitsToFloat(ptr.nextInt()));
+			ptr.add(4L);
+			
+			block.off_snd_hi = (int)ptr.nextLong();
+			if(block.off_snd_hi != 0){
+				block.data.setTuningHigh(Float.intBitsToFloat(ptr.nextInt()));
+				ptr.add(4L);
+			}
+			else ptr.add(8L);
+			
+			return block;
+		}
+		
 		public int serialSize(){return serialSize(false);}
 		public int serialSize(boolean target64){
 			return (data == null) ? 0:(target64 ? BLOCKSIZE_INST_64 : BLOCKSIZE_INST);
@@ -395,6 +426,7 @@ class Z64BankBlocks {
 				
 				buffer.addToFile((long)off_snd_med);
 				buffer.addToFile(Float.floatToRawIntBits(data.getTuningMiddle()));
+				buffer.addToFile(0);
 				
 				buffer.addToFile((long)off_snd_hi);
 				if(off_snd_hi != 0) {buffer.addToFile(Float.floatToRawIntBits(data.getTuningHigh())); buffer.addToFile(0);}
@@ -447,6 +479,20 @@ class Z64BankBlocks {
 			block.off_snd = ptr.nextInt();
 			block.tune = Float.intBitsToFloat(ptr.nextInt());
 			block.off_env = ptr.nextInt();
+			block.updateCommonTuning();
+			block.enm_str = String.format("PERC%02d", idx);
+			return block;
+		}
+		
+		public static PercBlock readFrom64(BufferReference ptr, int idx){
+			PercBlock block = new PercBlock(idx);
+			block.data.setDecay(ptr.nextByte());
+			block.data.setPan(ptr.nextByte());
+			ptr.add(6L);
+			block.off_snd = (int)ptr.nextLong();
+			block.tune = Float.intBitsToFloat(ptr.nextInt());
+			ptr.add(4L);
+			block.off_env = (int)ptr.nextLong();
 			block.updateCommonTuning();
 			block.enm_str = String.format("PERC%02d", idx);
 			return block;
@@ -514,6 +560,14 @@ class Z64BankBlocks {
 			SFXBlock block = new SFXBlock();
 			block.off_snd = ptr.nextInt();
 			block.data.setTuning(Float.intBitsToFloat(ptr.nextInt()));
+			return block;
+		}
+		
+		public static SFXBlock readFrom64(BufferReference ptr){
+			SFXBlock block = new SFXBlock();
+			block.off_snd = (int)ptr.nextLong();
+			block.data.setTuning(Float.intBitsToFloat(ptr.nextInt()));
+			ptr.add(4L);//Pad
 			return block;
 		}
 		

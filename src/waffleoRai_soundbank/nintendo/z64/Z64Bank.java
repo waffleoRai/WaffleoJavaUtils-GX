@@ -2,6 +2,7 @@ package waffleoRai_soundbank.nintendo.z64;
 
 import java.io.IOException;
 import java.io.Writer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -16,6 +17,7 @@ import waffleoRai_Sound.nintendo.Z64WaveInfo;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.MultiFileBuffer;
 import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.*;
+import waffleoRai_soundbank.nintendo.z64.Z64DrumPool.DrumRegionInfo;
 
 /**
  * A container for data specifying a soundfont for an EAD Nintendo64
@@ -67,8 +69,6 @@ public class Z64Bank implements WriterPrintable{
 		public String getName(){return name;}
 		public void setName(String s){name = s;}
 	}
-
-
 
 	public static class Z64ReadOptions{
 		public int instCount = -1;
@@ -201,6 +201,19 @@ public class Z64Bank implements WriterPrintable{
 				cpos += ptrSize;
 				if(cpos >= sfxTblPos) break;
 			}
+			
+			//Look for tuning values to assign
+			List<DrumRegionInfo> drumreg = myBank.drumPool.getDrumRegions();
+			for(DrumRegionInfo reg : drumreg){
+				int midnote = (int)reg.minNote + (int)((reg.maxNote - reg.minNote)/2);
+				PercBlock pblock = myBank.drumPool.getSlot(midnote);
+				if(pblock != null){
+					int wid = pblock.off_snd;
+					if((wid > 0) && (!tuningCache.containsKey(wid))){
+						tuningCache.put(wid, pblock.tune);
+					}
+				}
+			}
 		}
 		
 		//>> Instruments <<
@@ -236,11 +249,25 @@ public class Z64Bank implements WriterPrintable{
 				if(block.off_snd_lo > 0){
 					wavRefCache.add(block.off_snd_lo);
 					if(block.off_snd_lo < itblend) itblend = block.off_snd_lo;
+					if(!tuningCache.containsKey(block.off_snd_lo)){
+						float tune = Z64Sound.suggestWaveTuningFromInstRegion(0, block.data.getLowRangeTop()-1, block.data.getTuningLow());
+						tuningCache.put(block.off_snd_lo, tune);
+					}
 				}
 				
 				if(block.off_snd_hi > 0){
 					wavRefCache.add(block.off_snd_hi);
 					if(block.off_snd_hi < itblend) itblend = block.off_snd_hi;
+					if(!tuningCache.containsKey(block.off_snd_hi)){
+						float tune = Z64Sound.suggestWaveTuningFromInstRegion(block.data.getHighRangeBottom()+1, 127, block.data.getTuningHigh());
+						tuningCache.put(block.off_snd_hi, tune);
+					}
+				}
+				
+				if(!tuningCache.containsKey(block.off_snd_med)){
+					float tune = Z64Sound.suggestWaveTuningFromInstRegion(
+							block.data.getLowRangeTop(), block.data.getHighRangeBottom(), block.data.getTuningMiddle());
+					tuningCache.put(block.off_snd_med, tune);
 				}
 			}
 			
@@ -335,9 +362,15 @@ public class Z64Bank implements WriterPrintable{
 	/*----- Write -----*/
 	
 	public void tidy(){
-		//TODO
 		wavePool.updateMaps();
+		envPool.updateMaps();
+		sfxPool.updateMaps();
+		drumPool.updateMaps();
+		instPool.updateMaps();
+		
 		wavePool.mergeRedundantBlocks();
+		drumPool.cleanUp();
+		instPool.cleanUp();
 	}
 	
 	public int getSerializedSize(int options){
@@ -362,7 +395,8 @@ public class Z64Bank implements WriterPrintable{
 	}
 	
 	public int serializeTo(FileBuffer target, int options){
-
+		//TODO do inst perc and sfx blocks need to use wave uids too? 
+		//Maybe not if they are in the wave block.
 		long size = 0;
 		boolean p64 = (options & SEROP_64BIT) != 0;
 		boolean le = (options & SEROP_LITTLE_ENDIAN) != 0;
@@ -498,53 +532,92 @@ public class Z64Bank implements WriterPrintable{
 	}
 	
 	public Z64Instrument getInstrumentInSlot(int index){
-		//TODO
-		return null;
+		InstBlock iblock = instPool.getSlot(index);
+		if(iblock == null) return null;
+		return iblock.data;
 	}
 	
 	public Z64Drum getDrumInSlot(int index){
-		//TODO
-		return null;
+		PercBlock block = drumPool.getSlot(index);
+		if(block == null) return null;
+		return block.data;
 	}
 	
 	public Z64SoundEffect getSFXInSlot(int index){
-		//TODO
-		return null;
+		SFXBlock block = sfxPool.getSlot(index);
+		if(block == null) return null;
+		return block.data;
 	}
 	
 	public Z64Instrument[] getInstrumentPresets(){
-		//TODO
-		return null;
+		InstBlock[] blocks = instPool.getSlots();
+		Z64Instrument[] islots = new Z64Instrument[126];
+		if(blocks != null){
+			for(int i = 0; i < blocks.length; i++){
+				islots[i] = blocks[i].data;
+			}
+		}
+		return islots;
 	}
 	
 	public Z64Drum[] getPercussionSet(){
-		//TODO
-		return null;
+		Z64Drum[] pslots = new Z64Drum[64];
+		for(int i = 0; i < 64; i++){
+			PercBlock block = drumPool.getSlot(i);
+			if(block != null) pslots[i] = block.data;
+		}
+		
+		return pslots;
 	}
 	
 	public Z64SoundEffect[] getSFXSet(){
-		//TODO
-		return null;
+		int slotcount = sfxPool.getSerializedSlotCount();
+		if(slotcount < 1) return null;
+		Z64SoundEffect[] slots = new Z64SoundEffect[slotcount];
+		for(int i = 0; i < slots.length; i++){
+			SFXBlock block = sfxPool.getSlot(i);
+			if(block != null){
+				slots[i] = block.data;
+			}
+		}
+		return slots;
 	}
 	
 	public List<Z64Instrument> getAllUniqueInstruments(){
-		//TODO
-		return null;
+		List<InstBlock> blocks = instPool.getAllInstBlocks();
+		if(blocks.isEmpty()) return new LinkedList<Z64Instrument>();
+		List<Z64Instrument> list = new ArrayList<Z64Instrument>(blocks.size());
+		for(InstBlock block : blocks){
+			if(block.data == null) continue;
+			list.add(block.data);
+		}
+		return list;
 	}
 	
 	public List<Z64Drum> getAllUniqueDrums(){
-		//TODO
-		return null;
+		return drumPool.getAllDrums();
 	}
 	
 	public List<Z64SoundEffect> getAllUniqueSFX(){
-		//TODO
-		return null;
+		List<SFXBlock> blocks = sfxPool.getAllSFXBlocks();
+		if(blocks.isEmpty()) return new LinkedList<Z64SoundEffect>();
+		List<Z64SoundEffect> list = new ArrayList<Z64SoundEffect>(blocks.size());
+		for(SFXBlock block : blocks){
+			if(block.data == null) continue;
+			list.add(block.data);
+		}
+		return list;
 	}
 	
 	public List<Z64Envelope> getAllEnvelopes(){
-		//TODO
-		return null;
+		List<EnvelopeBlock> blocks = envPool.getAllEnvBlocks();
+		if(blocks.isEmpty()) return new LinkedList<Z64Envelope>();
+		List<Z64Envelope> list = new ArrayList<Z64Envelope>(blocks.size());
+		for(EnvelopeBlock block : blocks){
+			if(block.data == null) continue;
+			list.add(block.data);
+		}
+		return list;
 	}
 	
 	public List<Z64WaveInfo> getAllWaveBlocks(){
@@ -552,18 +625,17 @@ public class Z64Bank implements WriterPrintable{
 	}
 	
 	public String getInstPresetEnumString(int idx){
-		//TODO
-		return null;
+		return instPool.getSlotEnumString(idx);
 	}
 	
 	public String getDrumSlotEnumString(int idx){
-		//TODO
-		return null;
+		return drumPool.getSlotEnumString(idx);
 	}
 	
 	public String getSFXSlotEnumString(int idx){
-		//TODO
-		return null;
+		SFXBlock block = sfxPool.getSlot(idx);
+		if(block == null) return null;
+		return block.enm_str;
 	}
 	
 	/*----- Setters -----*/
@@ -575,37 +647,120 @@ public class Z64Bank implements WriterPrintable{
 	public void setSecondaryWaveArcIndex(int val){warc2 = val;}
 	
 	public Z64Instrument setInstrument(int slot, Z64Instrument inst){
-		//TODO
-		return null;
+		InstBlock block = new InstBlock(inst);
+		
+		//Link env and samples to block. Add to pools if not already there.
+		EnvelopeBlock eblock = envPool.addToPool(inst.getEnvelope());
+		block.envelope = eblock;
+		block.off_env = eblock.addr;
+		inst.setEnvelope(eblock.data);
+		
+		Z64WaveInfo winfo = inst.getSampleMiddle();
+		if(winfo != null){
+			WaveInfoBlock wblock = wavePool.addToPool(winfo);
+			if(wblock != null){
+				block.snd_med = wblock;
+				block.off_snd_med = wblock.addr;
+				inst.setSampleMiddle(winfo);
+			}
+		}
+		
+		winfo = inst.getSampleLow();
+		if(winfo != null){
+			WaveInfoBlock wblock = wavePool.addToPool(winfo);
+			if(wblock != null){
+				block.snd_lo = wblock;
+				block.off_snd_lo = wblock.addr;
+				inst.setSampleLow(winfo);
+			}
+		}
+		
+		winfo = inst.getSampleHigh();
+		if(winfo != null){
+			WaveInfoBlock wblock = wavePool.addToPool(winfo);
+			if(wblock != null){
+				block.snd_hi = wblock;
+				block.off_snd_hi = wblock.addr;
+				inst.setSampleHigh(winfo);
+			}
+		}
+		
+		block = instPool.assignToSlot(block, slot);
+		return block.data;
 	}
 	
-	public Z64Drum setDrum(int slot, Z64Drum drum){
-		//TODO
-		return null;
+	public Z64Drum setDrum(Z64Drum drum, int minSlot, int maxSlot){
+		//Add env
+		EnvelopeBlock eblock = envPool.addToPool(drum.getEnvelope());
+		
+		//Add wave
+		WaveInfoBlock wblock = wavePool.addToPool(drum.getSample());
+		
+		PercBlock[] blocks = drumPool.assignDrumToSlots(drum, minSlot, maxSlot);
+		if(blocks == null) return null;
+		for(int i = 0; i < blocks.length; i++){
+			if(blocks[i] != null){
+				//Link env and wave
+				blocks[i].envelope = eblock;
+				if(eblock != null){
+					blocks[i].off_env = eblock.addr;
+				}
+				
+				blocks[i].sample = wblock;
+				if(wblock != null) {
+					blocks[i].off_snd = wblock.addr;
+				}
+				
+				drum = blocks[i].data;
+			}
+		}
+		
+		if(eblock != null) drum.setEnvelope(eblock.data);
+		else drum.setEnvelope(null);
+		if(wblock != null) drum.setSample(wblock.getWaveInfo());
+		else drum.setSample(null);
+		return drum;
 	}
 	
 	public Z64SoundEffect setSFX(int slot, Z64SoundEffect sfx){
-		//TODO
-		return null;
+		WaveInfoBlock wblock = wavePool.addToPool(sfx.getSample());
+		
+		SFXBlock block = new SFXBlock(sfx);
+		block = sfxPool.setToSlot(block, slot);
+		if(block == null) return null;
+		
+		block.sample = wblock;
+		if(wblock != null){
+			block.off_snd = wblock.addr;
+			block.data.setSample(wblock.getWaveInfo());
+		}
+		else{
+			block.off_snd = 0;
+			block.data.setSample(null);
+		}
+		
+		return block.data;
 	}
 	
 	public void setInstPresetEnumString(int idx, String val){
-		//TODO
+		instPool.setSlotEnumString(val, idx);
 	}
 	
 	public void setDrumPresetEnumString(int idx, String val){
-		//TODO
+		drumPool.setSlotEnumString(val, idx);
 	}
 	
 	public void setSFXPresetEnumString(int idx, String val){
-		//TODO
+		SFXBlock block = sfxPool.getSlot(idx);
+		if(block != null){
+			block.enm_str = val;
+		}
 	}
 	
 	/*----- Backdoor -----*/
 	
 	protected EnvelopeBlock addEnvelope(EnvelopeBlock env){
-		//TODO
-		return null;
+		return envPool.addToPool(env);
 	}
 	
 	protected Z64WavePool getWavePool(){return wavePool;}

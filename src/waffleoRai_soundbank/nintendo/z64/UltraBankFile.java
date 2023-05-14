@@ -23,6 +23,7 @@ import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.InstBlock;
 import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.PercBlock;
 import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.SFXBlock;
 import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.WaveInfoBlock;
+import waffleoRai_soundbank.nintendo.z64.Z64DrumPool.DrumRegionInfo;
 
 public class UltraBankFile {
 	
@@ -620,22 +621,20 @@ public class UltraBankFile {
 		int pcount = drumPool.getUniqueDrumCount();
 		boolean useuid = (flags & OP_LINK_WAVES_UID) != 0;
 		
-		List<Z64Drum> drums = drumPool.getAllDrums();
-		int[][] bounds = drumPool.getDrumRegionBoundaries();
+		List<DrumRegionInfo> drumreg = drumPool.getDrumRegions();
 		
 		FileBuffer buff = new FileBuffer(12 + (12 * pcount) + 16, true);
 		buff.printASCIIToFile("PERC");
 		buff.addToFile(0); //Size placeholder
 		buff.addToFile(pcount);
 		
-		int i = 0;
-		for(Z64Drum drum : drums){
+		for(DrumRegionInfo reg : drumreg){
+			Z64Drum drum = reg.drum;
 			buff.addToFile(drum.getDecay());
 			buff.addToFile(drum.getPan());
 			
-			int[] reg = bounds[i++];
-			buff.addToFile((byte)reg[0]);
-			buff.addToFile((byte)reg[1]);
+			buff.addToFile(reg.minNote);
+			buff.addToFile(reg.maxNote);
 			
 			Z64WaveInfo winfo = drum.getSample();
 			if(winfo != null){

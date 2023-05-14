@@ -100,6 +100,22 @@ public class Z64Sound {
 		return calculateTuning(midi_note, tune);
 	}
 
+	public static float suggestWaveTuningFromInstRegion(int minNote, int maxNote, float rawTune){
+		//Calculate tuning value at note in middle of range instead of at Middle C
+		int note = minNote + ((maxNote - minNote)/2);
+		Z64Tuning tuning = calculateTuning((byte)MIDDLE_C, rawTune);
+		return calculateTuning((byte)note, tuning);
+	}
+	
+	public static float clampWaveTuningValue(float input){
+		//Keeps from recording extremely high or low sample rates
+		final float MIN = 0.25f;
+		final float MAX = 2.0f;
+		if(input < MIN) input = MIN;
+		if(input > MAX) input = MAX;
+		return input;
+	}
+	
 	public static String getCodecString(int codec, boolean shortcode){
 		switch(codec){
 		case CODEC_ADPCM:
