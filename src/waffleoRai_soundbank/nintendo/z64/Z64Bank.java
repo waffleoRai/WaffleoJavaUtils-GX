@@ -110,6 +110,14 @@ public class Z64Bank implements WriterPrintable{
 	
 	/*----- Read -----*/
 	
+	public static Z64ReadOptions genOptionsForKnownCounts(int inst_count, int perc_count, int sfx_count){
+		Z64ReadOptions op = new Z64ReadOptions();
+		op.instCount = inst_count;
+		op.percCount = perc_count;
+		op.sfxCount = sfx_count;
+		return op;
+	}	
+
 	public static Z64Bank readRaw(FileBuffer data, Z64ReadOptions options){
 		if(data == null) return null;
 		if(options == null) options = new Z64ReadOptions();
@@ -140,8 +148,8 @@ public class Z64Bank implements WriterPrintable{
 			}
 			myBank = new Z64Bank(options.sfxCount);
 			
+			long cpos = sfxTblPos;
 			for(int i = 0; i < options.sfxCount; i++){
-				long cpos = sfxTblPos;
 				//Check if slot is just empty
 				if(options.src64){
 					if(data.longFromFile(cpos + 8L) == 0L){
@@ -174,10 +182,14 @@ public class Z64Bank implements WriterPrintable{
 		
 		//>> Percussion <<
 		long imaxpos = percTblPos;
+		long ptblend = fsize;
+		if(sfxTblPos > 0){
+			ptblend = sfxTblPos;
+		}
 		if(percTblPos > 0){
 			//Estimate perc count, if unknown
 			if(options.percCount < 0){
-				options.percCount = (int)((sfxTblPos - percTblPos) / ptrSize);
+				options.percCount = (int)((ptblend - percTblPos) / ptrSize);
 				if(options.percCount > 64) options.percCount = 64;
 			}
 			
@@ -199,7 +211,7 @@ public class Z64Bank implements WriterPrintable{
 				}
 				
 				cpos += ptrSize;
-				if(cpos >= sfxTblPos) break;
+				if(cpos >= ptblend) break;
 			}
 			
 			//Look for tuning values to assign
@@ -215,6 +227,7 @@ public class Z64Bank implements WriterPrintable{
 				}
 			}
 		}
+		else imaxpos = fsize;
 		
 		//>> Instruments <<
 		long itblend = fsize;
@@ -234,7 +247,7 @@ public class Z64Bank implements WriterPrintable{
 			long instOff = options.src64 ? data.longFromFile(cpos) : Integer.toUnsignedLong(data.intFromFile(cpos));
 			if(instOff == 0){cpos += ptrSize; i++; continue;}
 			if(instOff < itblend) itblend = instOff;
-			if(instOff >= imaxpos) break; //Probably not real
+			if(instOff >= imaxpos) break; //Probably not real?
 			
 			InstBlock block = myBank.instPool.importInstFromBin(
 					data.getReferenceAt(instOff), i, options.src64, options.srcLE);
@@ -292,11 +305,17 @@ public class Z64Bank implements WriterPrintable{
 		
 		//>> Envelopes <<
 		intlist.clear();
-		intlist.addAll(wavRefCache);
+		intlist.addAll(envRefCache);
 		Collections.sort(intlist);
+		Map<Integer, Integer> envMergeRefs = new HashMap<Integer, Integer>();
 		for(Integer ref : intlist){
-			myBank.envPool.importFromBin(
+			EnvelopeBlock eb = myBank.envPool.importFromBin(
 					data.getReferenceAt(ref));
+			if(eb != null){
+				if(eb.addr != ref){
+					envMergeRefs.put(ref, eb.addr);
+				}
+			}
 		}
 		myBank.envPool.updateMaps();
 		
@@ -327,8 +346,20 @@ public class Z64Bank implements WriterPrintable{
 				block.envelope = eblock;
 				if(block.data != null) block.data.setEnvelope(block.envelope.data);
 			}
+			else{
+				//Check merges.
+				Integer ref = envMergeRefs.get(block.off_env);
+				if(ref != null){
+					eblock = myBank.envPool.getByLocalOffset(ref);
+					if(eblock != null){
+						block.envelope = eblock;
+						if(block.data != null) block.data.setEnvelope(block.envelope.data);
+					}
+				}
+			}
 		}
-		myBank.instPool.updateMaps();
+		myBank.instPool.cleanUp();
+		//myBank.instPool.updateMaps();
 		
 		List<PercBlock> pblocks = myBank.drumPool.getAllPercBlocks();
 		for(PercBlock block : pblocks){
@@ -343,8 +374,20 @@ public class Z64Bank implements WriterPrintable{
 				block.envelope = eblock;
 				if(block.data != null) block.data.setEnvelope(block.envelope.data);
 			}
+			else{
+				//Check merges.
+				Integer ref = envMergeRefs.get(block.off_env);
+				if(ref != null){
+					eblock = myBank.envPool.getByLocalOffset(ref);
+					if(eblock != null){
+						block.envelope = eblock;
+						if(block.data != null) block.data.setEnvelope(block.envelope.data);
+					}
+				}
+			}
 		}
-		myBank.drumPool.updateMaps();
+		myBank.drumPool.cleanUp();
+		//myBank.drumPool.updateMaps();
 		
 		List<SFXBlock> xblocks = myBank.sfxPool.getAllSFXBlocks();
 		for(SFXBlock block : xblocks){
@@ -492,9 +535,9 @@ public class Z64Bank implements WriterPrintable{
 		target.addToFile(maintbl);
 		target.addToFile(bWav);
 		if(bEnv != null) target.addToFile(bEnv);
-		if(bEnv != null) target.addToFile(bIns);
-		if(bEnv != null) target.addToFile(bPrc);
-		if(bEnv != null) target.addToFile(bSfx);
+		if(bIns != null) target.addToFile(bIns);
+		if(bPrc != null) target.addToFile(bPrc);
+		if(bSfx != null) target.addToFile(bSfx);
 		
 		return (int)size;
 	}

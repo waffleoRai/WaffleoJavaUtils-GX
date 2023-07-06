@@ -212,7 +212,22 @@ class Z64InstPool {
 		if(block == null) return null;
 		for(InstBlock other : pool){
 			if(block == other) return other;
-			if(block.data.instEquals(other.data)) return other;
+			if(block.data.getSampleMiddle() != null){
+				//Don't merge off data match if waves are unlinked.
+				// Will lead to inappropriate merging.
+				if(block.data.instEquals(other.data)) return other;
+			}
+			else{
+				//Check block wave offsets.
+				if(block.data.instEquals(other.data)){
+					boolean eq = true;
+					if(block.off_env != other.off_env) eq = false;
+					if(block.off_snd_med != other.off_snd_med) eq = false;
+					if(block.off_snd_lo != other.off_snd_lo) eq = false;
+					if(block.off_snd_hi != other.off_snd_hi) eq = false;
+					if(eq) return other;
+				}
+			}
 		}
 		
 		pool.add(block);
@@ -222,7 +237,7 @@ class Z64InstPool {
 	public InstBlock assignToSlot(InstBlock block, int slot){
 		//Calls addToPool for instblock to check for redundancies.
 		if(block == null) return null;
-		addToPool(block);
+		block = addToPool(block);
 		
 		if(slot < 0 || slot >= slots.length) return null;
 		slots[slot] = block;

@@ -70,6 +70,7 @@ class Z64EnvPool {
 		for(EnvelopeBlock e : pool){
 			e.addr = pos;
 			pos += e.serialSize();
+			pos = (pos + 0xf) & ~0xf;
 		}
 		return true;
 	}
@@ -79,6 +80,7 @@ class Z64EnvPool {
 		FileBuffer buff = new FileBuffer(alloc, !little_endian);
 		for(EnvelopeBlock e : pool){
 			e.serializeTo(buff, false, false, little_endian);
+			while((buff.getFileSize() & 0xf) != 0) buff.addToFile((byte)0);
 		}
 		return buff;
 	}
@@ -91,6 +93,7 @@ class Z64EnvPool {
 		int size = 0;
 		for(EnvelopeBlock env : pool){
 			size += env.serialSize();
+			size = (size + 0xf) & ~0xf;
 		}
 		return size;
 	}

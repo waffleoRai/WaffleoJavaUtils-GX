@@ -4,11 +4,14 @@ import java.io.BufferedOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import waffleoRai_Sound.nintendo.Z64Sound;
 import waffleoRai_Sound.nintendo.Z64Sound.Z64Tuning;
@@ -31,7 +34,7 @@ public class UltraBankFile {
 	
 	public static final String UBNK_MAGIC = "UBNK";
 	public static final int UBNK_VERSION_MAJOR = 2;
-	public static final int UBNK_VERSION_MINOR = 2;
+	public static final int UBNK_VERSION_MINOR = 3;
 	public static final String UWSD_MAGIC = "UWSD";
 	public static final int UWSD_VERSION_MAJOR = 2;
 	public static final int UWSD_VERSION_MINOR = 0;
@@ -272,6 +275,7 @@ public class UltraBankFile {
 		
 		data.setCurrentPosition(0L);
 		int sfxCount = data.nextInt();
+		sfxPool.expandSlotCapacity(sfxCount);
 		for(int i = 0; i < sfxCount; i++){
 			int pos = (int)data.getCurrentPosition();
 			int word1 = data.nextInt();
@@ -403,6 +407,88 @@ public class UltraBankFile {
 		if(this.isUBNK()) return readBNKTo(bank);
 		if(this.isUWSD()) return readWSDTo(bank);
 		return false;
+	}
+	
+	public void linkWaves(Z64Bank bank, Map<Integer, Z64WaveInfo> waveIdentMap){
+		if(bank == null || waveIdentMap == null) return;
+		Set<Integer> usedwaves = new HashSet<Integer>();
+		
+		Z64SFXPool sfxPool = bank.getSFXPool();
+		if(sfxPool != null){
+			List<SFXBlock> blocks = sfxPool.getAllSFXBlocks();
+			for(SFXBlock block : blocks){
+				int wid = block.off_snd;
+				if(!waveRefsByUID()){
+					if(wid <= 0) continue;
+				}
+				usedwaves.add(wid);
+			}
+		}
+		
+		Z64DrumPool drumPool = bank.getDrumPool();
+		if(drumPool != null){
+			List<PercBlock> blocks = drumPool.getAllPercBlocks();
+			for(PercBlock block : blocks){
+				int wid = block.off_snd;
+				if(!waveRefsByUID()){
+					if(wid <= 0) continue;
+				}
+				usedwaves.add(wid);
+			}
+		}
+		
+		Z64InstPool instPool = bank.getInstPool();
+		if(instPool != null){
+			List<InstBlock> blocks = instPool.getAllInstBlocks();
+			for(InstBlock block : blocks){
+				int wid = block.off_snd_med;
+				if(wid != 0){
+					if(waveRefsByUID()){
+						if(wid != -1) usedwaves.add(wid);
+					}
+					else{
+						if(wid > 0) usedwaves.add(wid);
+					}
+				}
+				
+				wid = block.off_snd_lo;
+				if(wid != 0){
+					if(waveRefsByUID()){
+						if(wid != -1) usedwaves.add(wid);
+					}
+					else{
+						if(wid > 0) usedwaves.add(wid);
+					}
+				}
+				
+				wid = block.off_snd_hi;
+				if(wid != 0){
+					if(waveRefsByUID()){
+						if(wid != -1) usedwaves.add(wid);
+					}
+					else{
+						if(wid > 0) usedwaves.add(wid);
+					}
+				}
+			}
+		}
+		
+		usedwaves.remove(0);
+		if(waveRefsByUID()){
+			usedwaves.remove(-1);
+		}
+		
+		if(usedwaves.isEmpty()) return;
+		
+		//Match ids to map
+		List<Z64WaveInfo> waves = new ArrayList<Z64WaveInfo>(usedwaves.size());
+		for(Integer id : usedwaves){
+			Z64WaveInfo winfo = waveIdentMap.get(id);
+			if(winfo != null) waves.add(winfo);
+		}
+
+		//Call other linkWaves overload
+		linkWaves(bank, waves);
 	}
 	
 	public void linkWaves(Z64Bank bank, Collection<Z64WaveInfo> waves){
@@ -539,6 +625,7 @@ public class UltraBankFile {
 		List<EnvelopeBlock> eblocks = envPool.getAllEnvBlocks();
 		for(EnvelopeBlock block : eblocks){
 			block.pool_id = i++;
+			block.data.id = block.pool_id;
 			int chunk_pos = datstart + (int)edat.getFileSize();
 			head.addToFile((short)chunk_pos);
 			block.serializeTo(edat, false);
@@ -546,7 +633,9 @@ public class UltraBankFile {
 		
 		
 		//Pad edat to a multiple of 4.
-		while((edat.getFileSize() & 0x3) != 0) edat.addToFile((byte)0);
+		int totalsize = (int)(head.getFileSize() + edat.getFileSize());
+		int pad = 4 - (totalsize & 0x3);
+		for(int j = 0; j < pad; j++) edat.addToFile((byte)0);
 		
 		head.replaceInt((int)(head.getFileSize() + edat.getFileSize() - 8L), 4L);
 		
@@ -582,21 +671,21 @@ public class UltraBankFile {
 			buff.addToFile(block.data.getDecay());
 			
 			if(block.envelope != null) buff.addToFile(block.envelope.pool_id);
-			else buff.addToFile(0);
+			else buff.addToFile(-1);
 			
 			int wref = ubnkWriter_resolveWaveRef(block, 0, flags);
 			buff.addToFile(wref);
-			if(wref != 0 && wref != -1) Float.floatToRawIntBits(block.data.getTuningLow());
+			if(wref != 0 && wref != -1) buff.addToFile(Float.floatToRawIntBits(block.data.getTuningLow()));
 			else buff.addToFile(0);
 			
 			wref = ubnkWriter_resolveWaveRef(block, 1, flags);
 			buff.addToFile(wref);
-			if(wref != 0 && wref != -1) Float.floatToRawIntBits(block.data.getTuningMiddle());
+			if(wref != 0 && wref != -1) buff.addToFile(Float.floatToRawIntBits(block.data.getTuningMiddle()));
 			else buff.addToFile(0);
 			
 			wref = ubnkWriter_resolveWaveRef(block, 2, flags);
 			buff.addToFile(wref);
-			if(wref != 0 && wref != -1) Float.floatToRawIntBits(block.data.getTuningHigh());
+			if(wref != 0 && wref != -1) buff.addToFile(Float.floatToRawIntBits(block.data.getTuningHigh()));
 			else buff.addToFile(0);
 		}
 		
@@ -605,8 +694,8 @@ public class UltraBankFile {
 		for(i = 0; i < slots.length; i++){
 			if(slots[i] != null){
 				long tpos = otblstart + (i << 1);
-				int datpos = idatstart + (i << 5);
-				buff.replaceInt(datpos, tpos);
+				int datpos = idatstart + (slots[i].pool_id << 5);
+				buff.replaceShort((short)datpos, tpos);
 			}
 		}
 		
@@ -642,6 +731,14 @@ public class UltraBankFile {
 				else buff.addToFile(winfo.getWaveOffset());
 			}
 			else buff.addToFile(0);
+			
+			//Fergot the last word here...
+			buff.addToFile(drum.getTuning().root_key);
+			buff.addToFile(drum.getTuning().fine_tune);
+			
+			Z64Envelope env = drum.getEnvelope();
+			if(env != null) buff.addToFile((short)env.id);
+			else buff.addToFile((short)-1);
 			
 		}
 		

@@ -19,8 +19,8 @@ import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.WaveInfoBlock;
  * to be compatible with other games) soundfont.
  * <br>Manages wave blocks, predictors (ADPCM codec info), and loop blocks.
  * @author Blythe Hospelhorn
- * @version 1.0.1
- * @since May 7, 2023
+ * @version 1.0.2
+ * @since May 21, 2023
  */
 class Z64WavePool {
 	
@@ -111,6 +111,8 @@ class Z64WavePool {
 		
 		for(Predictor p : predPool){
 			size += p.serialSize(); //Not dependent on target ptr size.
+			//Pad to 16.
+			size = (size + 0xf) & ~0xf;
 		}
 		
 		for(LoopBlock l : loopPool){
@@ -716,6 +718,7 @@ class Z64WavePool {
 				if(block.pred.addr == -1){
 					block.pred.addr = pos;
 					pos += block.pred.serialSize();
+					pos = (pos + 0xf) & ~0xf;
 				}
 			}
 			
@@ -772,6 +775,7 @@ class Z64WavePool {
 			if(waveBlock.pred != null){
 				if(!waveBlock.pred.flag){
 					waveBlock.pred.serializeTo(buff, use_uids, target_64, little_endian);
+					while((buff.getFileSize() & 0xf) != 0) buff.addToFile((byte)0);
 					waveBlock.pred.flag = true;
 				}
 			}

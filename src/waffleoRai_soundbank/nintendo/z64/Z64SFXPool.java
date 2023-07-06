@@ -15,7 +15,7 @@ class Z64SFXPool {
 	
 	/*----- Instance Variables -----*/
 	
-	private List<SFXBlock> pool;
+	//private List<SFXBlock> pool;
 	private Map<Integer, SFXBlock> mapLocalOff;
 	
 	private SFXBlock[] slots;
@@ -48,8 +48,10 @@ class Z64SFXPool {
 	
 	public void relink(Z64WavePool wavePool, int waveRefType){
 		//Takes the value in off_snd and uses this to replace all wave references
-		
-		for(SFXBlock block : pool){
+		if(slots == null) return;
+		for(int i = 0; i < slots.length; i++){
+			SFXBlock block = slots[i];
+			if(block == null) continue;
 			boolean nullref = false;
 			switch(waveRefType){
 			case Z64Bank.REFTYPE_UID:
@@ -97,7 +99,6 @@ class Z64SFXPool {
 	public boolean repackSerial(int section_start, boolean target_64){
 		if(slots == null) return false;
 		int pos = section_start;
-		for(SFXBlock block : pool) block.addr = 0; //So unslotted blocks have no address
 		
 		//By slot
 		for(int i = 0; i < slots.length; i++){
@@ -161,13 +162,37 @@ class Z64SFXPool {
 	}
 	
 	public List<SFXBlock> getAllSFXBlocks(){
-		if(pool.isEmpty()) return new LinkedList<SFXBlock>();
-		List<SFXBlock> copy = new ArrayList<SFXBlock>(pool.size());
-		copy.addAll(pool);
+		if(slots == null) return new LinkedList<SFXBlock>();
+		List<SFXBlock> copy = new ArrayList<SFXBlock>(slots.length);
+		for(int i = 0; i < slots.length; i++){
+			if(slots[i] != null){
+				copy.add(slots[i]);
+			}
+		}
 		return copy;
 	}
 	
 	/*----- Setters -----*/
+	
+	public int expandSlotCapacity(int size){
+		if(slots != null){
+			if(slots.length >= size) return slots.length;
+		}
+		if(size <= 0) {
+			if(slots == null) return 0;
+			return slots.length;
+		}
+		
+		SFXBlock[] oldslots = slots;
+		slots = new SFXBlock[size];
+		if(oldslots != null){
+			for(int i = 0; i < oldslots.length; i++){
+				slots[i] = oldslots[i];
+			}
+		}
+		
+		return slots.length;
+	}
 	
 	public SFXBlock setToSlot(SFXBlock block, int slot){
 		if(block == null) return null;
@@ -180,7 +205,7 @@ class Z64SFXPool {
 		}
 		
 		//If slot < 0, only import to pool. Weirdo.
-		boolean addme = true;
+		/*boolean addme = true;
 		for(SFXBlock other : pool){
 			if(block == other){
 				//Behavior depends on what's in slot...
@@ -205,7 +230,7 @@ class Z64SFXPool {
 			}
 		}
 		
-		if(addme) pool.add(block);
+		if(addme) pool.add(block);*/
 		
 		if(slot >= 0){
 			if(slot >= slots.length){
@@ -222,8 +247,11 @@ class Z64SFXPool {
 	
 	public void updateMaps(){
 		mapLocalOff.clear();
+		if(slots == null) return;
 		int i = 0;
-		for(SFXBlock block : pool){
+		for(int j = 0; j < slots.length; j++){
+			if(slots[j] == null) continue;
+			SFXBlock block = slots[j];
 			block.pool_id = i++;
 			if(block.addr > 0){
 				mapLocalOff.put(block.addr, block);

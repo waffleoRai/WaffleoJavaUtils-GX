@@ -1,9 +1,10 @@
 package waffleoRai_Containers.nintendo;
 
+import java.io.IOException;
+
 import waffleoRai_Utils.FileBuffer;
 
 public abstract class NDKFile {
-	
 	
 	protected FileBuffer data;
 	
@@ -14,32 +15,23 @@ public abstract class NDKFile {
 
 	protected NDKHeaderEntry[] sections;
 
-	public FileBuffer getFileData()
-	{
-		return data;
-	}
+	public FileBuffer getFileData(){return data;}
 	
-	public FileBuffer getSectionData(int index)
-	{
+	public FileBuffer getSectionData(int index){
 		if(data == null) return null;
 		if(index < 0 || index >= sections.length) return null;
 		NDKHeaderEntry he = sections[index];
 		return data.createReadOnlyCopy(he.getOffset(), he.getOffset() + he.getLength());
 	}
 	
-	public FileBuffer getSectionData(String type)
-	{
+	public FileBuffer getSectionData(String type){
 		if(data == null) return null;
 		//Returns the first match
-		for(int i = 0; i < sections.length; i++)
-		{
-			if(sections[i] != null)
-			{
+		for(int i = 0; i < sections.length; i++){
+			if(sections[i] != null){
 				String m = sections[i].getIdentifier();
-				if(m != null)
-				{
-					if(m.equalsIgnoreCase(type))
-					{
+				if(m != null){
+					if(m.equalsIgnoreCase(type)){
 						return data.createReadOnlyCopy(sections[i].getOffset(), sections[i].getOffset() + sections[i].getLength());
 					}
 				}
@@ -48,16 +40,12 @@ public abstract class NDKFile {
 		return null;
 	}
 	
-	public FileBuffer getSectionData(NDKSectionType type)
-	{
+	public FileBuffer getSectionData(NDKSectionType type){
 		if(data == null) return null;
 		//Returns the first match
-		for(int i = 0; i < sections.length; i++)
-		{
-			if(sections[i] != null)
-			{
-				if(sections[i].getType() == type)
-				{
+		for(int i = 0; i < sections.length; i++){
+			if(sections[i] != null){
+				if(sections[i].getType() == type){
 					return data.createReadOnlyCopy(sections[i].getOffset(), sections[i].getOffset() + sections[i].getLength());
 				}
 			}
@@ -65,49 +53,24 @@ public abstract class NDKFile {
 		return null;
 	}
 	
-	public String getFileIdentifier()
-	{
-		return this.fileMagic;
-	}
+	public String getFileIdentifier(){return this.fileMagic;}
+	public boolean isBigEndian(){return data.isBigEndian();}
+	public int getMajorVersion(){return this.version_major;}
+	public int getMinorVersion(){return this.version_minor;}
+	public long getFileLength(){return this.file_size;}
 	
-	public boolean isBigEndian()
-	{
-		return data.isBigEndian();
-	}
+	public int getSectionCount(){return this.sections.length;}
 	
-	public int getMajorVersion()
-	{
-		return this.version_major;
-	}
-	
-	public int getMinorVersion()
-	{
-		return this.version_minor;
-	}
-	
-	public long getFileLength()
-	{
-		return this.file_size;
-	}
-	
-	public int getSectionCount()
-	{
-		return this.sections.length;
-	}
-	
-	public void freeSourceData()
-	{
+	public void freeSourceData(){
+		try{data.dispose();}
+		catch(IOException ex){ex.printStackTrace(); return;}
 		data = null;
 	}
 	
-	public long getOffsetToSection(NDKSectionType type)
-	{
-		for(int i = 0; i < sections.length; i++)
-		{
-			if(sections[i] != null)
-			{
-				if(sections[i].getType() == type)
-				{
+	public long getOffsetToSection(NDKSectionType type){
+		for(int i = 0; i < sections.length; i++){
+			if(sections[i] != null){
+				if(sections[i].getType() == type){
 					return sections[i].getOffset();
 				}
 			}
@@ -115,17 +78,13 @@ public abstract class NDKFile {
 		return -1;
 	}
 	
-	public long getOffsetToSection(String type)
-	{
+	public long getOffsetToSection(String type){
 		if(data == null) return -1;
 		//Returns the first match
-		for(int i = 0; i < sections.length; i++)
-		{
-			if(sections[i] != null)
-			{
+		for(int i = 0; i < sections.length; i++){
+			if(sections[i] != null){
 				String m = sections[i].getIdentifier();
-				if(m != null && m.equals(type))
-				{
+				if(m != null && m.equals(type)){
 					return sections[i].getOffset();
 				}
 			}

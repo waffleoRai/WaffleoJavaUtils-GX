@@ -51,6 +51,7 @@ class Z64DrumPool {
 		PercBlock block = null;
 		if(src64) block = PercBlock.readFrom64(input, slot);
 		else block = PercBlock.readFrom(input, slot);
+		block.addr = pos;
 		
 		return setSlot(block, slot);
 	}
@@ -324,7 +325,15 @@ class Z64DrumPool {
 		if(drum == null) return null;
 		for(Z64Drum other : pool){
 			if(drum == other) return other;
-			if(drum.drumEquals(other)) return other;
+			if(drum.drumEquals(other)){
+				if(drum.getSample() != null){
+					//Not necessarily equal if both samples are null, since
+					//	that usually just means unlinked.
+					
+					//TODO Should we merge based on sndoff and envoff then?
+					return other;
+				}
+			}
 		}
 		
 		pool.add(drum);
