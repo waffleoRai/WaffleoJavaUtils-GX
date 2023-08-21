@@ -44,6 +44,16 @@ public abstract class NUSALSeqDataRefCommand extends NUSALSeqReferenceCommand{
 		}
 	}
 	
+	public String[][] getParamStrings(){
+		String[][] pstr = super.getParamStrings();
+		if(offset != 0){
+			if(pstr[p_idx_addr][0] != null){
+				pstr[p_idx_addr][0] += "[" + offset + "]";
+			}
+		}
+		return pstr;
+	}
+	
 	protected StringBuilder toMMLCommand_child(){
 		StringBuilder sb = super.toMMLCommand_child();
 		if(offset != 0){

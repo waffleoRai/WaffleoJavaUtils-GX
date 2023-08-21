@@ -57,6 +57,23 @@ public class Z64Instrument extends Labelable{
 	public void setSampleHigh(Z64WaveInfo val){wave_hi = val;}
 	public void setID(int val){id = val;}
 	
+	public Z64Instrument copy(){
+		Z64Instrument copy = new Z64Instrument();
+		copy.note_lo = this.note_lo;
+		copy.note_hi = this.note_hi;
+		copy.decay = this.decay;
+		copy.tune_lo = this.tune_lo;
+		copy.tune_med = this.tune_med;
+		copy.tune_hi = this.tune_hi;
+		copy.envelope = this.envelope.copy();
+		copy.wave_lo = this.wave_lo;
+		copy.wave_med = this.wave_med;
+		copy.wave_hi = this.wave_hi;
+		copy.id = this.id;
+		copy.name = this.name;
+		return copy;
+	}
+	
 	public void setIDRandom(){
 		Random r = new Random();
 		id = r.nextInt();

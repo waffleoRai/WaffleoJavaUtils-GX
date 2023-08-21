@@ -128,6 +128,8 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		private int value = 0;
  		private NUSALSeqDataType dattype = null;
  		
+ 		private int maxBranchWhile = -1; //Max number of while loop runs in parseCodeBranch before giving up.
+ 		
  		public boolean isSeq(){
  			return (value & 0x80000000) != 0;
  		}
@@ -233,6 +235,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		public int start_tick = -1;
  		public int tick_len = -1;
  		public int end_type = BRANCHEND_UNK;
+ 		public boolean timedout = false;
  		public ParseContext ctxt = null;
  		public NUSALSeqCommand head = null;
  	}
@@ -316,7 +319,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		target.setLabel(lbl);
  	}
  	
- 	private void addNewDataAndLink(DataLater ndat){
+ 	private void addNewDataAndLink(DataLater ndat, int branchTimeout){
  		//First find upper boundary of data size.
  		int upper_addr = ndat.data_address + 1;
  		int max_addr = (int)data.getFileSize();
@@ -370,7 +373,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  			}
  			
  			if(dcmd instanceof NUSALSeqPtrTableData){
- 				reflinkScanPtbl((NUSALSeqPtrTableData)dcmd);
+ 				reflinkScanPtbl((NUSALSeqPtrTableData)dcmd, branchTimeout);
  			}
  			
  		}
@@ -383,11 +386,12 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		}
  	}
  	
- 	private ParseContext reflink_GuessPtblContext(NUSALSeqPtrTableData ptbl){
+ 	private ParseContext reflink_GuessPtblContext(NUSALSeqPtrTableData ptbl, int branchTimeout){
  		//This tries to figure out the context of what lies on the other
  		//	side of the pointers in the ptbl. ie. what the ptbl is used for.
  		//This may lead back a few levels of instructions...
  		ParseContext ret = new ParseContext();
+ 		ret.maxBranchWhile = branchTimeout;
  		NUSALSeqCommand target = DataCommands.guessPTableUsage(ptbl);
  		if(DEBUG_MODE){
  			System.err.println("[DEBUG] reflink_GuessPtblContext || DataCommands returned " + target);
@@ -486,7 +490,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		}
  	}
  	
- 	private void reflinkScanPtbl(NUSALSeqPtrTableData ptbl){
+ 	private void reflinkScanPtbl(NUSALSeqPtrTableData ptbl, int branchTimeout){
  		int ucount = ptbl.getUnitCount();
  		if (DEBUG_MODE){
  			System.err.println("[DEBUG] reflinkScanPtbl || Scanning PTable @ 0x" + Integer.toHexString(ptbl.getAddress()));
@@ -529,7 +533,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  				
  				//Queue branch.
  				//Will need to work out context...
- 				if (tblctxt == null) tblctxt = reflink_GuessPtblContext(ptbl);
+ 				if (tblctxt == null) tblctxt = reflink_GuessPtblContext(ptbl, branchTimeout);
  				if(tblctxt == null){
  					//Error?
  					ParseError error = new ParseError();
@@ -572,7 +576,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		}
  	}
  	
- 	private void referenceLinkCycleScanCommand(int addr){
+ 	private void referenceLinkCycleScanCommand(int addr, int branchTimeout){
  		NUSALSeqCommand cmd = cmdmap.get(addr);
  		if(cmd == null) return;
  		if(cmd instanceof NUSALSeqReferenceCommand){
@@ -580,7 +584,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  			rchecked.add(addr);
  		}
  		else if (cmd instanceof NUSALSeqPtrTableData){
- 			reflinkScanPtbl((NUSALSeqPtrTableData)cmd);
+ 			reflinkScanPtbl((NUSALSeqPtrTableData)cmd, branchTimeout);
  		}
  		else rchecked.add(addr);
  	}
@@ -605,7 +609,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		return false;
  	}
  	
- 	private void referenceLinkCycle() throws InterruptedException{
+ 	private void referenceLinkCycle(int branchTimeout) throws InterruptedException{
  		//Because this may dig up some new "ParseLaters" from branches
  		//	discovered in pointer tables, may need to be called multiple times.
  		if(cmdmap.isEmpty()) return;
@@ -637,7 +641,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		while(cont){
 			for(Integer addr : alist){
 				if(rchecked.contains(addr)) continue;
-				referenceLinkCycleScanCommand(addr);
+				referenceLinkCycleScanCommand(addr, branchTimeout);
 			}
 			alist.clear();
 			alist.addAll(cmdmap.keySet());
@@ -714,7 +718,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 							NUSALSeqDataCommand datacmd = (NUSALSeqDataCommand)isect;
 							datacmd.reallocate(addr - datacmd.getAddress());
 							
-							addNewDataAndLink(ndat);
+							addNewDataAndLink(ndat, branchTimeout);
 						}
 						else{
 							int offset = addr - isect.getAddress();
@@ -738,7 +742,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 					}
 					else{
 						//New data command.
-						addNewDataAndLink(ndat);
+						addNewDataAndLink(ndat, branchTimeout);
 					}
 				}
 				
@@ -750,8 +754,89 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		}
  	}
  	
- 	private void findUnusedData(){
- 		int gapcount = 0; //For labeling.
+ 	private NUSALSeqCommand processUnusedData(int startAddr, int gapSize, int branchTimeout) throws InterruptedException{
+ 		//Check if nonzero
+ 		//Try to parse as a command (context by checking previous instruction)
+ 		//If that doesn't work, mark as unused data
+ 		byte b = data.getByte(startAddr);
+ 		if(b != 0){
+ 			//Find previous command
+ 			NUSALSeqCommand prev = null;
+ 			for(int i = startAddr-1; i >= 0; i--){
+ 				prev = cmdmap.get(i);
+ 				if(prev != null) break;
+ 			}
+ 			
+ 			if(prev != null){
+ 				int prevEnd = prev.getAddress() + prev.getSizeInBytes();
+ 				if(prevEnd == startAddr){
+ 					//Try to parse as a command
+ 					ParseContext pctx = ParseContext.fromCommand(prev);
+ 					pctx.maxBranchWhile = branchTimeout;
+ 					int tick = prev.getTickAddress();
+ 					if(tick >= 0){
+ 						tick += prev.getSizeInTicks();
+ 					}
+ 					
+ 					branch_queue.add(new ParseLater(startAddr, tick, pctx));
+ 					processParseQueue(true, branchTimeout, branchTimeout);
+ 					
+ 					NUSALSeqCommand cmd = cmdmap.get(startAddr);
+ 					if(cmd != null){
+ 						int addr = cmd.getAddress() + cmd.getSizeInBytes();
+ 						NUSALSeqCommand next = null;
+ 						int gapend = startAddr + gapSize;
+ 						tick = cmd.getTickAddress();
+ 	 					if(tick >= 0){
+ 	 						tick += cmd.getSizeInTicks();
+ 	 					}
+ 	 					
+ 						while(addr < gapend){
+ 							//1. Scan to end of current parse.
+ 							while(addr < gapend){
+ 								next = cmdmap.get(addr);
+ 								if(next == null){
+ 									break;
+ 								}
+ 								addr += next.getSizeInBytes();
+ 								int tt = next.getTickAddress();
+ 								if(tt < 0){
+ 									tick = -1;
+ 								}
+ 								else tick += next.getSizeInTicks();
+ 							}
+ 							
+ 							if(addr >= gapend) break;
+ 							
+ 							//Still space before gap end. So...
+ 							//2. Parse starting there
+ 							branch_queue.add(new ParseLater(addr, tick, pctx));
+ 		 					processParseQueue(true, branchTimeout, branchTimeout);
+ 						}
+ 						return cmd;
+ 					}
+ 				}
+ 			}
+ 			
+ 			//Just make unused data
+ 			NUSALSeqDataCommand gap = new NUSALSeqDataCommand(gapSize);
+ 			for(int i = 0; i < gapSize; i++){
+				b = data.getByte(startAddr + i);
+				gap.setDataByte(b, i);
+			}
+ 			
+ 			gap.setLabel(String.format(".unuseddat%04x", startAddr));
+			gap.setAddress(startAddr);
+			cmdmap.put(startAddr, gap);	
+			
+			return gap;
+ 		}
+ 		
+ 		return null;
+ 	}
+ 	
+ 	private void findUnusedData(int branchTimeout) throws InterruptedException{
+ 		//int gapcount = 0; //For labeling.
  		List<Integer> alladdr = new ArrayList<Integer>(cmdmap.size()+1);
 		alladdr.addAll(cmdmap.keySet());
 		Collections.sort(alladdr);
@@ -760,39 +845,18 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			if(last_addr < addr){
 				//Gap.
 				int gap_size = addr - last_addr;
-				boolean nz = false;
-				NUSALSeqDataCommand gap = new NUSALSeqDataCommand(gap_size);
-				for(int i = 0; i < gap_size; i++){
-					byte b = data.getByte(last_addr + i);
-					if(b != 0) nz = true;
-					gap.setDataByte(b, i);
-				}
-				if(nz){
-					gap.setLabel(String.format(".unuseddat%03d", gapcount++));
-					gap.setAddress(last_addr);
-					cmdmap.put(last_addr, gap);	
-				}
+				processUnusedData(last_addr, gap_size, branchTimeout);
 			}
 			
 			NUSALSeqCommand cmd = cmdmap.get(addr);
 			last_addr = addr + cmd.getSizeInBytes();
 		}
+		
 		int end_addr = (int)data.getFileSize();
 		if(last_addr < end_addr){
 			//Only add if not all zero
 			int gap_size = end_addr - last_addr;
-			boolean nz = false;
-			NUSALSeqDataCommand gap = new NUSALSeqDataCommand(gap_size);
-			for(int i = 0; i < gap_size; i++){
-				byte b = data.getByte(last_addr + i);
-				if(b != 0) nz = true;
-				gap.setDataByte(b, i);
-			}
-			if(nz){
-				gap.setLabel(String.format(".unuseddat%03d", gapcount++));
-				gap.setAddress(last_addr);
-				cmdmap.put(last_addr, gap);	
-			}
+			processUnusedData(last_addr, gap_size, branchTimeout);
 		}
  	}
  	
@@ -870,6 +934,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		int now_addr = pos_start;
  		int now_tick = tick_start;
  		int data_end = (int)data.getFileSize();
+ 		int wtries = 0;
  		
  		if (DEBUG_MODE){
  			System.err.println("parseCodeBranch || Address = 0x" + Integer.toHexString(pos_start) + ", Tick = " + tick_start + ", Context: " + context);
@@ -881,6 +946,13 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		
  		//Read until we either hit an end command, something already parsed, or a chain of zeroes.
  		while(now_addr < data_end){
+ 			if(context.maxBranchWhile >= 0){
+ 				if(wtries ++ >= context.maxBranchWhile){
+ 					res.timedout = true;
+ 					break;
+ 				}
+ 			}
+ 			
  			if(cmdmap.containsKey(now_addr)){
  				res.end_type = BRANCHEND_ALREADY_PARSED;
  				break;
@@ -962,6 +1034,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  				//BFS behavior because we may need info on parent track
  				//	to know how to read child track.
  				ParseContext child_ctxt = new ParseContext();
+ 				child_ctxt.maxBranchWhile = res.ctxt.maxBranchWhile;
  				if(ctype == NUSALSeqCmdType.CHANNEL_OFFSET || ctype == NUSALSeqCmdType.CHANNEL_OFFSET_REL){
  					child_ctxt.setChannel(ncmd.getParam(0));
  				}
@@ -994,6 +1067,60 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		
  		return res;
  	}
+ 	
+ 	private boolean processParseQueue(boolean stopOnError, int branchTimeout, int overallTimeout) throws InterruptedException{
+ 		int whileCount = 0;
+		boolean killed = false;
+		
+		while(!branch_queue.isEmpty()){
+			if(overallTimeout >= 0){
+				if(whileCount++ >= overallTimeout){
+					killed = true;
+					break;
+				}
+			}
+			
+			ParseLater preq = branch_queue.pop();
+			parseCodeBranch(preq.address, preq.tick, preq.context);
+			if(stopOnError && !errors.isEmpty()){
+				killed = true;
+				break;
+			}
+			
+			//Now inner pop until depleted before link
+			//To get known branches...
+			while(!branch_queue.isEmpty()){
+				if(overallTimeout >= 0){
+					if(whileCount++ >= overallTimeout){
+						killed = true;
+						break;
+					}
+				}
+				
+				preq = branch_queue.pop();
+				parseCodeBranch(preq.address, preq.tick, preq.context);
+				if(Thread.interrupted()) throw new InterruptedException("NUSALSeqReader.preParse || Parser thread interrupted. Parse attempt terminated.");
+				
+				if(stopOnError && !errors.isEmpty()){
+					killed = true;
+					break;
+				}
+			}
+			
+			//Try linkage...
+			linkagain_flag = false;
+			referenceLinkCycle(branchTimeout);
+			if(linkagain_flag) referenceLinkCycle(branchTimeout);
+			if(Thread.interrupted()) throw new InterruptedException("NUSALSeqReader.preParse || Parser thread interrupted. Parse attempt terminated.");
+			
+			if(stopOnError && !errors.isEmpty()){
+				killed = true;
+				break;
+			}
+		}
+		
+		return killed;
+	}
  	
 	/*--- Read ---*/
  	
@@ -1260,31 +1387,20 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		
 		return reader;
 	}
-		
+			
 	public void preParse() throws InterruptedException{
+		preParse(false, -1, -1);
+	}
+	
+	public void preParse(boolean stopOnError, int branchTimeout, int overallTimeout) throws InterruptedException{
 		initPreparse();
 		ParseContext pctx = new ParseContext();
 		pctx.setAsSeq();
+		pctx.maxBranchWhile = branchTimeout;
 		branch_queue.add(new ParseLater(0, 0, pctx));
 		
-		while(!branch_queue.isEmpty()){
-			ParseLater preq = branch_queue.pop();
-			parseCodeBranch(preq.address, preq.tick, preq.context);
-			
-			//Now inner pop until depleted before link
-			//To get known branches...
-			while(!branch_queue.isEmpty()){
-				preq = branch_queue.pop();
-				parseCodeBranch(preq.address, preq.tick, preq.context);
-				if(Thread.interrupted()) throw new InterruptedException("NUSALSeqReader.preParse || Parser thread interrupted. Parse attempt terminated.");
-			}
-			
-			//Try linkage...
-			linkagain_flag = false;
-			referenceLinkCycle();
-			if(linkagain_flag) referenceLinkCycle();
-			if(Thread.interrupted()) throw new InterruptedException("NUSALSeqReader.preParse || Parser thread interrupted. Parse attempt terminated.");
-		}
+		boolean killed = processParseQueue(stopOnError, branchTimeout, overallTimeout);
+
 		NUSALSeqCommand entrycmd = cmdmap.get(0);
 		if(entrycmd != null){
 			if(entrycmd.getLabel() == null){
@@ -1293,7 +1409,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		}
 		
 		//Scan for any unparsed regions (except for end pad) and map as bin data.
-		findUnusedData();
+		if(!killed) findUnusedData(branchTimeout);
 		
 		if(DEBUG_MODE){
 			System.err.println("PreParse Complete(?) Error Count: " + errors.size());

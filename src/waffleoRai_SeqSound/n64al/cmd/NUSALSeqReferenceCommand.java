@@ -95,6 +95,32 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 		return super.serializeMe();
 	}
 	
+	public String[][] getParamStrings(){
+		int n = (p_idx_addr > 0)?2:1;
+		String[][] pstr = new String[n][2];
+
+		int i = 0;
+		if(p_idx_addr > 0){
+			pstr[i][0] = Integer.toString(getParam(0));
+			i++;
+		}
+		
+		if(reference != null){
+			if(reference.getLabel() != null){
+				pstr[i][0] = reference.getLabel();
+				pstr[i][1] = String.format("0x%04x", getBranchAddress());
+			}
+			else{
+				pstr[i][0] = String.format("0x%04x", getBranchAddress());
+			}
+		}
+		else{
+			pstr[i][0] = String.format("0x%04x", getBranchAddress());
+		}
+		
+		return pstr;
+	}
+	
 	protected String paramsToString(){
 		if(is_relative){
 			return super.getParam(p_idx_addr) + " [-> " + String.format("0x%04x", getBranchAddress()) + "]";

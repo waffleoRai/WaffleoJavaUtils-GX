@@ -35,4 +35,12 @@ public class Z64SoundEffect extends Labelable{
 		return true;
 	}
 	
+	public Z64SoundEffect copy(){
+		Z64SoundEffect copy = new Z64SoundEffect();
+		copy.tune = this.tune;
+		copy.sample = this.sample;
+		copy.id = this.id;
+		return copy;
+	}
+	
 }

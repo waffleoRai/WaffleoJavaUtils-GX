@@ -24,6 +24,7 @@ public class NUSALSeqCopyCommand extends NUSALSeqCommand{
 	public boolean doCommand(NUSALSeqChannel channel){return trg.doCommand(channel);}
 	public boolean doCommand(NUSALSeqLayer voice){return trg.doCommand(voice);}
 	
+	public String[][] getParamStrings(){return trg.getParamStrings();}
 	public String toString(){return trg.toString();}
 	public String toMMLCommand(){return trg.toMMLCommand();}
 	public byte[] serializeMe(){return trg.serializeMe();}

@@ -458,6 +458,27 @@ public class SeqCommands {
 			p_idx_addr = 2;
 		}
 		
+		public String[][] getParamStrings(){
+			String[][] pstr = new String[3][2];
+			pstr[0][0] = Integer.toString(super.getParam(0));
+			pstr[1][0] = Integer.toString(super.getParam(1));
+			
+			NUSALSeqCommand ref = super.getBranchTarget();
+			if(ref != null){
+				if(ref.getLabel() != null){
+					pstr[2][0] = ref.getLabel();
+					pstr[2][1] = String.format("0x%04x", super.getParam(2));
+				}
+				else{
+					pstr[2][0] = String.format("0x%04x", super.getParam(2));
+				}
+			}
+			else{
+				pstr[2][0] = String.format("0x%04x", super.getParam(2));
+			}
+			return pstr;
+		}
+		
 		protected StringBuilder toMMLCommand_child(){
 			StringBuilder sb = new StringBuilder(256);
 			sb.append("loadseq ");
@@ -508,6 +529,13 @@ public class SeqCommands {
 			sequence.setVarQ(sequence.getVarQ() & getParam(0));
 			return true;
 		}
+		
+		public String[][] getParamStrings(){
+			String[][] pstr = new String[1][2];
+			pstr[0][0] = String.format("0x%02x", super.getParam(0) & 0xff);
+			return pstr;
+		}
+		
 		protected StringBuilder toMMLCommand_child(){
 			StringBuilder sb = new StringBuilder(256);
 			sb.append("and 0x");
@@ -637,6 +665,13 @@ public class SeqCommands {
 			}
 			return true;
 		}
+		
+		public String[][] getParamStrings(){
+			String[][] pstr = new String[1][2];
+			pstr[0][0] = String.format("0x%04x", super.getParam(0));
+			return pstr;
+		}
+		
 		protected String paramsToString(){
 			return String.format("0x%04x", super.getParam(0));
 		};
@@ -661,6 +696,13 @@ public class SeqCommands {
 			}
 			return true;
 		}
+		
+		public String[][] getParamStrings(){
+			String[][] pstr = new String[1][2];
+			pstr[0][0] = String.format("0x%04x", super.getParam(0));
+			return pstr;
+		}
+
 		protected String paramsToString(){
 			return String.format("0x%04x", super.getParam(0));
 		};

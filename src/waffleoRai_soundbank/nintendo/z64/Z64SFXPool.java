@@ -259,4 +259,9 @@ class Z64SFXPool {
 		}
 	}
 
+	public void clearAll(){
+		mapLocalOff.clear();
+		slots = null;
+	}
+	
 }

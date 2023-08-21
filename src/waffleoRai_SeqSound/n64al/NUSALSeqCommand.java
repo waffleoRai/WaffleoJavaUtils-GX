@@ -573,6 +573,19 @@ public abstract class NUSALSeqCommand {
 		return str;
 	};
 	
+	public String[][] getParamStrings(){
+		//First column is base strings. Second is alt. Alt is used by references.
+		if(params == null) return null;
+		if(params.length < 1) return null;
+		
+		String[][] pstr = new String[params.length][2];
+		for(int i = 0; i < params.length; i++){
+			pstr[i][0] = Integer.toString(params[i]);
+		}
+		
+		return pstr;
+	}
+	
 	public String toString(){
 		String cmdname = "<NULL>";
 		if(command != null) cmdname = command.name();

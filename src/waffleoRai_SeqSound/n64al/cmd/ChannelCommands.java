@@ -1089,6 +1089,13 @@ public class ChannelCommands {
 			channel.setQ((byte)val);
 			return true;
 		}
+		
+		public String[][] getParamStrings(){
+			String[][] pstr = new String[1][2];
+			pstr[0][0] = String.format("0x%02x", getParam(0) & 0xff);
+			return pstr;
+		}
+		
 		protected StringBuilder toMMLCommand_child(){
 			StringBuilder sb = new StringBuilder(256);
 			sb.append("and 0x");

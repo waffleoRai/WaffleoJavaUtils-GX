@@ -20,18 +20,50 @@ public class Z64Drum extends Labelable{
 	
 	protected int pool_id;
 	
+	public Z64Drum(){
+		common_tune = new Z64Tuning();
+	}
+	
 	public byte getDecay(){return decay;}
 	public byte getPan(){return pan;}
 	public Z64Tuning getTuning(){return common_tune;}
 	public Z64Envelope getEnvelope(){return envelope;}
 	public Z64WaveInfo getSample(){return sample;}
 	
+	public byte getRootKey(){
+		if(common_tune == null){
+			common_tune = new Z64Tuning();
+		}
+		return common_tune.root_key;
+	}
+	
+	public byte getFineTune(){
+		if(common_tune == null){
+			common_tune = new Z64Tuning();
+		}
+		return common_tune.fine_tune;
+	}
+	
 	public void setDecay(byte val){decay = val;}
 	public void setPan(byte val){pan = val;}
-	public void setTuning(Z64Tuning val){common_tune = val;}
 	public void setEnvelope(Z64Envelope val){envelope = val;}
 	public void setSample(Z64WaveInfo val){sample = val;}
 	public void setPoolID(int val){pool_id = val;}
+	
+	public void setTuning(Z64Tuning val){
+		if(val == null) return;
+		common_tune = val;
+	}
+	
+	public void setRootKey(byte val){
+		if(common_tune == null) common_tune = new Z64Tuning();
+		common_tune.root_key = val;
+	}
+	
+	public void setFineTune(byte val){
+		if(common_tune == null) common_tune = new Z64Tuning();
+		common_tune.fine_tune = val;
+	}
 	
 	public void setPoolIDRandom(){
 		Random r = new Random();
@@ -92,6 +124,19 @@ public class Z64Drum extends Labelable{
 		if(this.sample != other.sample) return false;
 		
 		return true;
+	}
+	
+	public Z64Drum copy(){
+		Z64Drum copy = new Z64Drum();
+		copy.decay = this.decay;
+		copy.pan = this.pan;
+		copy.setRootKey(this.getRootKey());
+		copy.setFineTune(this.getFineTune());
+		copy.envelope = this.envelope.copy();
+		copy.sample = this.sample;
+		copy.pool_id = this.pool_id;
+		copy.name = this.name;
+		return copy;
 	}
 	
 }

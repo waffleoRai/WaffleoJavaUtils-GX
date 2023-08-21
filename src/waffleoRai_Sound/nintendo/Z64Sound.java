@@ -21,6 +21,9 @@ public class Z64Sound {
 	public static final double MS_PER_UPDATE_NTSC = 1000.0 / ((double)REFRESH_RATE_NTSC * (double)UPDATES_PER_FRAME_NTSC);
 	public static final double MS_PER_UPDATE_PAL = 1000.0 / ((double)REFRESH_RATE_PAL * (double)UPDATES_PER_FRAME_PAL);
 	
+	public static final double UPDATES_PER_SEC_NTSC = UPDATES_PER_FRAME_NTSC * REFRESH_RATE_NTSC;
+	public static final double UPDATES_PER_SEC_PAL = UPDATES_PER_FRAME_PAL * REFRESH_RATE_PAL;
+	
 	public static final int CODEC_ADPCM = 0;
 	public static final int CODEC_S8 = 1;
 	public static final int CODEC_S16_INMEMORY = 2;
@@ -42,6 +45,7 @@ public class Z64Sound {
 	public static final int STDRANGE_BOTTOM = 0x15;
 	public static final int STDRANGE_SIZE = 0x40;
 	public static final int MIDDLE_C = 60;
+	public static final byte MIDDLE_C_S8 = 60;
 	
 	public static final int ENVCMD__ADSR_DISABLE = 0;
 	public static final int ENVCMD__ADSR_HANG = -1;
@@ -186,45 +190,32 @@ public class Z64Sound {
 	private static void genDecayTable(){
 		DECAY_TABLE_MS_PAL = new int[256];
 		DECAY_TABLE_MS_NTSC = new int[256];
-		double[][] vel_table = new double[2][256]; //levels per update
+		double[] seed_table = new double[256];
 		
-		for(int i = 0; i < 2; i++){
-			vel_table[i][255] = 0.25;
-			vel_table[i][254] = 0.33;
-			vel_table[i][253] = 0.5;
-			vel_table[i][252] = 0.66;
-			vel_table[i][251] = 0.75;
-			vel_table[i][0] = 0.0;
+		final double[] HIGH_VAL_SCALERS = {0.25, 0.33, 0.5, 0.66, 0.75};
+		
+		for(int i = 0; i < 5; i++){
+			seed_table[255 - i] = HIGH_VAL_SCALERS[i];
 		}
 		
 		for (int i = 128; i < 251; i++) {
-			double sinv = 251.0 - (double)i;
-			vel_table[0][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_NTSC);
-			vel_table[1][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_PAL);
+			seed_table[i] = 251.0 - (double)i;
 	    }
 
 	    for (int i = 16; i < 128; i++) {
-	    	double sinv = (143.0 - (double)i) * 4.0;
-			vel_table[0][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_NTSC);
-			vel_table[1][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_PAL);
+	    	seed_table[i] = (143.0 - (double)i) * 4.0;
 	    }
 
 	    for (int i = 1; i < 16; i++) {
-	    	double sinv = (23.0 - (double)i) * 60.0;
-			vel_table[0][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_NTSC);
-			vel_table[1][i] = 1.0 / (sinv * (double)UPDATES_PER_FRAME_PAL);
+	    	seed_table[i] = (23.0 - (double)i) * 60.0;
 	    }
-		
-	    for(int i = 0; i < 256; i++){
-	    	//Calculate how many updates required to reach 0
-	    	double uraw = (double)0x7fff / vel_table[0][i];
-	    	int ucount = (int)Math.ceil(uraw);
-	    	DECAY_TABLE_MS_NTSC[i] = (int)Math.round((double)ucount * MS_PER_UPDATE_NTSC);
+	    
+	    for(int i = 1; i < 256; i++){
+	    	double upd_to_full = Math.ceil(seed_table[i] * (double)UPDATES_PER_FRAME_NTSC);
+	    	DECAY_TABLE_MS_NTSC[i] = (int)Math.ceil((upd_to_full / UPDATES_PER_SEC_NTSC) * 1000.0);
 	    	
-	    	//Repeat with PAL
-	    	uraw = (double)0x7fff / vel_table[1][i];
-	    	ucount = (int)Math.ceil(uraw);
-	    	DECAY_TABLE_MS_PAL[i] = (int)Math.round((double)ucount * MS_PER_UPDATE_PAL);
+	    	upd_to_full = Math.ceil(seed_table[i] * (double)UPDATES_PER_FRAME_PAL);
+	    	DECAY_TABLE_MS_PAL[i] = (int)Math.ceil((upd_to_full / UPDATES_PER_SEC_PAL) * 1000.0);
 	    }
 	    
 	}

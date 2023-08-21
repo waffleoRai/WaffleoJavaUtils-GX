@@ -24,8 +24,8 @@ import waffleoRai_soundbank.nintendo.z64.Z64DrumPool.DrumRegionInfo;
  * game. Also used to read and write the raw binary form of the soundfont
  * format.
  * @author Blythe Hospelhorn
- * @version 3.0.0
- * @since May 6, 2023
+ * @version 3.1.0
+ * @since July 31, 2023
  */
 public class Z64Bank implements WriterPrintable{
 	
@@ -798,6 +798,15 @@ public class Z64Bank implements WriterPrintable{
 		if(block != null){
 			block.enm_str = val;
 		}
+	}
+	
+	public void clearContents(){
+		//Clears data, but leaves metadata
+		sfxPool.clearAll();
+		drumPool.clearAll();
+		instPool.clearAll();
+		envPool.clearAll();
+		wavePool.clearPool();
 	}
 	
 	/*----- Backdoor -----*/

@@ -262,4 +262,16 @@ class Z64InstPool {
 		}
 	}
 	
+	public void clearAll(){
+		pool.clear();
+		mapLocalOff.clear();
+		if(slots != null){
+			for(int i = 0; i < slots.length; i++) slots[i] = null;
+		}
+		
+		if(enumStrings != null){
+			for(int i = 0; i < enumStrings.length; i++) enumStrings[i] = null;
+		}
+	}
+	
 }

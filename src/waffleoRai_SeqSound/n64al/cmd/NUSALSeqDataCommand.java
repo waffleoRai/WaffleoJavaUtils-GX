@@ -135,6 +135,39 @@ public class NUSALSeqDataCommand extends NUSALSeqCommand{
 		return data;
 	}
 	
+	public String[][] getParamStrings(){
+		int ptype = dtype.getParamPrintType();
+		if(ptype == NUSALSeqCommands.MML_DATAPARAM_TYPE__BUFFER){
+			String[][] pstr = new String[1][2];
+			pstr[0][0] = Integer.toString(data.length);
+			return pstr;
+		}
+		else{
+			int count = dtype.getUnitCount();
+			int usize = dtype.getUnitSize();
+			String fmtstr = "%0" + (usize << 1) + "x";
+			if(count < 0) count = data.length/usize;
+			
+			String[][] pstr = new String[count][2];
+			for(int i = 0; i < count; i++){
+				switch(ptype){
+				case NUSALSeqCommands.MML_DATAPARAM_TYPE__DECSIGNED:
+					pstr[i][0] = Integer.toString(getDataValue(i, true));
+					break;
+				case NUSALSeqCommands.MML_DATAPARAM_TYPE__DECUNSIGNED:
+					pstr[i][0] = Integer.toString(getDataValue(i, false));
+					break;
+				case NUSALSeqCommands.MML_DATAPARAM_TYPE__HEXUNSIGNED:
+				default:
+					int val = getDataValue(i, false);
+					pstr[i][0] = String.format(fmtstr, val);
+					break;
+				}
+			}
+			return pstr;
+		}
+	}
+	
 	protected StringBuilder toMMLCommand_child(){
 		StringBuilder sb = new StringBuilder(128 + (data.length << 1));
 		sb.append("data ");

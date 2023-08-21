@@ -272,6 +272,16 @@ public class NUSALSeq implements WriterPrintable{
 		return seq_cmds;
 	}
 	
+	public NUSALSeqCommand getCommandAt(int addr){
+		if(source == null) initialize();
+		return source.getCommandAt(addr);
+	}
+	
+	public List<NUSALSeqCommand> getAllCommandsList(){
+		if(source == null) initialize();
+		return source.getOrderedCommands();
+	}
+	
 	public NUSALSeqCommandSource getAllCommands(){
 		if(source == null) initialize();
 		return source;
