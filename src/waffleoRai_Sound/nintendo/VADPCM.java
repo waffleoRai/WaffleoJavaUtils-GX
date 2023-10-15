@@ -23,7 +23,7 @@ public class VADPCM {
 	private double thresh = 10.0;
 	private int refine_itr = 2;
 	
-	private int[] last_block;
+	private int[] last_block; //The uncompressed values of the last package encoded or decoded
 	private N64ADPCMTable codebook;
 	
 	/*----- Init -----*/
@@ -473,10 +473,13 @@ public class VADPCM {
 	}
 	
 	private int tblip(int p, int i, int[] invec){
+		//Table Inner Product
 		//inner_product(order + i, coefTable[p][i], invec);
 		if(codebook == null) return 0;
 		int n = order + i;
 		int sum = 0;
+		
+		//Add together the products of the same slots of vectors
 		for(int j = 0; j < order; j++){
 			sum += invec[j] * codebook.getCoefficient(p, j, i);
 		}
@@ -485,6 +488,7 @@ public class VADPCM {
 			sum += invec[j] * codebook.getCoefficient(p, order-1, ii);
 		}
 		
+		//Tidy
 		int dout = sum >> 11;
 		int fiout = dout << 11;
 		if(fiout > sum) dout--;
@@ -493,21 +497,24 @@ public class VADPCM {
 	}
 	
 	private void enc_clamp(int fs, float[] e, int[] ie, int bits){
-	    float llevel = -(float) (1 << (bits - 1));
-	    float ulevel = -llevel - 1.0f;
+	    float llevel = -(float) (1 << (bits - 1)); //Minimum value
+	    float ulevel = -llevel - 1.0f; //Maximum value
+	    
+	    //The count is probably extraneous for Java, but oh well.
 	    for (int i = 0; i < fs; i++){
 	        if (e[i] > ulevel) e[i] = ulevel;
 	        if (e[i] < llevel) e[i] = llevel;
+	        
 	        if (e[i] > 0.0f)ie[i] = (int) (e[i] + 0.5);
 	        else ie[i] = (int) (e[i] - 0.5);
 	    }
 	}
 	
-	private int qsample(float x, int scale){
+	private short qsample(float x, int scale){
 		if (x > 0.0f){
-	        return ((int)((x / (float)scale) + 0.4999999)) & 0xffff;
+	        return ((short)((x / (float)scale) + 0.4999999));
 	    }
-		return ((int)((x / (float)scale) - 0.4999999)) & 0xffff;
+		return ((short)((x / (float)scale) - 0.4999999));
 	}
 	
 	private int clamp_bits(int x, int bits){
@@ -519,14 +526,16 @@ public class VADPCM {
 	
 	private int encodePackage(int[] samples, FileBuffer output){
 		//This one's mostly copied from aifc_decode.c from oot decomp
+		//And vencode.c from SDK decomp
 		//Setup some values
 		int npred = codebook.getPredictorCount();
-		int groups = samps_per_package >>> 1;
+		int groups = samps_per_package >>> 3; //Group size is always 8
 	    int scale_factor = 12;
-	    int op = 0;
-	    int llevel = -(1 << (trg_bits - 1));
-	    int ulevel = -llevel - 1;
+	    int op = 0; //Optimal predictor index
+	    int llevel = -(1 << (trg_bits - 1)); //Minimum compressed value
+	    int ulevel = -llevel - 1; //Maximum compressed value
 	    float min = 1e30f;
+	    int maxclip = 0;
 		
 	    //Allocate some workspace vectors
 	    int[] sstate = new int[samps_per_package];
@@ -534,45 +543,58 @@ public class VADPCM {
 		int[] prediction = new int[samps_per_package];
 		int[] ie = new int[samps_per_package];
 		float[] e = new float[samps_per_package];
-		int[] ix = new int[samps_per_package];
+		short[] ix = new short[samps_per_package];
 		if(last_block == null) last_block = new int[samps_per_package];
 		
 		//Determine the best predictor
 		for (int k = 0; k < npred; k++) {
 	        for (int j = 0; j < groups; j++) {
 	            for (int i = 0; i < order; i++) {
+	            	//Get last (order) uc samples from previous group...
 	            	invec[i] = (j == 0 ? last_block[samps_per_package - order + i] : samples[8 - order + i]);
 	            }
 
 	            for (int i = 0; i < 8; i++) {
-	                prediction[j * 8 + i] = tblip(k, i, invec);
-	                invec[i + order] = samples[j * 8 + i] - prediction[j * 8 + i];
-	                e[j * 8 + i] = (float)invec[i + order];
+	            	//Predict values of previous samples in group from table
+	            	int ii = (j * 8) + i; //Bump up i to group
+	                prediction[ii] = tblip(k, i, invec);
+	                
+	                //Get "error" values for previous samples in group
+	                invec[i + order] = samples[ii] - prediction[ii];
+	                e[ii] = (float)invec[i + order]; //Save error for this sample
 	            }
 	        }
 
+	        //Calculate total error for package
 	        float se = 0.0f;
-	        for (int j = 0; j < 16; j++) se += e[j] * e[j];
+	        for (int j = 0; j < samps_per_package; j++) se += e[j] * e[j];
 
+	        //If less error than previous predictor, set as optimal predictor
 	        if (se < min) {
 	            min = se;
 	            op = k;
 	        }
 	    }
 		
+		//Repeat to do actual encoding with chosen predictor table
 		for (int j = 0; j < groups; j++) {
 	        for (int i = 0; i < order; i++) {
 	        	invec[i] = (j == 0 ? last_block[16 - order + i] : samples[8 - order + i]);
 	        }
 
 	        for (int i = 0; i < 8; i++) {
-	            prediction[j * 8 + i] = tblip(op, i, invec);
-	            e[j * 8 + i] = invec[i + order] = samples[j * 8 + i] - prediction[j * 8 + i];
+	        	int ii = (j * 8) + i; //Bump up i to group
+	            prediction[ii] = tblip(op, i, invec); //Get prediction
+	            
+	            invec[i + order] = samples[ii] - prediction[ii];
+	            e[ii] = (float)invec[i + order]; //Get error
 	        }
 	    }
 		
-		enc_clamp(16, e, ie, 16);
+		//Errors are floats. Clamp to 16 bits and copy to vector "ie"
+		enc_clamp(samps_per_package, e, ie, 16);
 		
+		//Find max magnitude error in this package
 		int max = 0;
 	    for (int i = 0; i < samps_per_package; i++) {
 	        if (Math.abs(ie[i]) > Math.abs(max)) {
@@ -580,15 +602,18 @@ public class VADPCM {
 	        }
 	    }
 	    
-	    scale_factor = 16 - trg_bits;
+	    //Calculate the scale factor from the maximum error
+	    scale_factor = 16 - trg_bits; //Max possible
 	    int scale = 0;
-	    for (scale = 0; scale <= scale_factor; scale++) {
+	    for (; scale <= scale_factor; scale++) {
 	        if (max <= ulevel && max >= llevel) break;
 	        max >>= 1;
 	    }
 	    
+	    //Copy over the last block to local variable
 	    for (int i = 0; i < samps_per_package; i++) sstate[i] = last_block[i];
 	    
+	    //Try with the given scale to see if it gets everything fitting into target bits
 	    boolean again = true;
 	    for (int n = 0; n < 2 && again; n++) {
 	        again = false;
@@ -597,21 +622,30 @@ public class VADPCM {
 	            scale = scale_factor;
 	        }
 
+	        maxclip = 0;
 	        for (int j = 0; j < groups; j++) {
 	            int base = j * 8;
 	            for (int i = 0; i < order; i++) {
+	            	//Get the last (order) samples from previous group
 	                invec[i] = (j == 0 ?
 	                		sstate[16 - order + i] : last_block[8 - order + i]);
 	            }
 
 	            for (int i = 0; i < 8; i++) {
+	            	//Regenerate prediction and difference
 	                prediction[base + i] = tblip(op, i, invec);
+	                
+	                //Get error, shift by scale under testing, and quantize.
 	                float se = (float)samples[base + i] - (float)prediction[base + i];
 	                ix[base + i] = qsample(se, 1 << scale);
+	                
+	                //Try clamping to within target bit range
 	                int cV = clamp_bits(ix[base + i], trg_bits) - ix[base + i];
+	                if (cV > maxclip) maxclip = cV;
 	                if (cV > 1 || cV < -1) again = true;
 	                ix[base + i] += cV;
-	                invec[i + order] = ix[base + i] * (1 << scale);
+	                
+	                invec[i + order] = ix[base + i] << scale;
 	                last_block[base + i] = prediction[base + i] + invec[i + order];
 	            }
 	        }

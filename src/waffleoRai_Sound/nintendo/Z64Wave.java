@@ -457,6 +457,16 @@ public class Z64Wave extends SoundAdapter{
 	public short[] getLoopState(){return loopState;}
 	public byte[] getRawData(){return this.raw_data;}
 	
+	public void getProperties(Z64WaveInfo winfo){
+		winfo.setCodec(codec);
+		winfo.setADPCMBook(adpcm_table);
+		winfo.setLoopCount(loopCount);
+		winfo.setLoopStart(loopStart);
+		winfo.setLoopEnd(loopEnd);
+		winfo.setLoopState(loopState);
+		winfo.setTuning(tuning);
+	}
+	
 	public int getCodecEnum(){return this.codec;}
 	public float getTuningValue(){return this.tuning;}
 	public N64ADPCMTable getADPCMTable(){return this.adpcm_table;}
