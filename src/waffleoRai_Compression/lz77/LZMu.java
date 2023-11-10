@@ -5,6 +5,7 @@ import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
 import java.util.List;
@@ -12,8 +13,12 @@ import java.util.List;
 import waffleoRai_Compression.ArrayWindow;
 import waffleoRai_Compression.definitions.AbstractCompDef;
 import waffleoRai_Compression.lz77.LZCompCore.RunMatch;
+import waffleoRai_Utils.BufferReference;
 import waffleoRai_Utils.ByteBufferStreamer;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileBufferStreamer;
+import waffleoRai_Utils.FileInputStreamer;
+import waffleoRai_Utils.FileOutputStreamer;
 import waffleoRai_Utils.StreamWrapper;
 
 /*
@@ -161,8 +166,7 @@ public class LZMu {
 	public long getBytesRead(){return bytesRead;}
 	
 	private boolean nextControlBit(StreamWrapper input){
-		if(bitmask == 0)
-		{
+		if(bitmask == 0){
 			bitmask = 0x80;
 			ctrlbyte = input.getFull();
 			//System.err.println("New Control Byte: 0x" + String.format("%02x", ctrlbyte) + " at 0x" + Long.toHexString(bytesRead));
@@ -176,8 +180,7 @@ public class LZMu {
 		return bit;
 	}
 	
-	private void addByteToOutput(byte b)
-	{
+	private void addByteToOutput(byte b){
 		if(bytesWritten >= decompSize) return;
 		output.put(b);
 		if(back_window.isFull()) back_window.pop();
@@ -298,14 +301,37 @@ public class LZMu {
 		}
 	}
 	
-	public StreamWrapper decode(StreamWrapper input, int allocate)
-	{
+	public StreamWrapper decode(StreamWrapper input, int allocate) {
 		decompSize = allocate;
 		output = new ByteBufferStreamer(allocate); //Init Output
 		decode(input);
 		
 		output.rewind();
 		return output;
+	}
+	
+	public FileBuffer decodeToBuffer(StreamWrapper input, int allocate) {
+		decompSize = allocate;
+		FileBuffer buff = new FileBuffer(allocate);
+		output = new FileBufferStreamer(buff); //Init Output
+		decode(input);
+		return buff;
+	}
+	
+	public boolean decodeToDisk(StreamWrapper input, String path){
+		for(int i = 0; i < 4; i++) input.get();
+		
+		try{
+			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(path));
+			output = new FileOutputStreamer(bos);
+			decode(input);
+			bos.close();
+		}
+		catch(IOException ex){
+			ex.printStackTrace();
+			return false;
+		}
+		return true;
 	}
 	
 	/*--- Encode ---*/
@@ -860,43 +886,70 @@ public class LZMu {
 			super.extensions.add("lz");
 		}
 
-		public StreamWrapper decompress(StreamWrapper input) {
-			//Assumes this is a full file, so checks for size in first word
+		public int getDefinitionID() {return DEF_ID;}
+		
+		public boolean decompressToDiskBuffer(StreamWrapper input, String bufferPath, int options) {
+			LZMu decer = new LZMu();
+			return decer.decodeToDisk(input, bufferPath);
+		}
+
+		public boolean decompressToDiskBuffer(InputStream input, String bufferPath, int options) {
+			LZMu decer = new LZMu();
+			return decer.decodeToDisk(new FileInputStreamer(input), bufferPath);
+		}
+
+		public boolean decompressToDiskBuffer(BufferReference input, String bufferPath, int options) {
+			LZMu decer = new LZMu();
+			FileBuffer buff = input.getBuffer();
+			buff.setCurrentPosition(input.getBufferPosition());
+			return decer.decodeToDisk(new FileBufferStreamer(buff), bufferPath);
+		}
+
+		public FileBuffer decompressToMemory(StreamWrapper input, int allocAmount, int options) {
 			int dec_sz = 0;
 			for(int i = 0; i < 4; i++){
 				int shamt = i << 3;
 				int b = input.getFull();
 				b = (b & 0xFF) << shamt;
 				dec_sz |= b;
-				//System.err.println("Dec Size: 0x" + Integer.toHexString(dec_sz));
-				//System.err.println("b: 0x" + Integer.toHexString(b));
 			}
 			
 			LZMu decer = new LZMu();
-			return decer.decode(input, dec_sz);
+			return decer.decodeToBuffer(input, dec_sz);
 		}
 
-		public String decompressToDiskBuffer(StreamWrapper input) {
-			//Because this is a PS1 compression routine, assumes output is small enough to hold in mem...
-			
-			StreamWrapper out = decompress(input);
-			
-			//Write to a temp file.
-			try {
-				String tpath = FileBuffer.generateTemporaryPath("lzmu_def_autodecomp");
-				BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(tpath));
-				while(!out.isEmpty()) bos.write(out.getFull());
-				bos.close();
-				return tpath;
-			} 
-			catch (IOException e) {
-				e.printStackTrace();
+		public FileBuffer decompressToMemory(InputStream input, int allocAmount, int options) {
+			int dec_sz = 0;
+			for(int i = 0; i < 4; i++){
+				int shamt = i << 3;
+				int b;
+				try {b = input.read();} 
+				catch (IOException e) {
+					e.printStackTrace();
+					return null;
+				}
+				b = (b & 0xFF) << shamt;
+				dec_sz |= b;
 			}
 			
-			return null;
+			LZMu decer = new LZMu();
+			return decer.decodeToBuffer(new FileInputStreamer(input), dec_sz);
 		}
 
-		public int getDefinitionID() {return DEF_ID;}
+		public FileBuffer decompressToMemory(BufferReference input, int allocAmount, int options) {
+			int dec_sz = 0;
+			for(int i = 0; i < 4; i++){
+				int shamt = i << 3;
+				int b = Byte.toUnsignedInt(input.nextByte());
+				b = (b & 0xFF) << shamt;
+				dec_sz |= b;
+			}
+			
+			LZMu decer = new LZMu();
+			FileBuffer buff = input.getBuffer();
+			buff.setCurrentPosition(input.getBufferPosition());
+			return decer.decodeToBuffer(new FileBufferStreamer(buff), dec_sz);
+		}
 		
 	}
 	

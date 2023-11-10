@@ -1,6 +1,10 @@
 package waffleoRai_Compression.nintendo;
 
+import java.io.InputStream;
+
 import waffleoRai_Compression.definitions.AbstractCompDef;
+import waffleoRai_Utils.BufferReference;
+import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.StreamWrapper;
 
 public class NinHuff {
@@ -22,26 +26,48 @@ public class NinHuff {
 		public static final String DEFO_ENG_STR = "Nintendo DS Huffman Compression";
 		public static final String[] EXT_LIST = {};
 		
-		public CompDef()
-		{
+		public CompDef(){
 			super(DEFO_ENG_STR);
 			for(String e : EXT_LIST) super.extensions.add(e);
 		}
 
-		public int getDefinitionID()
-		{
+		public int getDefinitionID(){
 			return COMPDEF_ID;
 		}
-		
-		public StreamWrapper decompress(StreamWrapper input)
-		{
-			//TODO
+
+		@Override
+		public boolean decompressToDiskBuffer(StreamWrapper input, String bufferPath, int options) {
+			// TODO Auto-generated method stub
+			return false;
+		}
+
+		@Override
+		public boolean decompressToDiskBuffer(InputStream input, String bufferPath, int options) {
+			// TODO Auto-generated method stub
+			return false;
+		}
+
+		@Override
+		public boolean decompressToDiskBuffer(BufferReference input, String bufferPath, int options) {
+			// TODO Auto-generated method stub
+			return false;
+		}
+
+		@Override
+		public FileBuffer decompressToMemory(StreamWrapper input, int allocAmount, int options) {
+			// TODO Auto-generated method stub
 			return null;
 		}
-		
-		public String decompressToDiskBuffer(StreamWrapper input)
-		{
-			//TODO
+
+		@Override
+		public FileBuffer decompressToMemory(InputStream input, int allocAmount, int options) {
+			// TODO Auto-generated method stub
+			return null;
+		}
+
+		@Override
+		public FileBuffer decompressToMemory(BufferReference input, int allocAmount, int options) {
+			// TODO Auto-generated method stub
 			return null;
 		}
 		

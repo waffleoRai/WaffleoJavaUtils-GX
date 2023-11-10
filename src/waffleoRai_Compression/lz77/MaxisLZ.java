@@ -1,6 +1,9 @@
 package waffleoRai_Compression.lz77;
 
+import java.io.InputStream;
+
 import waffleoRai_Compression.definitions.AbstractCompDef;
+import waffleoRai_Utils.BufferReference;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.StreamWrapper;
 
@@ -143,19 +146,43 @@ public class MaxisLZ {
 			super.extensions.add("lz");
 		}
 
-		@Override
-		public StreamWrapper decompress(StreamWrapper input) {
-			// TODO Auto-generated method stub
-			return null;
-		}
-
-		@Override
-		public String decompressToDiskBuffer(StreamWrapper input) {
-			// TODO Auto-generated method stub
-			return null;
-		}
-
 		public int getDefinitionID() {return DEF_ID;}
+
+		@Override
+		public boolean decompressToDiskBuffer(StreamWrapper input, String bufferPath, int options) {
+			// TODO Auto-generated method stub
+			return false;
+		}
+
+		@Override
+		public boolean decompressToDiskBuffer(InputStream input, String bufferPath, int options) {
+			// TODO Auto-generated method stub
+			return false;
+		}
+
+		@Override
+		public boolean decompressToDiskBuffer(BufferReference input, String bufferPath, int options) {
+			// TODO Auto-generated method stub
+			return false;
+		}
+
+		@Override
+		public FileBuffer decompressToMemory(StreamWrapper input, int allocAmount, int options) {
+			// TODO Auto-generated method stub
+			return null;
+		}
+
+		@Override
+		public FileBuffer decompressToMemory(InputStream input, int allocAmount, int options) {
+			// TODO Auto-generated method stub
+			return null;
+		}
+
+		@Override
+		public FileBuffer decompressToMemory(BufferReference input, int allocAmount, int options) {
+			// TODO Auto-generated method stub
+			return null;
+		}
 		
 	}
 	

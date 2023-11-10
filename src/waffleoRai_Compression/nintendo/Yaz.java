@@ -12,8 +12,11 @@ import java.util.LinkedList;
 
 import waffleoRai_Compression.ArrayWindow;
 import waffleoRai_Compression.definitions.AbstractCompDef;
+import waffleoRai_Compression.definitions.CompressionDefs;
+import waffleoRai_Utils.BufferReference;
 import waffleoRai_Utils.ByteBufferStreamer;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.FileBufferStreamer;
 import waffleoRai_Utils.FileInputStreamer;
 import waffleoRai_Utils.FileOutputStreamer;
 import waffleoRai_Utils.StreamWrapper;
@@ -94,8 +97,7 @@ public class Yaz {
 		output = trg;
 	}
 
-	public static int readYazHeader(StreamWrapper src)
-	{
+	public static int readYazHeader(StreamWrapper src){
 		//Looks for Yaz header and returns the decompressed file size
 		//If header is present, header bytes are chopped off
 		
@@ -104,11 +106,9 @@ public class Yaz {
 		
 		//Look for header MAGIC
 		byte[] mag = new byte[MAGIC_BYTES.length];
-		for(int i = 0; i < MAGIC_BYTES.length; i++)
-		{
+		for(int i = 0; i < MAGIC_BYTES.length; i++){
 			mag[i] = src.get();
-			if(mag[i] != MAGIC_BYTES[i])
-			{
+			if(mag[i] != MAGIC_BYTES[i]){
 				//Push all read bytes back
 				//Return -1
 				//for(int j = i; j >= 0; j--) src.push(mag[j]);
@@ -118,8 +118,7 @@ public class Yaz {
 		//Assumed magic no match
 		//Read next field
 		int sz = 0;
-		for(int i = 0; i < 4; i++)
-		{
+		for(int i = 0; i < 4; i++){
 			sz = sz << 8;
 			sz |= src.getFull();
 		}
@@ -214,8 +213,7 @@ public class Yaz {
 	
 	private void decode(StreamWrapper in)
 	{
-		while(!in.isEmpty())
-		{
+		while(!in.isEmpty()){
 			byte b = in.get();
 			decodeNextGroup(in, Byte.toUnsignedInt(b));
 		}
@@ -265,21 +263,27 @@ public class Yaz {
 		return output;
 	}
 	
-	public StreamWrapper decode(StreamWrapper input, int allocate)
-	{
+	public StreamWrapper decode(StreamWrapper input, int allocate){
 		output = new ByteBufferStreamer(allocate); //Init Output
 		decode(input);
 		
 		return output;
 	}
 	
-	public boolean decodeTo(StreamWrapper input, OutputStream output)
-	{
+	public boolean decodeTo(StreamWrapper input, OutputStream output){
 		if(output == null) return false;
 		if(input == null) return false;
 		this.output = new FileOutputStreamer(output);
 		decode(input);
 		
+		return true;
+	}
+	
+	public boolean decodeTo(StreamWrapper input, StreamWrapper output){
+		if(output == null) return false;
+		if(input == null) return false;
+		this.output = output;
+		decode(input);
 		return true;
 	}
 	
@@ -487,13 +491,11 @@ public class Yaz {
 			for(String e : EXT_LIST) super.extensions.add(e);
 		}
 
-		@Override
 		public StreamWrapper decompress(StreamWrapper input) {
 			YazDecodeStream decstr = YazDecodeStream.getDecoderStream(input);
 			return new FileInputStreamer(decstr);
 		}
 
-		@Override
 		public String decompressToDiskBuffer(StreamWrapper input) {
 			try{
 				YazDecodeStream decstr = YazDecodeStream.getDecoderStream(input);
@@ -513,6 +515,107 @@ public class Yaz {
 		}
 
 		public int getDefinitionID() {return COMPDEF_ID;}
+
+		public boolean decompressToDiskBuffer(StreamWrapper input, String bufferPath, int options) {
+			try{
+				YazDecodeStream decstr = YazDecodeStream.getDecoderStream(input);
+				BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(bufferPath));
+				
+				int b = 0;
+				while((b = decstr.read()) >= 0) bos.write(b);
+				bos.close();
+				return true;
+			}
+			catch(IOException ex){
+				ex.printStackTrace();
+				return false;
+			}
+		}
+
+		public boolean decompressToDiskBuffer(InputStream input, String bufferPath, int options) {
+			try{
+				YazDecodeStream decstr = YazDecodeStream.getDecoderStream(input);
+				BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(bufferPath));
+				
+				int b = 0;
+				while((b = decstr.read()) >= 0) bos.write(b);
+				bos.close();
+				return true;
+			}
+			catch(IOException ex){
+				ex.printStackTrace();
+				return false;
+			}
+		}
+
+		public boolean decompressToDiskBuffer(BufferReference input, String bufferPath, int options) {
+			try{
+				FileBuffer buff = input.getBuffer();
+				buff.setCurrentPosition(input.getBufferPosition());
+				YazDecodeStream decstr = YazDecodeStream.getDecoderStream(buff);
+				BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(bufferPath));
+				
+				int b = 0;
+				while((b = decstr.read()) >= 0) bos.write(b);
+				bos.close();
+				return true;
+			}
+			catch(IOException ex){
+				ex.printStackTrace();
+				return false;
+			}
+		}
+
+		public FileBuffer decompressToMemory(StreamWrapper input, int allocAmount, int options) {
+			if((options & CompressionDefs.DECOMP_OP_HEADERLESS) == 0){
+				int hdrsize = Yaz.readYazHeader(input);
+				if(hdrsize > allocAmount) allocAmount = hdrsize;
+			}
+			if(allocAmount <= 0) return null;
+
+			Yaz decoder = new Yaz();
+			FileBuffer output = new FileBuffer(allocAmount);
+			decoder.setOutputTarget(new FileBufferStreamer(output));
+			decoder.decode(input);
+			
+			return output;
+		}
+
+		public FileBuffer decompressToMemory(InputStream input, int allocAmount, int options) {
+			StreamWrapper inwrapped = new FileInputStreamer(input);
+			if((options & CompressionDefs.DECOMP_OP_HEADERLESS) == 0){
+				int hdrsize = Yaz.readYazHeader(inwrapped);
+				if(hdrsize > allocAmount) allocAmount = hdrsize;
+			}
+			if(allocAmount <= 0) return null;
+
+			Yaz decoder = new Yaz();
+			FileBuffer output = new FileBuffer(allocAmount);
+			decoder.setOutputTarget(new FileBufferStreamer(output));
+			decoder.decode(inwrapped);
+			
+			return output;
+		}
+
+		public FileBuffer decompressToMemory(BufferReference input, int allocAmount, int options) {
+			
+			FileBuffer inbuff = input.getBuffer();
+			inbuff.setCurrentPosition(input.getBufferPosition());
+			StreamWrapper inwrapped = new FileBufferStreamer(inbuff);
+			
+			if((options & CompressionDefs.DECOMP_OP_HEADERLESS) == 0){
+				int hdrsize = Yaz.readYazHeader(inwrapped);
+				if(hdrsize > allocAmount) allocAmount = hdrsize;
+			}
+			if(allocAmount <= 0) return null;
+
+			Yaz decoder = new Yaz();
+			FileBuffer output = new FileBuffer(allocAmount);
+			decoder.setOutputTarget(new FileBufferStreamer(output));
+			decoder.decode(inwrapped);
+			
+			return output;
+		}
 		
 	}
 	
