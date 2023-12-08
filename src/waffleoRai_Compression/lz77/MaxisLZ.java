@@ -3,6 +3,7 @@ package waffleoRai_Compression.lz77;
 import java.io.InputStream;
 
 import waffleoRai_Compression.definitions.AbstractCompDef;
+import waffleoRai_Compression.lz77.LZCompCore.RunMatch;
 import waffleoRai_Utils.BufferReference;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.StreamWrapper;
@@ -37,6 +38,17 @@ public class MaxisLZ {
 		protected boolean matchEncodable(RunMatch match) {
 			// TODO Auto-generated method stub
 			return false;
+		}
+
+		@Override
+		protected int scoreRun(RunMatch match) {
+			// TODO Auto-generated method stub
+			return 0;
+		}
+		
+		protected int bytesToEncode(RunMatch match){
+			//TODO
+			return 0;
 		}
 		
 	}

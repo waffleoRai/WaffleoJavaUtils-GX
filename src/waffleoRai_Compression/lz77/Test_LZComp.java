@@ -1,16 +1,21 @@
 package waffleoRai_Compression.lz77;
 
 import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 
+import waffleoRai_Compression.lz77.LZCompCore.RunMatch;
+import waffleoRai_Compression.lz77.LZMu.MuRunMatch;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBufferStreamer;
 import waffleoRai_Utils.FileUtils;
@@ -129,6 +134,7 @@ public class Test_LZComp {
 		int matched_files = 0;
 		List<Integer> nonmatches = new ArrayList<Integer>(fcount);
 		for(int i = 0; i < fcount; i++) {
+			//System.err.println("\tCompressing " + i);
 			String ipath = outdir_b + File.separator + String.format("%03d.bin", i);
 			if(!FileBuffer.fileExists(ipath)) continue;
 			total_files++;
@@ -138,6 +144,10 @@ public class Test_LZComp {
 			
 			FileBuffer indata = FileBuffer.createBuffer(ipath, false);
 			LZMu lz = new LZMu();
+			//lz.setCompressionStrategy(LZMu.COMP_LOOKAHEAD_REC);
+			lz.setCompressionStrategy(LZMu.COMP_LOOKAHEAD_QUICK);
+			//lz.setCompressionStrategy(LZMu.COMP_LOOKAHEAD_SCANALL_GREEDY);
+			//lz.setCompressionLookahead(0x1000);
 			FileBuffer encdata = lz.encode(indata);
 			lz.debug_dumpLoggedEvents(logpath);
 			
@@ -233,8 +243,202 @@ public class Test_LZComp {
 			System.out.println("Compression valid for all files!");
 		}
 		nonmatches.clear();
+		
+		System.out.println("Examining diffs...");
+		lzmu_dumpFirstDiffs(outdir, fcount);
+		
 	}
 
+	private static RunMatch lzmu_parseLogLine(String line){
+		if(line == null) return null;
+		
+		MuRunMatch match = new MuRunMatch();
+		String[] parts = line.split("\t");
+		String enc = parts[0].substring(parts[0].lastIndexOf(' ') + 3);
+		enc = enc.replace("]", "");
+		match.encoder_pos = Long.parseUnsignedLong(enc, 16);
+		
+		if(parts[1].startsWith("BCPY")){
+			String[] cpyparts = parts[1].split(" ");
+			match.match_run = Integer.parseInt(cpyparts[1]);
+			match.match_pos = (int)Long.parseUnsignedLong(cpyparts[3].substring(2), 16);
+		}
+		else if(parts[1].startsWith("LIT")){
+			match.match_run = 0;
+			match.match_pos = -1;
+			match.copy_amt = Integer.parseInt(parts[1].substring(parts[1].lastIndexOf(' ')).trim());
+		}
+		else return null;
+		
+		return match;
+	}
+	
+	private static void lzmu_dumpFirstDiffs(String outdir, int n) throws IOException{
+		String logpath = outdir + File.separator + "diffs.log";
+		BufferedWriter bw = new BufferedWriter(new FileWriter(logpath));
+		
+		final int BACK_AMT = 2;
+		final int FWD_AMT = 3;
+		final int TBL_LINES = 3;
+		
+		for(int i = 0; i < n; i++){
+			String path_b = outdir + File.separator + "b" + File.separator + String.format("%03d.log", i);
+			String path_d = outdir + File.separator + "d" + File.separator + String.format("%03d.log", i);
+			
+			if(!FileBuffer.fileExists(path_b)) continue;
+			if(!FileBuffer.fileExists(path_d)) continue;
+			
+			BufferedReader b = new BufferedReader(new FileReader(path_b));
+			BufferedReader d = new BufferedReader(new FileReader(path_d));
+			
+			String line_b = b.readLine();
+			String line_d = d.readLine();
+			LinkedList<String> last_b = new LinkedList<String>();
+			LinkedList<String> last_d = new LinkedList<String>();
+			while(line_b != null && line_d != null){
+				if(!line_b.equals(line_d)){
+					RunMatch[] bmatches = new RunMatch[TBL_LINES+1];
+					RunMatch[] dmatches = new RunMatch[TBL_LINES+1];
+
+					int shift = 0;
+					if(line_b.contains("\tLIT ") && line_d.contains("\tLIT ")){
+						RunMatch lit1 = lzmu_parseLogLine(line_b);
+						RunMatch lit2 = lzmu_parseLogLine(line_d);
+						if(lit1.copy_amt > lit2.copy_amt) shift = 1; //b is next
+						else shift = -1; //d is next
+					}
+					
+					bw.write("--------------- " + String.format("%03d", i) + " ---------------\n\n");
+					bw.write("\tCONTROL\n");
+					for(String l : last_b) bw.write(l + "\n");
+					bw.write(line_b + "\n");
+					bmatches[0] = lzmu_parseLogLine(line_b);
+					for(int j = 0; j < FWD_AMT; j++){
+						line_b = b.readLine();
+						if(line_b == null){
+							bw.write("LOG END\n");
+							break;
+						}
+						bw.write(line_b + "\n");
+						if(j + 1 < TBL_LINES+1){
+							bmatches[j+1] = lzmu_parseLogLine(line_b);
+						}
+					}
+					if(shift < 0){
+						for(int j = 0; j < TBL_LINES; j++){
+							bmatches[j] = bmatches[j+1];
+						}
+						bmatches[TBL_LINES] = null;
+					}
+					
+					bw.write("\tOUTPUT\n");
+					for(String l : last_d) bw.write(l + "\n");
+					bw.write(line_d + "\n");
+					dmatches[0] = lzmu_parseLogLine(line_d);
+					for(int j = 0; j < FWD_AMT; j++){
+						line_d = d.readLine();
+						if(line_d == null){
+							bw.write("LOG END\n");
+							break;
+						}
+						bw.write(line_d + "\n");
+						if(j + 1 < TBL_LINES+1){
+							dmatches[j+1] = lzmu_parseLogLine(line_d);
+						}
+					}
+					if(shift > 0){
+						for(int j = 0; j < TBL_LINES; j++){
+							dmatches[j] = dmatches[j+1];
+						}
+						dmatches[TBL_LINES] = null;
+					}
+					
+					//Score tables
+					RunMatch[] mmatches, nmatches;
+					if(bmatches[0].match_run < 2){
+						mmatches = dmatches;
+						nmatches = bmatches;
+					}
+					else{
+						mmatches = bmatches;
+						nmatches = dmatches;
+					}
+					
+					int[] mscores = new int[TBL_LINES];
+					int[] nscores = new int[TBL_LINES];
+					int mtotal = 0;
+					int ntotal = 0;
+					for(int j = 0; j < TBL_LINES; j++){
+						if(mmatches[j] != null){
+							mscores[j] = LZMu.MuLZCompCore.scoreRunStaticBits(mmatches[j]);
+						}
+						if(nmatches[j] != null){
+							nscores[j] = LZMu.MuLZCompCore.scoreRunStaticBits(nmatches[j]);
+						}
+					}
+					
+					for(int j = 0; j < 2; j++){
+						if(mmatches[j] != null){
+							mtotal += mscores[j];
+						}
+						if(nmatches[j] != null){
+							ntotal += nscores[j];
+						}
+					}
+					
+					String colspace = "\t\t";
+					bw.write("\nPosition: 0x" + Long.toHexString(bmatches[0].encoder_pos) + "\n");
+					
+					bw.write("\n\t");
+					if(bmatches[0].match_run >= 2) bw.write("> ");
+					bw.write("MY [" + mtotal + "]" + colspace);
+					if(bmatches[0].match_run < 2) bw.write("> ");
+					bw.write("NEXT [" + ntotal + "]\n");
+					
+					for(int j = 0; j < TBL_LINES; j++){
+						if(mmatches[j].match_run < 2){
+							//Literal
+							bw.write("\tLIT 1" + colspace + "\t");
+						}
+						else{
+							//Backcopy
+							long offamt = mmatches[j].match_pos - mmatches[j].encoder_pos;
+							bw.write("\tBCPY " + mmatches[j].match_run);
+							bw.write(" @ " + offamt);
+							bw.write(" [" + mscores[j] + "]" + colspace);
+						}
+						
+						if(nmatches[j].match_run < 2){
+							//Literal
+							bw.write("LIT 1\n");
+						}
+						else{
+							//Backcopy
+							long offamt = nmatches[j].match_pos - nmatches[j].encoder_pos;
+							bw.write("BCPY " + nmatches[j].match_run);
+							bw.write(" @ " + offamt);
+							bw.write(" [" + nscores[j] + "]\n");
+						}
+					}
+					
+					bw.write("\n");
+					break;
+				}
+				last_b.add(line_b);
+				last_d.add(line_d);
+				while(last_b.size() > BACK_AMT) last_b.pop();
+				while(last_d.size() > BACK_AMT) last_d.pop();
+				
+				line_b = b.readLine();
+				line_d = d.readLine();
+			}
+			
+			b.close();
+			d.close();
+		}
+		bw.close();
+	}
+	
 	public static void main(String[] args) {
 		if(args.length < 2) {
 			System.err.println("Usage: [jar/class] (input file) (output dir)");

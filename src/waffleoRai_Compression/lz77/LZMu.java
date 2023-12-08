@@ -59,7 +59,9 @@ import waffleoRai_Utils.StreamWrapper;
  * Runlen is encoded in the command in the control stream (as n above)
  * 	len = nn + 2 (Range is 2-5)
  * 	offset = b0
- * Offset is also negative here
+ * Offset is also negative here.
+ * If the highest bit of the offset value is 0, it is STILL negative when bit extended.
+ * ie. 0x2c is -212
  * 
  */
 
@@ -71,7 +73,10 @@ public class LZMu {
 	public static final int BACK_WINDOW_SIZE = 0x1000; //If treated as signed 13 bit, then -4096 is most negative value
 	public static final int MIN_RUN_SIZE = 2;
 	public static final int MAX_RUN_SIZE_SMALL = 5;
+	public static final int MIN_RUN_SIZE_LARGE = 3;
 	public static final int MAX_RUN_SIZE_LARGE = 256;
+	public static final int MAX_RUN_SIZE_LARGE_2BYTE = 9;
+	public static final int MAX_BACKSET_SMALL = 256;
 	
 	public static final int CTRLTYPE_NONE = 0;
 	public static final int CTRLTYPE_LITERAL = 1;
@@ -81,6 +86,8 @@ public class LZMu {
 	public static final int COMP_STRAT_DEFAULT = 0;
 	public static final int COMP_STRAT_FAST = 1;
 	public static final int COMP_LOOKAHEAD_SCANALL_GREEDY = 2;
+	public static final int COMP_LOOKAHEAD_QUICK = 3;
+	public static final int COMP_LOOKAHEAD_REC = 4;
 	
 	/*--- Instance Variables ---*/
 	
@@ -336,7 +343,53 @@ public class LZMu {
 	
 	/*--- Encode ---*/
 	
+	protected static class MuRunMatch extends RunMatch{
+		private boolean scoreMode = true; //False bytes, true bits
+		
+		public int compareTo(RunMatch o) {
+			if(o == null) return -1;
+			
+			if(!LZCompCore.matchSortOrder){
+				int myscore = 0;
+				int oscore = 0;
+				if(scoreMode){
+					myscore = MuLZCompCore.scoreRunStaticBits(this);
+					oscore = MuLZCompCore.scoreRunStaticBits(o);
+				}
+				else{
+					myscore = MuLZCompCore.scoreRunStaticBytes(this);
+					oscore = MuLZCompCore.scoreRunStaticBytes(o);
+				}
+				return myscore - oscore;
+			}
+			else{
+				//Position
+				if(this.encoder_pos != o.encoder_pos){
+					return (int)(this.encoder_pos - o.encoder_pos);
+				}
+			}
+			
+			return 0;
+		}
+	
+		public int sizeAsAllLiteral(){
+			//In bits.
+			int amt = copy_amt;
+			if(match_run > 1){
+				amt += match_run;
+			}
+			else{
+				if(copy_amt == 0) amt++;
+			}
+			
+			return amt * 9;
+		}
+	
+	}
+	
 	public static class MuLZCompCore extends LZCompCore{
+		
+		private boolean scoreMode = true; //False bytes, true bits
 
 		public MuLZCompCore(){
 			super.min_run_len = MIN_RUN_SIZE;
@@ -346,10 +399,10 @@ public class LZMu {
 		
 		protected boolean currentMatchEncodable() {
 			long backoff = super.current_pos - super.match_pos;
-			if(super.match_run < 3){
-				//Can't be more than 128 bytes back.
+			if(super.match_run < MIN_RUN_SIZE_LARGE){
+				//Can't be more than 255 bytes back.
 				//Byte before current pos is -1
-				if(backoff > 128) return false;
+				if(backoff > MAX_BACKSET_SMALL) return false;
 			}
 			if(backoff > 4096) return false;
 			if(match_run > MAX_RUN_SIZE_LARGE) return false;
@@ -358,17 +411,119 @@ public class LZMu {
 		}
 
 		protected boolean matchEncodable(RunMatch match) {
-			long backoff = match.encoder_pos - match.match_pos;
-			if(match.match_run < 3){
-				//Can't be more than 128 bytes back.
+			long backoff = (match.encoder_pos + match.copy_amt) - match.match_pos;
+			if(match.match_run < MIN_RUN_SIZE_LARGE){
+				//Can't be more than 255 bytes back.
 				//Byte before current pos is -1
-				if(backoff > 128) return false;
+				if(backoff > MAX_BACKSET_SMALL) return false;
 			}
 			if(backoff > 4096) return false;
 			if(match.match_run > MAX_RUN_SIZE_LARGE) return false;
 			
 			return true;
 		}
+
+		protected static int scoreRunStaticBits(RunMatch match) {
+			if(match == null) return 0;
+			
+			//Amount versus decompressed
+			//Net bits added. Negative means bits have been saved
+			/*int add = match.copy_amt;
+			if(match.match_run > 1){
+				long backoff = (match.encoder_pos + match.copy_amt) - match.match_pos;
+				if(backoff > 255 || match.match_run > 5){
+					//Long run
+					add = 18;
+					if(match.match_run > 9) add += 8;
+				}
+				else{
+					//Short run
+					add = 12; //1 byte + 4 bits
+				}	
+			}
+			else{
+				if(match.copy_amt < 1) add++; //Sometimes lit1 is just encoded as no copy, no match
+			}
+			
+			return add - (match.match_run << 3);*/
+			
+			//Amount versus literal
+			int litsize = match.sizeAsAllLiteral();
+			int trgsize = (match.copy_amt * 9);
+			if(match.match_run > 1){
+				long backoff = (match.encoder_pos + match.copy_amt) - match.match_pos;
+				if(backoff > MAX_BACKSET_SMALL || match.match_run > MAX_RUN_SIZE_SMALL){
+					//Long run
+					trgsize += 18; //2 bytes + 2 bits
+					if(match.match_run > MAX_RUN_SIZE_LARGE_2BYTE) trgsize += 8;
+				}
+				else{
+					//Short run
+					trgsize += 12; //1 byte + 4 bits
+				}
+			}
+			else{
+				if(match.copy_amt == 0) trgsize += 9;
+			}
+			
+			return trgsize - litsize;
+		}
+		
+		protected static int scoreRunStaticBytes(RunMatch match) {
+			if(match == null) return 0;
+			
+			int litsize = match.copy_amt + match.match_run;
+			int trgsize = match.copy_amt;
+			if(match.match_run < 1 && match.copy_amt < 1) {
+				litsize++;
+				trgsize++;
+			}
+			
+			if(match.match_run > 1){
+				long backoff = (match.encoder_pos + match.copy_amt) - match.match_pos;
+				if(backoff > MAX_BACKSET_SMALL || match.match_run > MAX_RUN_SIZE_SMALL){
+					//Long run
+					trgsize += 2;
+					if(match.match_run > MAX_RUN_SIZE_LARGE_2BYTE){
+						trgsize += 1;
+					}
+				}
+				else{
+					//Short run
+					trgsize += 1;
+				}
+			}
+			
+			return trgsize - litsize;
+		}
+		
+		public int scoreRun(RunMatch match) {
+			if(scoreMode) return scoreRunStaticBits(match);
+			return scoreRunStaticBytes(match);
+		}
+		
+		protected int bytesToEncode(RunMatch match){
+			if(match == null) return 0;
+			int total = match.copy_amt;
+			if(match.match_run > 2){
+				long off = match.encoder_pos + match.copy_amt - match.match_pos;
+				if(off <= MAX_RUN_SIZE_LARGE && match.match_run <= MAX_RUN_SIZE_SMALL){
+					//Short
+					total++;
+				}
+				else{
+					total += 2;
+					if(match.match_run > MAX_RUN_SIZE_LARGE_2BYTE) total++;
+				}
+			}
+			else{
+				if(match.copy_amt == 0) total++;
+			}
+
+			return total;
+		}
+		
+		protected RunMatch newRunMatch(){return new MuRunMatch();}
 		
 	}
 	
@@ -420,6 +575,10 @@ public class LZMu {
 	private void finishWrite(){
 		//TODO Fills and flushes the last command, tidies up the output
 		if(bitmask == 0x80){
+			//It seems to hallucinate an extra command?
+			output_fb.addToFile((byte)0x40);
+			for(int i = 0; i < 3; i++) output_fb.addToFile((byte)0x00);
+			
 			//Just pad to 4
 			while((output_fb.getFileSize() & 0x3) != 0) output_fb.addToFile(FileBuffer.ZERO_BYTE);
 		}
@@ -427,21 +586,41 @@ public class LZMu {
 			//TODO This is probably going to have to be tweaked a lot to match.
 			//Command stream needs to be padded out too, I guess
 			int total_size = dataBufferUsed + 1 + (int)output_fb.getFileSize();
-			int data_pad = (4 - (total_size & 0x3)) & 0x3;
 			int ctrl_bits_rem = 0;
 			int mask = bitmask;
 			while(mask > 0){
 				ctrl_bits_rem++;
 				mask >>>= 1;
+				//writeDataByte((byte)0);
+				//total_size++;
 			}
+			int data_pad = (4 - (total_size & 0x3)) & 0x3;
 			
-			if((data_pad == 3) && (ctrl_bits_rem >= 2)){
+			if(ctrl_bits_rem >= 2){
 				bitmask >>>= 1;
 				ctrlbyte |= bitmask;
 				bitmask >>>= 1;
 				for(int i = 0; i < 3; i++){
 					writeDataByte((byte)0);
+					total_size++;
 				}
+				data_pad = (4 - (total_size & 0x3)) & 0x3;
+			}
+			else if(ctrl_bits_rem == 1){
+				output_fb.addToFile((byte)ctrlbyte);
+				dumpDataBuffer();
+				
+				ctrlbyte = 0x80;
+				total_size++;
+				for(int i = 0; i < 3; i++){
+					writeDataByte((byte)0);
+					total_size++;
+				}
+				data_pad = (4 - (total_size & 0x3)) & 0x3;
+			}
+			
+			for(int i = 0; i < data_pad; i++){
+				writeDataByte((byte)0);
 			}
 			
 			output_fb.addToFile((byte)ctrlbyte);
@@ -469,10 +648,10 @@ public class LZMu {
 			
 			//Backref
 			int pdiff = (int)(compressor.current_pos - compressor.match_pos);
-			if(runlen <= 5){
+			if(runlen <= MAX_RUN_SIZE_SMALL){
 				//See if short encoding is an option
-				//Offset must be <= 128 in magnitude.
-				if(pdiff <= 128){
+				//Offset must be <= 255 in magnitude.
+				if(pdiff <= MAX_BACKSET_SMALL){
 					writeControlBit(false, false);
 					writeControlBit(false, false);
 					
@@ -494,7 +673,7 @@ public class LZMu {
 			int b0 = ((-pdiff) >> 5) & 0xff; //sra
 			int b1 = ((-pdiff) << 3) & 0xff;
 			writeDataByte((byte)b0);
-			if(runlen > 9){
+			if(runlen > MAX_RUN_SIZE_LARGE_2BYTE){
 				//Need third byte
 				writeDataByte((byte)b1);
 				writeDataByte((byte)(runlen-1));
@@ -509,48 +688,54 @@ public class LZMu {
 	}
 	
 	private void encodeNext(FileBuffer input, RunMatch match){
-		//TODO mflush
+		boolean mflush = false;
+		long epos = match.encoder_pos;
+		
 		//This one needs to read the match's copy amount and encode all those bytes too.
 		for(int i = 0; i < match.copy_amt; i++){
-			writeControlBit(true, true);
-			writeDataByte(input.getByte(match.encoder_pos + i));
+			mflush = writeControlBit(true, true);
+			writeDataByte(input.getByte(epos + i));
+			if(mflush) dumpDataBuffer();
 		}
 		
 		/*--- DEBUG LOG ---*/
 		if(match.copy_amt > 0){
-			debug_logLiteralEvent(match.encoder_pos, lastCtrlCharPos, match.copy_amt);
+			debug_logLiteralEvent(epos, lastCtrlCharPos, match.copy_amt);
 		}
 		/*--- DEBUG LOG ---*/
 	
+		epos += match.copy_amt;
 		int runlen = match.match_run;
 		if(runlen < 2){
 			//Copy as is
-			writeControlBit(true, true);
-			writeDataByte(input.getByte(match.encoder_pos));
+			mflush = writeControlBit(true, true);
+			writeDataByte(input.getByte(epos));
+			if(mflush) dumpDataBuffer();
 			
 			/*--- DEBUG LOG ---*/
-			debug_logLiteralEvent(match.encoder_pos, lastCtrlCharPos, 1);
+			debug_logLiteralEvent(epos, lastCtrlCharPos, 1);
 			/*--- DEBUG LOG ---*/
 		}
 		else{
 			/*--- DEBUG LOG ---*/
-			debug_logReferenceEvent(match.encoder_pos, lastCtrlCharPos, match.match_pos, match.match_run);
+			debug_logReferenceEvent(epos, lastCtrlCharPos, match.match_pos, match.match_run);
 			/*--- DEBUG LOG ---*/
 			
 			//Backref
-			int pdiff = (int)(match.encoder_pos - match.match_pos);
-			if(runlen <= 5){
+			int pdiff = (int)(epos - match.match_pos);
+			if(runlen <= MAX_RUN_SIZE_SMALL){
 				//See if short encoding is an option
-				//Offset must be <= 128 in magnitude.
-				if(pdiff <= 128){
+				//Offset must be <= 255 in magnitude.
+				if(pdiff <= MAX_BACKSET_SMALL){
 					writeControlBit(false, false);
 					writeControlBit(false, false);
 					
 					runlen -= 2;
 					writeControlBit((runlen & 0x2)!= 0, false);
-					writeControlBit((runlen & 0x1)!= 0, true);
+					mflush = writeControlBit((runlen & 0x1)!= 0, true);
 					
 					writeDataByte((byte)(-pdiff));
+					if(mflush) dumpDataBuffer();
 					
 					return;
 				}
@@ -558,21 +743,23 @@ public class LZMu {
 			
 			//Long reference
 			writeControlBit(false, false);
-			writeControlBit(true,true);
+			mflush = writeControlBit(true, true);
+			if(mflush) dumpDataBuffer();
 			
 			int b0 = ((-pdiff) >> 5) & 0xff; //sra
 			int b1 = ((-pdiff) << 3) & 0xff;
 			writeDataByte((byte)b0);
-			if(runlen > 9){
+			if(runlen > MAX_RUN_SIZE_LARGE_2BYTE){
 				//Need third byte
 				writeDataByte((byte)b1);
-				writeDataByte((byte)runlen);
+				writeDataByte((byte)(runlen-1));
 			}
 			else{
 				runlen -= 2;
 				b1 |= (runlen & 0x7);
 				writeDataByte((byte)b1);
 			}
+			if(mflush) dumpDataBuffer();
 		}
 	}
 	
@@ -598,15 +785,80 @@ public class LZMu {
 			while(!compressor.atEnd()){
 				List<RunMatch> finds = compressor.findMatchesLookaheadGreedy(comp_lookahead);
 				int amt = 0;
-				for(RunMatch match : finds){
-					if(match.match_run > 1) amt += match.match_run;
-					else amt++;
+				if(finds != null){
+					for(RunMatch match : finds){
+						if(match.match_run > 1){
+							amt += match.match_run;
+						}
+						amt += match.copy_amt;
+						encodeNext(input, match);
+					}
+				}
+				else{
+					//Literal
+					RunMatch match = new MuRunMatch();
+					match.encoder_pos = compressor.current_pos;
+					match.copy_amt = 0;
 					encodeNext(input, match);
+					amt++;
 				}
 				compressor.incrementPos(amt);
 				bytesRead += amt;
 				if(bytesRead >= decompSize) bytesRead = decompSize;
 			}
+			finishWrite();
+		}
+		else if(comp_appr == COMP_LOOKAHEAD_REC){
+			compressor.scoreMode = true;
+			LinkedList<RunMatch> matches = new LinkedList<RunMatch>();
+			while(!compressor.atEnd()){
+				//Find match
+				int amt = 0;
+				compressor.findMatchLookaheadRecursive(matches);
+				if(!matches.isEmpty()){
+					for(RunMatch match : matches){
+						encodeNext(input, match);
+						amt += match.copy_amt + match.match_run;
+					}
+					
+					matches.clear();
+				}
+				else{
+					//Immediate literal
+					RunMatch match = new MuRunMatch();
+					match.encoder_pos = compressor.current_pos;
+					match.copy_amt = 0;
+					encodeNext(input, match);
+					amt++;
+				}
+				bytesRead += amt;
+				compressor.incrementPos(amt);
+			}
+			finishWrite();
+		}
+		else if(comp_appr == COMP_LOOKAHEAD_QUICK){
+			compressor.scoreMode = true;
+			while(!compressor.atEnd()){
+				//Find match
+				RunMatch match = compressor.findMatchLookaheadQuick();
+				//System.err.println("0x" + Long.toHexString(compressor.current_pos) + ": " + Integer.toHexString(compressor.lastPick));
+				
+				int amt = 0;
+				if(match != null){
+					encodeNext(input, match);
+					amt += match.copy_amt + match.match_run;
+				}
+				else{
+					match = new MuRunMatch();
+					match.encoder_pos = compressor.current_pos;
+					match.copy_amt = 0;
+					encodeNext(input, match);
+					amt++;
+				}
+				bytesRead += amt;
+				compressor.incrementPos(amt);
+			}
+			finishWrite();
 		}
 		else if(comp_appr == COMP_STRAT_FAST){
 			while(!compressor.atEnd()){
@@ -622,6 +874,7 @@ public class LZMu {
 				encodeNext(input, compressor);
 				compressor.incrementPos(amt);
 			}
+			finishWrite();
 		}
 		else{
 			//Default
@@ -642,234 +895,6 @@ public class LZMu {
 		}
 			
 		return output_fb;
-	}
-	
-	/*--- Encode Old ---*/
-	
-	//private int debug_ct;
-	
-	private boolean longEncode_old(int back_off, int run_len){
-		if(back_off > 0xFF){
-			//Can't be short
-			//At least 3 bytes for run length
-			if(run_len < 3) return false;
-			return true;
-		}
-		else{
-			//Only if run length is more than 5
-			return (run_len > 5);
-		}
-	}
-	
-	private void writeEncode_old(int ctrlchar, LinkedList<Byte> outbuffer){
-		//debug_ct++;
-		output.put((byte)ctrlchar); bytesWritten++;
-		while(!outbuffer.isEmpty()) {output.put(outbuffer.pop()); bytesWritten++;}
-		//System.err.println("Group written. Control Byte: 0x" + String.format("%02x", ctrlchar) + " Position: 0x" + Long.toHexString(bytesWritten));
-		//if(debug_ct >= 2) System.exit(2);
-	}
-	
-	private void encode_old(StreamWrapper in){
-		LinkedList<Byte> outbuffer = new LinkedList<Byte>();
-		decompSize = 0;
-		bytesWritten = 0;
-		
-		ArrayWindow f_win = new ArrayWindow(MAX_RUN_SIZE_LARGE);
-		ArrayWindow b_win = new ArrayWindow(BACK_WINDOW_SIZE);
-		
-		//Populate front window
-		while(!f_win.isFull())
-		{
-			if(in.isEmpty()) break;
-			f_win.put(in.get());
-			decompSize++;
-		}
-		//System.err.println("Front window initial fill done. Read: 0x" + Long.toHexString(decompSize));
-		
-		int ctrlchar = 0;
-		int bitmask = 0x80;
-		boolean remaining = true;
-		while(remaining)
-		{
-			//Determine longest run...
-			
-			if(f_win.isEmpty())
-			{
-				remaining = false;
-				//Finish up this ctrl char with 0 copies.
-				while(bitmask != 0)
-				{
-					ctrlchar |= bitmask;
-					b_win.put((byte)0);
-					outbuffer.add((byte)0);
-					
-					bitmask = bitmask >>> 1;
-					if(bitmask == 0) writeEncode_old(ctrlchar, outbuffer);
-				}
-				continue;
-			}
-			
-			int[] run_lens = new int[BACK_WINDOW_SIZE];
-			int b_win_size = b_win.getSize();
-			//System.err.println("b_win_size = 0x" + Integer.toHexString(b_win_size));
-			//System.err.println("f_win_size = 0x" + Integer.toHexString(f_win.getSize()));
-			for(int i = 0; i < b_win_size; i++)
-			{
-				//System.err.println("back i = " + i);
-				f_win.rewind();
-				int b_pos = i;
-				int f_pos = 0;
-				int ct = 0;
-				
-				byte bb = b_win.getFromBack(b_pos);
-				byte fb = f_win.get();
-				//System.err.println("\tbb = 0x" + String.format("%02x", bb));
-				//System.err.println("\tfb = 0x" + String.format("%02x", fb));
-				while(bb == fb)
-				{
-					ct++;
-					if(!f_win.canGet()) break;
-					fb = f_win.get();
-					
-					if(b_pos > 0) bb = b_win.getFromBack(--b_pos);
-					else bb = f_win.getFromFront(f_pos++);
-				}
-				run_lens[i] = ct;
-			}
-			f_win.rewind();
-			
-			int max_run = 0;
-			int max_idx = -1;
-			for(int j = run_lens.length -1; j >= 0; j--)
-			{
-				if (run_lens[j] >= max_run)
-				{
-					max_run = run_lens[j];
-					max_idx = j;
-				}
-			}
-			//System.err.println("\tmax_run = 0x" + Integer.toHexString(max_run));
-			//System.err.println("\tmax_idx = 0x" + Integer.toHexString(max_idx));
-			
-			if(max_run < MIN_RUN_SIZE || (max_idx > 0xFF && max_run < 3))
-			{
-				//No runs found (that were long enough)!
-				ctrlchar |= bitmask;
-				byte b = f_win.pop();
-				b_win.put(b);
-				outbuffer.add(b);
-				
-				bitmask = bitmask >>> 1;
-				if(bitmask == 0)
-				{
-					writeEncode_old(ctrlchar, outbuffer);
-					bitmask = 0x80; ctrlchar = 0;
-				}
-			}
-			else
-			{
-				//if(max_idx >= 0xFF || max_run > MAX_RUN_SIZE_SMALL)
-				if(longEncode_old(max_idx, max_run))
-				{
-					//Write 01 to ctrlchar
-					bitmask = bitmask >>> 1;
-					if(bitmask == 0)
-					{
-						writeEncode_old(ctrlchar, outbuffer);
-						bitmask = 0x80; ctrlchar = 0;
-					}
-					
-					ctrlchar |= bitmask;
-					
-					//Encode back ref
-					int word1 = (~max_idx & 0x1FFF) << 3;
-					if(max_run <= 9) word1 |= (max_run - 2);
-					
-					outbuffer.add((byte)((word1 >>> 8) & 0xFF));
-					outbuffer.add((byte)(word1 & 0xFF));
-					if(max_run > 9) outbuffer.add((byte)(max_run-1));
-					
-					//Advance bitmask and dump if needed
-					bitmask = bitmask >>> 1;
-					if(bitmask == 0)
-					{
-						writeEncode_old(ctrlchar, outbuffer);
-						bitmask = 0x80; ctrlchar = 0;
-					}
-				}
-				else
-				{
-					//Write ctrl char bits...
-					//First 0...
-					//System.err.println("bitmask: " + String.format("%02x", bitmask));
-					bitmask = bitmask >>> 1;
-					if(bitmask == 0)
-					{
-						writeEncode_old(ctrlchar, outbuffer);
-						bitmask = 0x80; ctrlchar = 0;
-					}
-					//Second 0...
-					//System.err.println("bitmask: " + String.format("%02x", bitmask));
-					bitmask = bitmask >>> 1;
-					if(bitmask == 0)
-					{
-						writeEncode_old(ctrlchar, outbuffer);
-						bitmask = 0x80; ctrlchar = 0;
-					}
-					
-					int n = max_run - 2;
-					//System.err.println("n = " + n);
-					//System.err.println("bitmask: " + String.format("%02x", bitmask));
-					if((n & 0x2) != 0) ctrlchar |= bitmask;
-					bitmask = bitmask >>> 1;
-					if(bitmask == 0)
-					{
-						writeEncode_old(ctrlchar, outbuffer);
-						bitmask = 0x80; ctrlchar = 0;
-					}
-					
-					//System.err.println("bitmask: " + String.format("%02x", bitmask));
-					if((n & 0x1) != 0) ctrlchar |= bitmask;
-					bitmask = bitmask >>> 1;
-					
-					//Write offset
-					int off = ~max_idx;
-					outbuffer.add((byte)off);
-					//System.err.println("off : " + String.format("%02x", (byte)off));
-					
-					if(bitmask == 0)
-					{
-						writeEncode_old(ctrlchar, outbuffer);
-						bitmask = 0x80; ctrlchar = 0;
-					}
-				}
-				
-				//Slide windows...
-				for(int i = 0; i < max_run; i++)
-				{
-					if(b_win.isFull()) b_win.pop();
-					b_win.put(f_win.pop());
-				}
-			}
-			
-			//Refill forward window
-			while(!f_win.isFull())
-			{
-				if(in.isEmpty()) break;
-				f_win.forcePut(in.get());
-				decompSize++;
-			}
-			
-		}
-	}
-		
-	public StreamWrapper encode_old(StreamWrapper input, int allocate){
-		decompSize = 0;
-		output = new ByteBufferStreamer(allocate);
-		encode_old(input);
-		
-		output.rewind();
-		return output;
 	}
 	
 	/*--- Definitions ---*/

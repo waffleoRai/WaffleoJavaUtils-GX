@@ -145,10 +145,14 @@ public class Z64ADPCM implements ADPCMCoder{
 	/*----- Encoding -----*/
 	
 	public static N64ADPCMTable buildTable(AudioSampleStream input, int samples, boolean smallSamples){
-		return buildTable(input, 0, samples, smallSamples);
+		return buildTable(input, 0, samples, smallSamples, 2);
 	}
 	
 	public static N64ADPCMTable buildTable(AudioSampleStream input, int channel, int samples, boolean smallSamples){
+		return buildTable(input, channel, samples, smallSamples, 2);
+	}
+	
+	public static N64ADPCMTable buildTable(AudioSampleStream input, int channel, int samples, boolean smallSamples, int npredScaler){
 		VADPCM encoder = new VADPCM();
 		encoder.setOrder(2);
 		encoder.setRefineIterations(ENC_DEFO_ITERS);
@@ -157,7 +161,7 @@ public class Z64ADPCM implements ADPCMCoder{
 		if(smallSamples)encoder.setTargetBitDepth(2);
 		else encoder.setTargetBitDepth(4);
 		
-		return encoder.buildTable(input, samples, channel);
+		return encoder.buildTable(input, samples, channel, npredScaler);
 	}
 	
 	public FileBuffer encode(AudioSampleStream input, int channel, int samples) throws InterruptedException{

@@ -11,9 +11,21 @@ public abstract class LZCompCore {
 	//Some code for handling common LZ77/LZSS compression functions and algorithm
 	//	variation for attempted matching. 
 	
+	/*
+	 * Things to try:
+	 * 	- If it picks "next", return just the literal instead of literal AND
+	 * 		next match
+	 *  - Compare the events after imm and next as well WITH both imm and next variations.
+	 *  - Try a different scoring? (In combination with other adjustments?)
+	 */
+	
+	public static final int LAST_PICK_NONE = -1;
+	public static final int LAST_PICK_MINE = 0;
+	public static final int LAST_PICK_NEXT = 1;
+	
 	/*--- Helper Classes ---*/
 	
-	private static boolean matchSortOrder = false; //false is run len, true is position
+	protected static boolean matchSortOrder = false; //false is run len, true is position
 	
 	public static class RunMatch implements Comparable<RunMatch>{
 		public int match_run;
@@ -79,6 +91,11 @@ public abstract class LZCompCore {
 			}
 			return false;
 		}
+	
+		public int sizeAsAllLiteral(){
+			return copy_amt + match_run;
+		}
+		
 	}
 	
 	/*--- Instance Variables ---*/
@@ -94,6 +111,9 @@ public abstract class LZCompCore {
 	protected FileBuffer input_data = null;
 	protected long input_len = 0L;
 	protected long current_pos = 0L;
+	
+	protected int lastPick = LAST_PICK_NONE;
+	protected boolean skipNext = false;
 	
 	/*--- Init ---*/
 	
@@ -117,6 +137,10 @@ public abstract class LZCompCore {
 	
 	protected abstract boolean currentMatchEncodable();
 	protected abstract boolean matchEncodable(RunMatch match);
+	protected abstract int scoreRun(RunMatch match);
+	protected abstract int bytesToEncode(RunMatch match);
+	
+	protected RunMatch newRunMatch(){return new RunMatch();}
 	
 	public void firstMeetsReq(){
 		/*
@@ -162,6 +186,179 @@ public abstract class LZCompCore {
 		
 	}
 	
+	public int findMatchLookaheadRecursive(LinkedList<RunMatch> chain){
+		//1. Find best match at current position.
+		RunMatch mymatch = findMatchAt(current_pos);
+		
+		//2. If no run, just return since it's literal either way.
+		if(mymatch.match_run < 2){
+			lastPick = LAST_PICK_NONE;
+			return 0;
+		}
+		
+		long nxtpos = current_pos + 1;
+		if(nxtpos >= input_len){
+			lastPick = LAST_PICK_MINE;
+			chain.push(mymatch);
+			return scoreRun(mymatch);
+		}
+		
+		//3. See if there is a better match a little ways (how far?)
+		//	down if we keep this one literal instead.
+		RunMatch nextmatch = findMatchAt(nxtpos);
+		if(nextmatch == null || nextmatch.match_run < 2){
+			lastPick = LAST_PICK_MINE;
+			chain.push(mymatch);
+			return scoreRun(mymatch);
+		}
+		nextmatch.copy_amt = 1;
+		nextmatch.encoder_pos--;
+		
+		int score1 = mymatch.match_run;
+		int score2 = nextmatch.match_run;
+		if(score1 <= score2){
+			int sz1 = score1;
+			int sz2 = score2+1;
+			
+			long pos = current_pos;
+			LinkedList<RunMatch> l0 = new LinkedList<RunMatch>();
+			LinkedList<RunMatch> l1 = new LinkedList<RunMatch>();
+			
+			current_pos = pos + sz1;
+			score1 = scoreRun(mymatch) + findMatchLookaheadRecursive(l0);
+			current_pos = pos + sz2;
+			score2 = scoreRun(nextmatch) + findMatchLookaheadRecursive(l1);
+			current_pos = pos;
+
+			if(score2 < score1){
+				chain.addAll(l1);
+				
+				lastPick = LAST_PICK_NEXT;
+				chain.push(nextmatch);
+				return score2;
+			}
+			else{
+				chain.addAll(l0);
+				
+				lastPick = LAST_PICK_MINE;
+				chain.push(mymatch);
+				return score1;
+			}
+		}
+		else if(score1 > score2){
+			score1 = scoreRun(mymatch);
+			score2 = scoreRun(nextmatch);
+			if(score2 < score1){
+				lastPick = LAST_PICK_NEXT;
+				chain.push(nextmatch);
+				return score2;
+			}
+		}
+		
+		lastPick = LAST_PICK_MINE;
+		chain.push(mymatch);
+		return score1;
+	}
+	
+	public RunMatch findMatchLookaheadQuick(){
+		//Matches LZMu. Don't mess with it.
+		
+		//1. Find best match at current position.
+		RunMatch mymatch = findMatchAt(current_pos);
+		
+		//2. If no run, just return since it's literal either way.
+		if(mymatch.match_run < 2){
+			lastPick = LAST_PICK_NONE;
+			skipNext = false;
+			return null;
+		}
+		
+		//3. If skipNext flag, just return this match...
+		if(skipNext){
+			lastPick = LAST_PICK_MINE | 0x1000;
+			skipNext = false;
+			return mymatch;
+		}
+		
+		//4. Check best match for next position
+		long nxtpos = current_pos + 1;
+		if(nxtpos >= input_len){
+			//Right up at the end, so no next to check.
+			lastPick = LAST_PICK_MINE | 0x800;
+			return mymatch;
+		}
+		
+		//5. Go ahead and find next match
+		RunMatch nextmatch = findMatchAt(nxtpos);
+		if(nextmatch == null || nextmatch.match_run < 2){
+			//No match at next position. Just return current.
+			lastPick = LAST_PICK_MINE | 0x400;
+			return mymatch;
+		}
+		nextmatch.copy_amt = 1;
+		nextmatch.encoder_pos--;
+		
+		//6. Compare
+		int score1 = scoreRun(mymatch);
+		int score2 = scoreRun(nextmatch);
+		if(mymatch.match_run <= nextmatch.match_run){
+			RunMatch m1a = findMatchAt(current_pos + mymatch.match_run);
+			if(m1a != null && m1a.match_run >= 2){
+				score1 += scoreRun(m1a);
+				
+				if(score2 < score1){
+					lastPick = LAST_PICK_NEXT | 0x20;
+					return nextmatch;
+				}
+				else{
+					skipNext = true;
+					lastPick = LAST_PICK_MINE | 0x20;
+					return mymatch;
+				}
+			}
+			else{
+				if(score2 < score1){
+					lastPick = LAST_PICK_NEXT | 0x10;
+					return nextmatch;
+				}
+				else{
+					skipNext = true;
+					lastPick = LAST_PICK_MINE | 0x10;
+					return mymatch;
+				}
+			}
+		}
+		else{
+			//mymatch.match_run > nextmatch.match_run
+			if(score2 < score1){
+				lastPick = LAST_PICK_NEXT | 0x100;
+				return nextmatch;
+			}
+			else{
+				lastPick = LAST_PICK_MINE | 0x100;
+				return mymatch;
+			}
+		}
+	}
+	
+	public RunMatch findMatchAt(long pos){
+		long cpos = current_pos;
+		current_pos = pos;
+		findMatchCurrentPosOnly();
+		
+		RunMatch match = newRunMatch();
+		match.encoder_pos = pos;
+		match.copy_amt = copy_amt;
+		match.match_pos = match_pos;
+		match.match_run = match_run;
+		
+		current_pos = cpos;
+		match_run = 0;
+		match_pos = 0;
+		copy_amt = 0;
+		return match;
+	}
+	
 	public void findMatchCurrentPosOnly(){
 		/*
 		 * Find the longest viable run matching from the current position.
@@ -177,7 +374,8 @@ public abstract class LZCompCore {
 		if(fmax > input_len) fmax = input_len;
 		long bmin = current_pos - max_back_len;
 		if(bmin < 0) bmin = 0;
-		RunMatch match = new RunMatch();
+		RunMatch match = newRunMatch();
+		match.encoder_pos = current_pos;
 		
 		while(check_bpos >= bmin){
 			fpos = current_pos;
@@ -199,8 +397,10 @@ public abstract class LZCompCore {
 					match.match_pos = (int)check_bpos;
 					//Check if valid
 					if(matchEncodable(match)){
-						match_run = match.match_run;
-						match_pos = match.match_pos;
+						if(scoreRun(match) < 0){
+							match_run = match.match_run;
+							match_pos = match.match_pos;
+						}
 					}
 				}
 			}
@@ -245,15 +445,16 @@ public abstract class LZCompCore {
 					bpos++;
 				}
 				
-				int runlen = (int)(fpos - current_pos);
+				int runlen = (int)(fpos - cpos);
 				if(runlen >= min_run_len){
-					RunMatch match = new RunMatch();
+					RunMatch match = newRunMatch();
 					match.match_run = runlen;
 					match.match_pos = (int)check_bpos;
+					match.copy_amt = 0;
+					match.encoder_pos = cpos;
+					
 					//Check if valid
 					if(matchEncodable(match)){
-						match.encoder_pos = cpos;
-						match.copy_amt = 0;
 						all_matches.add(match);
 					}
 				}
@@ -265,15 +466,21 @@ public abstract class LZCompCore {
 		
 		if(all_matches.isEmpty()) return null;
 		matchSortOrder = false;
-		Collections.sort(all_matches);
-		Collections.reverse(all_matches);
+		if(all_matches.size() > 1){
+			Collections.sort(all_matches);
+		}
 		
 		//Pop until none left. Only keep when don't conflict
 		List<RunMatch> okay_matches = new LinkedList<RunMatch>();
 		int len = all_matches.size();
 		for(int i = 0; i < len; i++){
 			boolean noconflict = true;
-			RunMatch my_match = okay_matches.get(i);
+			RunMatch my_match = all_matches.get(i);
+			
+			//Toss if score is 0 or positive.
+			int score = scoreRun(my_match);
+			if(score >= 0) break; //Nothing left worth looking at.
+			
 			for(RunMatch other_match : okay_matches){
 				if(my_match.conflictsWith(other_match)){
 					noconflict = false;
@@ -284,24 +491,30 @@ public abstract class LZCompCore {
 		}
 		all_matches.clear();
 		
+		if(okay_matches.isEmpty()) return null;
+		
 		//Resort by order instructions should be issued in and fill in copy amounts.
 		matchSortOrder = true;
-		Collections.sort(okay_matches);
+		if(okay_matches.size() > 1){
+			Collections.sort(okay_matches);	
+		}
 		cpos = current_pos;
 		long last_end = 0;
 		for(RunMatch run : okay_matches){
 			run.copy_amt = (int)(run.encoder_pos - cpos);
-			cpos = run.encoder_pos;
 			last_end = run.encoder_pos + run.match_run;
+			cpos = last_end;
+			run.encoder_pos -= run.copy_amt;
 		}
+		
 		//Add another copy node if okay_matches doesn't go to the end of requested region
-		if(last_end < cend){
-			RunMatch cpy = new RunMatch();
+		/*if(last_end < cend){
+			RunMatch cpy = newRunMatch();
 			cpy.copy_amt = (int)(cend - last_end);
-			cpy.encoder_pos = cpos;
+			cpy.encoder_pos = last_end;
 			cpy.match_run = 0;
 			okay_matches.add(cpy);
-		}
+		}*/
 		
 		return okay_matches;
 	}

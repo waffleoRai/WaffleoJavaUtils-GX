@@ -67,22 +67,21 @@ public class VADPCM {
 	/*----- Encoding -----*/
 	//This stuff is mostly wholesale copied from sdk-tools
 
-	private void acvect(int[] in, int n, int m, double[] out){
+	private void acvect(int[] in, int st, int n, int m, double[] out){
 		for(int i = 0; i <= n; i++){
 			out[i] = 0.0;
 			for(int j = 0; j < m; j++){
-				out[i] -= (double)in[j - i] * (double)in[j];
+				out[i] -= (double)in[st + j - i] * (double)in[st + j];
 			}
 		}
 	}
 	
-	private void acmat(int[] in, int n, int m, double[][] out){
+	private void acmat(int[] in, int st, int n, int m, double[][] out){
 		for(int i = 1; i <= n; i++){
 			for(int j = 1; j <= n; j++){
 				out[i][j] = 0.0;
-	            for (int k = 0; k < m; k++)
-	            {
-	                out[i][j] += (double)in[k - i] * (double)in[k - j];
+	            for (int k = 0; k < m; k++){
+	                out[i][j] += (double)in[st + k - i] * (double)in[st + k - j];
 	            }
 			}
 		}
@@ -90,24 +89,28 @@ public class VADPCM {
 	
 	private int lud(double[][] mat, int n, int[] indx, int[] d){
 		double[] vec = new double[n+1];
-		double big, dum, sum, temp;
+		double big, dum, sum, val;
 	    int imax = 0;
 		
 		d[0] = 1;
 		for (int i = 1; i <= n; i++) {
 	        big = 0.0;
 	        for (int j = 1; j <= n; j++){
-	            if ((temp = Math.abs(mat[i][j])) > big) big = temp;
+	        	val = Math.abs(mat[i][j]);
+	            if (val > big) big = val;
 	        }
 	        if (big == 0.0) return 1;
 	        vec[i] = 1.0/big;
 	    }
+		
 		for (int j = 1; j <= n; j++) {
+			
 			for (int i = 1; i < j; i++) {
 	            sum = mat[i][j];
 	            for (int k = 1; k < i; k++) sum -= mat[i][k] * mat[k][j];
 	            mat[i][j] = sum;
 	        }
+			
 	        big = 0.0;
 	        for (int i = j; i <= n; i++) {
 	            sum = mat[i][j];
@@ -115,11 +118,14 @@ public class VADPCM {
 	            	sum -= mat[i][k] * mat[k][j];
 	            }
 	            mat[i][j] = sum;
-	            if ((dum = vec[i] * Math.abs(sum)) >= big) {
+	            
+	            dum = vec[i] * Math.abs(sum);
+	            if (dum >= big) {
 	                big = dum;
 	                imax = i;
 	            }
 	        }
+	        
 	        if (j != imax) {
 	            for (int k = 1; k <= n; k++) {
 	                dum = mat[imax][k];
@@ -129,6 +135,7 @@ public class VADPCM {
 	            d[0] = -d[0];
 	            vec[imax] = vec[j];
 	        }
+	        
 	        indx[j] = imax;
 	        if (mat[j][j] == 0.0) return 1;
 	        if (j != n) {
@@ -139,21 +146,20 @@ public class VADPCM {
 		
 		double min = 1e10;
 	    double max = 0.0;
-	    for (int i = 1; i <= n; i++)
-	    {
-	        temp = Math.abs(mat[i][i]);
-	        if (temp < min) min = temp;
-	        if (temp > max) max = temp;
+	    for (int i = 1; i <= n; i++){
+	        val = Math.abs(mat[i][i]);
+	        if (val < min) min = val;
+	        if (val > max) max = val;
 	    }
 	    return min / max < 1e-10 ? 1 : 0;
 	}
 	
 	private void lubksb(double[][] mat, int n, int[] indx, double[] out){
 		
+		int imatch = 0;
 		double sum = 0.0;
 		
 		for (int i = 1; i <= n; i++) {
-			int imatch = 0;
 	        int ip = indx[i];
 	        sum = out[ip];
 	        out[ip] = out[i];
@@ -161,8 +167,9 @@ public class VADPCM {
 	        	for (int j = imatch; j <= i-1; j++) sum -= mat[i][j] * out[j];
 	        }
 	        else if (sum != 0) imatch = i;
-	        out[i]=sum;
+	        out[i] = sum;
 	    }
+		
 		for (int i = n; i >= 1; i--) {
 	        sum = out[i];
 	        for (int j = i+1; j <= n; j++) sum -= mat[i][j] * out[j];
@@ -180,12 +187,12 @@ public class VADPCM {
 			for (int j = 0; j <= i; j++){
 				temp = out[i+1];
 				div = 1.0 - (temp * temp);
-				if(div == 0.0){
-					return 1;
-				}
+				if(div == 0.0) return 1;
 				nxt[j] = (in[j] - in[i + 1 - j] * temp) / div;
 			}
+			
 			for (int j = 0; j <= i; j++) in[j] = nxt[j];
+			
 			out[i] = nxt[i];
 			if(Math.abs(out[i]) > 1.0) c++;
 	    }
@@ -205,12 +212,12 @@ public class VADPCM {
 	
 	private void rfroma(double[] in, int n, double[] out){
 		double[][] mat = new double[n+1][];
-		mat[n] = new double[n+1];
-		mat[n][0] = 1.0;
-		
 		double div;
 		
-		for(int i = 1; i <= n; i++) mat[n][1] = -in[i];
+		mat[n] = new double[n+1];
+		mat[n][0] = 1.0;
+		for(int i = 1; i <= n; i++) mat[n][i] = -in[i];
+		
 		for(int i = n; i >= 1; i--){
 			mat[i-1] = new double[i];
 			div = 1.0 - mat[i][i] * mat[i][i];
@@ -379,13 +386,21 @@ public class VADPCM {
 	}
 	
 	public N64ADPCMTable buildTable(AudioSampleStream input, int samples, int channel){
-		int[] ibuff1 = new int[samps_per_package];
-		int[] ibuff2 = new int[samps_per_package];
+		//build_table uses target bits as scaler (so npred = 1 << target bits), but I almost always see 2x4 or 2x2 tables
+		//	despite 4 bits being most common. 
+		//So making it settable and defaulting to 2.
+		return buildTable(input, samples, channel, 2);
+	}
+	
+	public N64ADPCMTable buildTable(AudioSampleStream input, int samples, int channel, int npredScaler){
+		//int[] ibuff1 = new int[samps_per_package];
+		//int[] ibuff2 = new int[samps_per_package];
+		int[] ibuff = new int[samps_per_package << 1];
 		double[] vec = new double[order+1];
 		double[][] mat = new double[order+1][order+1];
 		int[] perm = new int[order+1];
 		int[] permDet = new int[1];
-		double[] spF4 = new double[order+1];
+		double[] tempvec = new double[order+1];
 		
 		int pkgcount = samples/samps_per_package;
 		int mod = samples%samps_per_package;
@@ -402,56 +417,62 @@ public class VADPCM {
 				if(rem-- > 0){
 					try{
 						int[] s = input.nextSample();
-						ibuff1[i] = s[channel];
+						//ibuff1[i] = s[channel];
+						ibuff[i + samps_per_package] = s[channel];
 					}
 					catch(Exception ex){ex.printStackTrace(); return null;}
 				}
-				else ibuff1[i] = 0;
+				else {
+					//ibuff1[i] = 0;
+					ibuff[i + samps_per_package] = 0;
+				}
 			}
 			
 			//Linear algebra magic
-			acvect(ibuff1, order, samps_per_package, vec);
+			acvect(ibuff, samps_per_package, order, samps_per_package, vec);
 			if(Math.abs(vec[0]) > thresh){
-				acmat(ibuff1, order, samps_per_package, mat);
+				acmat(ibuff, samps_per_package, order, samps_per_package, mat);
 				if(lud(mat, order, perm, permDet) == 0){
 					lubksb(mat, order, perm, vec);
 					vec[0] = 1.0;
-					if(kfroma(vec, spF4, order) == 0){
+					if(kfroma(vec, tempvec, order) == 0){
 						data[didx] = new double[order+1];
 						data[didx][0] = 1.0;
 						for (int i = 1; i <= order; i++){
-	                        if (spF4[i] >=  1.0) spF4[i] =  0.9999999999;
-	                        if (spF4[i] <= -1.0) spF4[i] = -0.9999999999;
+	                        if (tempvec[i] >=  1.0) tempvec[i] =  0.9999999999;
+	                        if (tempvec[i] <= -1.0) tempvec[i] = -0.9999999999;
 	                    }
 
-	                    afromk(spF4, data[didx], order);
+	                    afromk(tempvec, data[didx], order);
 	                    didx++;
 					}
 				}
 			}
-			for(int i = 0; i < samps_per_package; i++) ibuff2[i] = ibuff1[i];
+			
+			//Move current pkg to past pkg.
+			for(int i = 0; i < samps_per_package; i++) ibuff[i] = ibuff[i + samps_per_package];
 		}
 		
 		vec[0] = 1.0;
 		for(int j = 1; j <= order; j++) vec[j] = 0.0;
 		
-		double[][] dbuff0 = new double[1 << trg_bits][order+1];
+		double[][] dbuff0 = new double[1 << npredScaler][order+1];
 		for(int i = 0; i < didx; i++){
 			rfroma(data[i], order, dbuff0[0]);
 			for(int j = 1; j <= order; j++) vec[j] += dbuff0[0][j];
 		}
 		for(int j = 1; j <= order; j++) vec[j] /= (double)didx;
 		
-		durbin(vec, order, spF4, dbuff0[0], null);
+		durbin(vec, order, tempvec, dbuff0[0], null);
 		for(int j = 1; j <= order; j++){
-			if (spF4[j] >=  1.0) spF4[j] =  0.9999999999;
-	        if (spF4[j] <= -1.0) spF4[j] = -0.9999999999;
+			if (tempvec[j] >=  1.0) tempvec[j] =  0.9999999999;
+	        if (tempvec[j] <= -1.0) tempvec[j] = -0.9999999999;
 		}
 		
-		afromk(spF4, dbuff0[0], order);
+		afromk(tempvec, dbuff0[0], order);
 	    int curBits = 0;
 	    double[] splitDelta = new double[order+1];
-	    while(curBits < trg_bits){
+	    while(curBits < npredScaler){
 	    	for (int i = 0; i <= order; i++) splitDelta[i] = 0.0;
 	        splitDelta[order - 1] = -1.0;
 	        split(dbuff0, splitDelta, order, 1 << curBits, 0.01);

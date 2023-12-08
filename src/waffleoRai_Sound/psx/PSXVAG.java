@@ -28,6 +28,9 @@ public class PSXVAG implements Sound{
 	
 	public static final String MAGIC_LE = "pGAV";
 	
+	//This seems to be what AIFF2VAG from SDK 4.4 writes?
+	public static final int WRITE_VER = 0x20; //Looks like 0x20000000 in LE
+	
 	/*public static final double[][] COEFF_TABLE = {{0.0, 0.0}, 
 												  {60.0 / 64.0, 0.0}, 
 												  {115.0 / 64.0, 52.0 / 64.0}, 
@@ -54,6 +57,17 @@ public class PSXVAG implements Sound{
 	public static final int CHANNELS = 1;
 	public static final int DECOMPRESSED_BYTES_PER_FRAME = 2;
 	
+	public static final int ENCMODE_NORMAL = 1;
+	public static final int ENCMODE_HIGH = 2;
+	public static final int ENCMODE_LOW = 3;
+	public static final int ENCMODE_4BIT = 4;
+	
+	public static final int BLOCK_ATTR_1_SHOT = 0;
+	public static final int BLOCK_ATTR_1_SHOT_END = 1;
+	public static final int BLOCK_ATTR_START = 2;
+	public static final int BLOCK_ATTR_BODY = 3;
+	public static final int BLOCK_ATTR_END = 4;
+	
 	/* ----- Instance Variables ----- */
 	
 	private String name;
@@ -70,8 +84,7 @@ public class PSXVAG implements Sound{
 	
 	/* ----- Internal Classes ----- */
 	
-	public static class Chunk
-	{
+	public static class Chunk{
 		private int range;
 		private int filter;
 		
@@ -81,58 +94,47 @@ public class PSXVAG implements Sound{
 		
 		private int[] samples;
 		
-		public Chunk()
-		{
+		public Chunk(){
 			samples = new int[28];
 		}
 		
-		public boolean loops()
-		{
+		public boolean loops(){
 			return loops;
 		}
 		
-		public boolean isLoopPoint()
-		{
+		public boolean isLoopPoint(){
 			return loopPoint;
 		}
 		
-		public boolean isEnd()
-		{
+		public boolean isEnd(){
 			return isend;
 		}
 		
-		public void setRange(int n)
-		{
+		public void setRange(int n){
 			range = n;
 		}
 		
-		public void setFilter(int n)
-		{
+		public void setFilter(int n){
 			filter = n;
 		}
 		
-		public void setLoops(boolean b)
-		{
+		public void setLoops(boolean b){
 			loops = b;
 		}
 		
-		public void setLoopPoint(boolean b)
-		{
+		public void setLoopPoint(boolean b){
 			loopPoint = b;
 		}
 		
-		public void setEnd(boolean b)
-		{
+		public void setEnd(boolean b){
 			isend = b;
 		}
 		
-		public void setSample(int i, int s)
-		{
+		public void setSample(int i, int s){
 			samples[i] = s;
 		}
 		
-		public byte[] serializeMe()
-		{
+		public byte[] serializeMe(){
 			byte[] cbytes = new byte[16];
 			filter &= 0xF;
 			range &= 0xF;
@@ -149,7 +151,7 @@ public class PSXVAG implements Sound{
 				int si = (i*2);
 				int s0 = samples[si] & 0xF;
 				int s1 = samples[si + 1] & 0xF;
-				int ds = (s0 << 4) | s1;
+				int ds = (s1 << 4) | s0;
 				cbytes[i+2] = (byte)ds;
 			}
 			
