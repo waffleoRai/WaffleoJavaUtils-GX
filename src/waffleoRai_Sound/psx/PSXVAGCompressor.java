@@ -200,7 +200,8 @@ public class PSXVAGCompressor {
 		for(int i = 0; i < 28; i++){
 			temp0 = lastErrors[1] * COEFF_TABLE_FLOAT[tblIdx][0];
 			temp0 += lastErrors[0] * COEFF_TABLE_FLOAT[tblIdx][1];
-			temp0 *= vec_in[i];
+			//temp0 *= vec_in[i];
+			temp0 += vec_in[i];
 			sampd = temp0 * scale;
 			
 			samp = (int)Math.round(sampd);
@@ -236,6 +237,7 @@ public class PSXVAGCompressor {
 			for(int i = pos; i < samples.length; i++){
 				temp[j++] = samples[i];
 			}
+			pos = 0;
 		}
 		
 		short[] vec = doEncode(samples, pos);

@@ -7,8 +7,10 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -18,7 +20,11 @@ import waffleoRai_Files.Converter;
 import waffleoRai_Files.FileClass;
 import waffleoRai_Files.FileTypeDefinition;
 import waffleoRai_Files.tree.FileNode;
+import waffleoRai_Image.BmpFile;
+import waffleoRai_Image.PaletteGen;
 import waffleoRai_Image.nintendo.NDSGraphics;
+import waffleoRai_Image.psx.CLUTCompare.CLUTImgMatch;
+import waffleoRai_Image.psx.CLUTCompare.CLUTMatch;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_Utils.MultiFileBuffer;
@@ -56,38 +62,139 @@ public class QXImage {
 	
 	public static final String FNMETAKEY_TILED = "PS1WSQX_TILED";
 	
+	public static final int PALETTE_FMT_RAW16 = 0;
+	public static final int PALETTE_FMT_ARGB = 1;
+	
+	public static final int HDR_FLAG_UNK06 = 1 << 6; //0x40
+	public static final int HDR_FLAG_4BIT = 1 << 5; //0x20
+	public static final int HDR_FLAG_UNK04 = 1 << 4; //0x10
+	public static final int HDR_FLAG_UNK00 = 1 << 0; //0x01
+	
+	//Defaults to just assigning to the requested index. Sets to 0 if input is -1.
+	//This is useful if CLUT is in separate file and was loaded beforehand.
+	public static final int CLUT_IMPORT_OP_NONE = 0;
+	
+	//Tries to read palette stored in image file and assigns that palette
+	//	to requested CLUT slot.
+	//Only applicable if input image is same bitdepth as target.
+	public static final int CLUT_IMPORT_OP_IMGFILE_CLUT = 1;
+	
+	/*Tries to find existing CLUT that best works for input image and
+	 * assigns that to imported frame.
+	 * No new or overwritten CLUTs.
+	 */
+	public static final int CLUT_IMPORT_OP_TRY_CLUT_MATCH = 2;
+	
+	/*Tries to generate a new CLUT from the import image.
+	 * If CLUT index is specified, will overwrite that CLUT.
+	 * Otherwise, makes a new one.
+	 */
+	public static final int CLUT_IMPORT_OP_TRY_CLUT_GEN = 3;
+	
 	/*----- Instance Variables -----*/
 	
-	//private Picture[] frames;
 	private int bitdepth;
-	private List<Bitmap> bitmaps;
-	private short[] raw_palette;
-	private int [] argb_palette;
-	//private Palette palette;
+	private ArrayList<Bitmap> bitmaps;
+	private ArrayList<QXCLUT> palettes;
 	
 	/*----- Structures -----*/
 	
-	private static class Bitmap
-	{
+	private static class Bitmap {
 		public int palette_idx;
 		public int[][] data;
 		public int scale_x;
 		public int scale_y;
 		
-		public Bitmap(int[][] dat, int pidx)
-		{
+		public Bitmap(){}
+		
+		public Bitmap(int[][] dat, int pidx){
 			data = dat;
 			palette_idx = pidx;
 		}
 	}
 	
+	private static class QXCLUT{
+		public int[] palette;
+		public int paletteFmt = PALETTE_FMT_RAW16;
+		
+		public QXCLUT(int bitdepth){
+			if (bitdepth == 4){
+				palette = new int[16];
+			}
+			else if(bitdepth == 8){
+				palette = new int[256];
+			}
+		}
+		
+		public int getARGB(int index){
+			if(index < 0 || index >= palette.length) return 0;
+			
+			switch(paletteFmt){
+			case PALETTE_FMT_RAW16:
+				return abgr16_to_argb32(palette[index]);
+			case PALETTE_FMT_ARGB:
+				return palette[index];
+			}
+			
+			int pix = 0;
+			pix = 0xff << 24;
+			pix |= (index & 0xff) << 16;
+			pix |= (index & 0xff) << 8;
+			pix |= (index & 0xff);
+			return pix;
+		}
+		
+		public short getRaw16(int index){
+			if(index < 0 || index >= palette.length) return 0;
+			
+			switch(paletteFmt){
+			case PALETTE_FMT_RAW16:
+				return (short)palette[index];
+			case PALETTE_FMT_ARGB:
+				return argb32_to_abgr16(palette[index]);
+			}
+			
+			int pix = 0;
+			pix |= (index & 0x1f) << 15;
+			pix |= (index & 0x1f) << 10;
+			pix |= (index & 0x1f);
+			return (short)pix;
+		}
+		
+		public void setARGB(int argb, int index){
+			if(index < 0 || index >= palette.length) return ;
+			
+			switch(paletteFmt){
+			case PALETTE_FMT_RAW16:
+				palette[index] = Short.toUnsignedInt(argb32_to_abgr16(argb));
+				break;
+			case PALETTE_FMT_ARGB:
+				palette[index] = argb;
+				break;
+			}
+		}
+		
+		public void setRaw16(short value, int index){
+			if(index < 0 || index >= palette.length) return ;
+			
+			switch(paletteFmt){
+			case PALETTE_FMT_RAW16:
+				palette[index] = Short.toUnsignedInt(value);
+				break;
+			case PALETTE_FMT_ARGB:
+				palette[index] = abgr16_to_argb32(value);
+				break;
+			}
+		}
+	}
+	
 	/*----- Read -----*/
 	
-	public QXImage(int frameCount, int bitDepth)
-	{
+	public QXImage(int frameCount, int bitDepth){
 		//frames = new Picture[frameCount];
 		bitmaps = new ArrayList<Bitmap>(frameCount);
 		bitdepth = bitDepth;
+		palettes = new ArrayList<QXCLUT>(4);
 		
 		//if(bitdepth == 4) palette = new FourBitPalette();
 		//else if(bitdepth == 8) palette = new EightBitPalette();
@@ -237,8 +344,7 @@ public class QXImage {
 		return readImageData(file, tiled);
 	}
 	
-	public static QXImage readImageData(FileBuffer file, boolean tiled) throws IOException
-	{
+	public static QXImage readImageData(FileBuffer file, boolean tiled) throws IOException {
 		file.setEndian(false);
 		long cpos = 0;
 		//I think the first two bytes are flags maybe????
@@ -246,13 +352,13 @@ public class QXImage {
 		//Anyway, they look like QX, Q_, qX or q_ in ASCII which is where the name comes from
 		int flag0 = Byte.toUnsignedInt(file.getByte(cpos)); cpos += 2;
 		int bd = 16;
-		if(flag0 == 0x71) bd = 4;
-		else if(flag0 == 0x51) bd = 8;
+		if((flag0 & HDR_FLAG_4BIT) != 0) bd = 4; //0x71 usually
+		else bd = 8; //0x51 most of the time, but not sure which flag means 8 bit
+		
 		int frames = Short.toUnsignedInt(file.shortFromFile(cpos)); cpos+=2;
 		//System.err.println("Frame count: " + frames);
 		int[][] dims = new int[frames][6];
-		for(int i = 0; i < frames; i++)
-		{
+		for(int i = 0; i < frames; i++){
 			int off = file.intFromFile(cpos); cpos += 4;
 			dims[i][3] = Byte.toUnsignedInt(file.getByte(cpos)); cpos++;
 			cpos+=3; //Unknown
@@ -287,34 +393,40 @@ public class QXImage {
 		
 		//Read palette
 		//First, palette header
-		int pcount = file.intFromFile(cpos); cpos+=4;
-		/*int bd = 16;
-		if(pheader == 0x100) bd = 8;
-		else if (pheader == 0x10) bd = 4;*/
+		int p_entry_count = file.intFromFile(cpos); cpos+=4;
+		int clut_count = 0;
+		int entries_per_clut = 0;
+		if(bd == 4){
+			clut_count = p_entry_count >>> 4;
+			entries_per_clut = 1 << 4;
+		}
+		else if(bd == 8){
+			clut_count = p_entry_count >>> 8;
+			entries_per_clut = 1 << 8;
+		}
+				
 		QXImage img = new QXImage(frames, bd);
-		img.argb_palette = new int[pcount];
-		img.raw_palette = new short[pcount];
-		
-		if(bd < 16)
-		{
-			for(int i = 0; i < pcount; i++)
-			{
-				img.raw_palette[i] = file.shortFromFile(cpos); cpos += 2;
-				int rawval = Short.toUnsignedInt(img.raw_palette[i]);
-				img.argb_palette[i] = abgr16_to_argb32(rawval);
+		if(clut_count > 4) img.palettes.ensureCapacity(clut_count);
+
+		if(bd < 16){
+			for(int i = 0; i < clut_count; i++){
+				QXCLUT clut = new QXCLUT(bd);
+				img.palettes.add(clut);
+				for(int j = 0; j < entries_per_clut; j++){
+					clut.palette[j] = Short.toUnsignedInt(file.shortFromFile(cpos));
+					cpos += 2;
+				}
 			}
 		}
 		
 		//Read bitmaps
-		for(int i = 0; i < frames; i++)
-		{
+		for(int i = 0; i < frames; i++){
 			int off = dims[i][0];
 			int w = dims[i][1];
 			int h = dims[i][2];
 			
 			int[][] bmp = new int[w][h];
-			switch(img.bitdepth)
-			{
+			switch(img.bitdepth){
 			case 4:
 				readBitmap4(file, off, tiled, bmp); break;
 			case 8:
@@ -338,8 +450,8 @@ public class QXImage {
 	public int getBitDepth(){return bitdepth;}
 	
 	public int getPaletteCount(){
-		if(raw_palette == null) return 0;
-		return raw_palette.length >>> bitdepth;
+		if(palettes == null) return 0;
+		return palettes.size();
 	}
 	
 	public int[] getFrameScalingFactors(int frame_index){
@@ -359,30 +471,24 @@ public class QXImage {
 	
 	public void allocCLUTs(int CLUT_count){
 		if(bitdepth > 8) return;
-		int pal_entries = 1 << bitdepth;
-		raw_palette = new short[pal_entries * CLUT_count];
-		argb_palette = new int[pal_entries * CLUT_count];
+		palettes.ensureCapacity(CLUT_count);
+		while(palettes.size() < CLUT_count){
+			palettes.add(new QXCLUT(bitdepth));
+		}
 	}
 	
 	public boolean loadCLUT(short[] raw_16, int index){
 		if(bitdepth > 8) return false;
 		if(index < 0) return false;
 		if(raw_16 == null) return false;
-		int pal_entries = 1 << bitdepth;
-		int base = index << bitdepth;
+		if(index > palettes.size()) return false;
 		
-		if(base >= raw_palette.length) return false;
-		for(int i = 0; i < pal_entries; i++){
-			if(i < raw_16.length){
-				raw_palette[base + i] = raw_16[i];
-				argb_palette[base + i] = abgr16_to_argb32(raw_16[i]);
-			}
-			else{
-				raw_palette[base + i] = 0;
-				argb_palette[base + i] = 0;
-			}
+		QXCLUT clut = palettes.get(index);
+		Arrays.fill(clut.palette, 0);
+		for(int j = 0; j < raw_16.length; j++){
+			if(j >= clut.palette.length) break;
+			clut.setRaw16(raw_16[j], index);
 		}
-		
 		return true;
 	}
 	
@@ -390,22 +496,457 @@ public class QXImage {
 		if(bitdepth > 8) return false;
 		if(index < 0) return false;
 		if(argb == null) return false;
-		int pal_entries = 1 << bitdepth;
-		int base = index << bitdepth;
+		if(index > palettes.size()) return false;
 		
-		if(base >= raw_palette.length) return false;
-		for(int i = 0; i < pal_entries; i++){
-			if(i < argb.length){
-				raw_palette[base + i] = argb32_to_abgr16(argb[i]);
-				argb_palette[base + i] = argb[i];
+		QXCLUT clut = palettes.get(index);
+		Arrays.fill(clut.palette, 0);
+		for(int j = 0; j < argb.length; j++){
+			if(j >= clut.palette.length) break;
+			clut.setARGB(argb[j], index);
+		}
+		return true;
+	}
+	
+	private boolean importTryClutMatch(int[][] inputImage, Bitmap target){
+		//ARGB input
+		QXCLUT clut = null;
+		int clutIndex = 0;
+		int pcount = palettes.size();
+		CLUTImgMatch bestMatch = null;
+		for(int p = 0; p < pcount; p++){
+			clut = palettes.get(p);
+			
+			int[] clutref = Arrays.copyOf(clut.palette, clut.palette.length);
+			if(clut.paletteFmt == PALETTE_FMT_RAW16){
+				for(int i = 0; i < clutref.length; i++){
+					clutref[i] = abgr16_to_argb32(clutref[i]);
+				}
 			}
-			else{
-				raw_palette[base + i] = 0;
-				argb_palette[base + i] = 0;
+			
+			CLUTImgMatch match = CLUTCompare.checkImgCLUTMatch(clutref, inputImage);
+			if(match != null){
+				if(bestMatch != null){
+					if(match.score < bestMatch.score){
+						bestMatch = match;
+						clutIndex = p;
+					}
+				}
+				else bestMatch = match;
+			}
+		}
+		
+		if(clutIndex < 0) clutIndex = 0;
+		target.palette_idx = clutIndex;
+		//Remap image data.
+		if(bestMatch != null){
+			for(int i = 0; i < inputImage.length; i++){
+				for(int j = 0; j < inputImage[i].length; j++){
+					inputImage[i][j] = bestMatch.map.get(inputImage[i][j]);
+				}
+			}
+		}
+		target.data = inputImage;
+		
+		return true;
+	}
+	
+	private boolean importTryClutMatch(int[][] inputImage, int[] inputCLUT, Bitmap target){
+		//For 4 and 8 bit sources
+		QXCLUT clut = null;
+		int clutIndex = 0;
+		int pcount = palettes.size();
+		CLUTMatch bestMatch = null;
+		for(int p = 0; p < pcount; p++){
+			clut = palettes.get(p);
+			
+			//Make sure it's in ARGB format so can compare
+			int[] clutref = Arrays.copyOf(clut.palette, clut.palette.length);
+			if(clut.paletteFmt == PALETTE_FMT_RAW16){
+				for(int i = 0; i < clutref.length; i++){
+					clutref[i] = abgr16_to_argb32(clutref[i]);
+				}
+			}
+			
+			//Check match
+			CLUTMatch match = CLUTCompare.checkCLUTMatch(clutref, inputCLUT, inputImage);
+			if(match != null){
+				if(bestMatch != null){
+					if(match.score < bestMatch.score){
+						bestMatch = match;
+						clutIndex = p;
+					}
+				}
+				else bestMatch = match;
+			}
+		}
+		
+		if(clutIndex < 0) clutIndex = 0;
+		target.palette_idx = clutIndex;
+		//Remap image data.
+		if(bestMatch != null){
+			for(int i = 0; i < inputImage.length; i++){
+				for(int j = 0; j < inputImage[i].length; j++){
+					inputImage[i][j] = bestMatch.map[inputImage[i][j]];
+				}
+			}
+		}
+		target.data = inputImage;
+		
+		return true;
+	}
+	
+	private boolean importFrame_4bit(int[][] inputImage, int[] inputCLUT, Bitmap target, int clutIndex, int clutImportOption){
+		if(inputImage == null) return false;
+		if(inputCLUT == null) return false;
+		
+		//Source is 4 bits
+		QXCLUT clut = null;
+		if(bitdepth <= 8){
+			//4 -> 4 and 4 -> 8 behave the same
+			//Just doesn't use full range of palette if scaling up to 8
+			switch(clutImportOption){
+			case CLUT_IMPORT_OP_NONE:
+				//Does not try to remap. Takes your word for it.
+				if(clutIndex < 0) clutIndex = 0;
+				target.palette_idx = clutIndex;
+				target.data = inputImage;
+				break;
+			case CLUT_IMPORT_OP_IMGFILE_CLUT:
+			case CLUT_IMPORT_OP_TRY_CLUT_GEN: //No point in generating. Already has one.
+				target.data = inputImage;
+				if(clutIndex >= 0 && clutIndex < palettes.size()){
+					clut = palettes.get(clutIndex);
+				}
+				else{
+					clutIndex = palettes.size();
+					clut = new QXCLUT(bitdepth);
+					palettes.add(clut);
+				}
+				target.palette_idx = clutIndex;
+				
+				clut.palette = inputCLUT; //Already copy
+				clut.paletteFmt = PALETTE_FMT_ARGB;
+				break;
+			case CLUT_IMPORT_OP_TRY_CLUT_MATCH:
+				return importTryClutMatch(inputImage, inputCLUT, target);
+			}
+		}
+		else{
+			//4 -> 16
+			target.palette_idx = -1;
+			for(int i = 0; i < inputImage.length; i++){
+				for(int j = 0; j < inputImage[i].length; j++){
+					inputImage[i][j] = argb32_to_abgr16(inputCLUT[inputImage[i][j]]);
+				}
 			}
 		}
 		
 		return true;
+	}
+	
+	private boolean importFrame_8bit(int[][] inputImage, int[] inputCLUT, Bitmap target, int clutIndex, int clutImportOption){
+		if(inputImage == null) return false;
+		if(inputCLUT == null) return false;
+		
+		//Source is 8 bits
+		QXCLUT clut = null;
+		if(bitdepth == 8){
+			//8 -> 8
+			switch(clutImportOption){
+			case CLUT_IMPORT_OP_NONE:
+				//Does not try to remap. Takes your word for it.
+				if(clutIndex < 0) clutIndex = 0;
+				target.palette_idx = clutIndex;
+				target.data = inputImage;
+				break;
+			case CLUT_IMPORT_OP_IMGFILE_CLUT:
+			case CLUT_IMPORT_OP_TRY_CLUT_GEN: //No point in generating. Already has one.
+				target.data = inputImage;
+				if(clutIndex >= 0 && clutIndex < palettes.size()){
+					clut = palettes.get(clutIndex);
+				}
+				else{
+					clutIndex = palettes.size();
+					clut = new QXCLUT(bitdepth);
+					palettes.add(clut);
+				}
+				target.palette_idx = clutIndex;
+				
+				clut.palette = inputCLUT; //Already copy
+				clut.paletteFmt = PALETTE_FMT_ARGB;
+				break;
+			case CLUT_IMPORT_OP_TRY_CLUT_MATCH:
+				return importTryClutMatch(inputImage, inputCLUT, target);
+			}
+		}
+		else if(bitdepth == 4){
+			//8 -> 4
+			switch(clutImportOption){
+			case CLUT_IMPORT_OP_NONE:
+				//Does not try to remap. Takes your word for it.
+				if(clutIndex < 0) clutIndex = 0;
+				target.palette_idx = clutIndex;
+				
+				for(int i = 0; i < inputImage.length; i++){
+					for(int j = 0; j < inputImage[i].length; j++){
+						inputImage[i][j] >>>= 4;
+					}
+				}
+				target.data = inputImage;
+				break;
+			case CLUT_IMPORT_OP_IMGFILE_CLUT:
+				return false; //Incompatible
+			case CLUT_IMPORT_OP_TRY_CLUT_GEN:
+				//Generate a new smaller CLUT
+				if(clutIndex >= 0 && clutIndex < palettes.size()){
+					clut = palettes.get(clutIndex);
+				}
+				else{
+					clutIndex = palettes.size();
+					clut = new QXCLUT(bitdepth);
+					palettes.add(clut);
+				}
+				target.palette_idx = clutIndex;
+				
+				int I = inputImage.length;
+				int J = inputImage[0].length;
+				int[][] inputARGB = new int[I][J];
+				for(int i = 0; i < inputImage.length; i++){
+					for(int j = 0; j < inputImage[i].length; j++){
+						inputARGB[i][j] = inputCLUT[inputImage[i][j]];
+					}
+				}
+				
+				PaletteGen gen = new PaletteGen(bitdepth, false);
+				gen.processImage(inputARGB);
+				clut.palette = gen.generatePalette();
+				clut.paletteFmt = PALETTE_FMT_ARGB;
+				gen.flush();
+				
+				target.data = CLUTCompare.remapImageToCLUT(clut.palette, inputCLUT, inputImage);
+				break;
+			case CLUT_IMPORT_OP_TRY_CLUT_MATCH:
+				return importTryClutMatch(inputImage, inputCLUT, target);
+			}
+		}
+		else{
+			//8 -> 16
+			target.palette_idx = -1;
+			for(int i = 0; i < inputImage.length; i++){
+				for(int j = 0; j < inputImage[i].length; j++){
+					inputImage[i][j] = argb32_to_abgr16(inputCLUT[inputImage[i][j]]);
+				}
+			}
+		}
+		
+		return true;
+	}
+	
+	private boolean importFrame_16bit(int[][] inputImage, Bitmap target, int clutIndex, int clutImportOption){
+		if(inputImage == null) return false;
+		
+		//Source is 16 bits
+		if(bitdepth <= 8){
+			//16 -> 4 or 16 -> 8
+			
+			int I = inputImage.length;
+			int J = inputImage[0].length;
+			int[][] inputARGB = new int[I][J];
+			for(int i = 0; i < inputImage.length; i++){
+				for(int j = 0; j < inputImage[i].length; j++){
+					inputARGB[i][j] = abgr16_to_argb32(inputImage[i][j]);
+				}
+			}
+			
+			QXCLUT clut = null;
+			switch(clutImportOption){
+			case CLUT_IMPORT_OP_IMGFILE_CLUT:
+				return false; //Incompatible
+			case CLUT_IMPORT_OP_NONE:
+				//Forcibly assign requested CLUT
+				if(clutIndex >= 0 && clutIndex < palettes.size()){
+					clut = palettes.get(clutIndex);
+				}
+				else clutIndex = 0;
+				target.palette_idx = clutIndex;
+				
+				int[] clutref = Arrays.copyOf(clut.palette, clut.palette.length);
+				if(clut.paletteFmt == PALETTE_FMT_RAW16){
+					for(int i = 0; i < clutref.length; i++){
+						clutref[i] = abgr16_to_argb32(clutref[i]);
+					}
+				}
+				
+				target.data = CLUTCompare.remapImageToCLUT(clutref, inputARGB);
+				break;
+			case CLUT_IMPORT_OP_TRY_CLUT_GEN:
+				//Generate a new CLUT from input data
+				if(clutIndex >= 0 && clutIndex < palettes.size()){
+					clut = palettes.get(clutIndex);
+				}
+				else{
+					clutIndex = palettes.size();
+					clut = new QXCLUT(bitdepth);
+					palettes.add(clut);
+				}
+				target.palette_idx = clutIndex;
+				
+				PaletteGen gen = new PaletteGen(bitdepth, false);
+				gen.processImage(inputARGB);
+				clut.palette = gen.generatePalette();
+				clut.paletteFmt = PALETTE_FMT_ARGB;
+				gen.flush();
+				
+				target.data = CLUTCompare.remapImageToCLUT(clut.palette, inputARGB);
+				break;
+			case CLUT_IMPORT_OP_TRY_CLUT_MATCH:
+				return importTryClutMatch(inputARGB, target);
+			}
+		}
+		else{
+			//16 -> 16
+			target.palette_idx = -1;
+			target.data = inputImage;
+		}
+		
+		return true;
+	}
+	
+	private boolean importFrame_RGB(int[][] inputImage, Bitmap target, int clutIndex, int clutImportOption, boolean alpha){
+		if(inputImage == null) return false;
+		
+		if(!alpha){
+			for(int i = 0; i < inputImage.length; i++){
+				for(int j = 0; j < inputImage[i].length; j++){
+					inputImage[i][j] |= 0xFF000000;
+				}
+			}
+		}
+		
+		//Source is 24 or 32 bits
+		if(bitdepth <= 8){
+			//32 -> 4 or 32 -> 8
+			
+			QXCLUT clut = null;
+			switch(clutImportOption){
+			case CLUT_IMPORT_OP_IMGFILE_CLUT:
+				return false; //Incompatible
+			case CLUT_IMPORT_OP_NONE:
+				//Forcibly assign requested CLUT
+				if(clutIndex >= 0 && clutIndex < palettes.size()){
+					clut = palettes.get(clutIndex);
+				}
+				else clutIndex = 0;
+				target.palette_idx = clutIndex;
+				
+				int[] clutref = Arrays.copyOf(clut.palette, clut.palette.length);
+				if(clut.paletteFmt == PALETTE_FMT_RAW16){
+					for(int i = 0; i < clutref.length; i++){
+						clutref[i] = abgr16_to_argb32(clutref[i]);
+					}
+				}
+				
+				target.data = CLUTCompare.remapImageToCLUT(clutref, inputImage);
+				break;
+			case CLUT_IMPORT_OP_TRY_CLUT_GEN:
+				//Generate a new CLUT from input data
+				if(clutIndex >= 0 && clutIndex < palettes.size()){
+					clut = palettes.get(clutIndex);
+				}
+				else{
+					clutIndex = palettes.size();
+					clut = new QXCLUT(bitdepth);
+					palettes.add(clut);
+				}
+				target.palette_idx = clutIndex;
+				
+				PaletteGen gen = new PaletteGen(bitdepth, alpha);
+				gen.processImage(inputImage);
+				clut.palette = gen.generatePalette();
+				clut.paletteFmt = PALETTE_FMT_ARGB;
+				gen.flush();
+				
+				target.data = CLUTCompare.remapImageToCLUT(clut.palette, inputImage);
+				break;
+			case CLUT_IMPORT_OP_TRY_CLUT_MATCH:
+				return importTryClutMatch(inputImage, target);
+			}
+		}
+		else{
+			//32 -> 16
+			target.palette_idx = -1;
+			
+			int I = inputImage.length;
+			int J = inputImage[0].length;
+			int[][] input16 = new int[I][J];
+			for(int i = 0; i < inputImage.length; i++){
+				for(int j = 0; j < inputImage[i].length; j++){
+					input16[i][j] = argb32_to_abgr16(inputImage[i][j]);
+				}
+			}
+			
+			target.data = input16;
+		}
+		return true;
+	}
+	
+	public boolean importFrameFromBMP(FileBuffer bmpdata, int frameIndex, int clutIndex, int clutImportOption) throws UnsupportedFileTypeException{
+		if(bmpdata == null) return false;
+		if(frameIndex < 0) return false;
+		if(frameIndex > bitmaps.size()) return false; //Can add 1 new one, but not more than 1 at once.
+		
+		Bitmap target = null;
+		if(frameIndex >= 0 && frameIndex < bitmaps.size()){
+			target = bitmaps.get(frameIndex);
+		}
+		else{
+			target = new Bitmap();
+			bitmaps.add(target);
+		}
+		
+		BmpFile bmp = BmpFile.readBMP(bmpdata);
+		switch(bmp.getBitDepth()){
+		case 4:
+			return importFrame_4bit(bmp.getImageDataRaw(), bmp.getPaletteRaw(), target, clutIndex, clutImportOption);
+		case 8:
+			return importFrame_8bit(bmp.getImageDataRaw(), bmp.getPaletteRaw(), target, clutIndex, clutImportOption);
+		case 16:
+			return importFrame_16bit(bmp.getImageDataRaw(), target, clutIndex, clutImportOption);
+		case 24:
+			return importFrame_RGB(bmp.getImageDataRaw(), target, clutIndex, clutImportOption, false);
+		case 32:
+			return importFrame_RGB(bmp.getImageDataRaw(), target, clutIndex, clutImportOption, true);
+		}
+		
+		return false;
+	}
+	
+	public boolean importFrameFromFile_ARGB(InputStream filestream, int frameIndex, int clutIndex, int clutImportOption) throws IOException{
+		if(filestream == null) return false;
+		if(frameIndex < 0) return false;
+		if(frameIndex > bitmaps.size()) return false; //Can add 1 new one, but not more than 1 at once.
+		
+		Bitmap target = null;
+		if(frameIndex >= 0 && frameIndex < bitmaps.size()){
+			target = bitmaps.get(frameIndex);
+		}
+		else{
+			target = new Bitmap();
+			bitmaps.add(target);
+		}
+		
+		BufferedImage img = ImageIO.read(filestream);
+		int w = img.getWidth();
+		int h = img.getHeight();
+		int[][] argb = new int[h][w];
+		
+		for(int y = 0; y < h; y++){
+			for(int x = 0; x < w; x++){
+				argb[y][x] = img.getRGB(x, y);
+			}
+		}
+		
+		return importFrame_RGB(argb, target, clutIndex, clutImportOption, true);
 	}
 	
 	/*----- View -----*/
@@ -465,26 +1006,27 @@ public class QXImage {
 		return bi;
 	}
 	
-	public BufferedImage getFrame(int idx, boolean rescale)
-	{
+	public BufferedImage getFrame(int idx, boolean rescale){
 		Bitmap bmp = bitmaps.get(idx);
 		int[][] bitmap = bmp.data;
 		int w = bitmap.length;
 		int h = bitmap[0].length;
 		
 		BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-		for(int y = 0; y < h; y++)
-		{
-			for(int x = 0; x < w; x++)
-			{
+		for(int y = 0; y < h; y++){
+			for(int x = 0; x < w; x++){
 				int val = bitmap[x][y];
 				int pix = 0;
-				//if(palette != null) pix = palette.getPixel(val).getARGB();
-				if(this.argb_palette != null){
-					int offset = bmp.palette_idx * (1 << bitdepth);
-					pix = argb_palette[val + offset];
+				if(bmp.palette_idx >= 0 && bmp.palette_idx < palettes.size()){
+					QXCLUT clut = palettes.get(bmp.palette_idx);
+					pix = clut.getARGB(val);
 				}
-				else pix = abgr16_to_argb32(val);
+				else{
+					pix = 0xff << 24;
+					pix |= (val & 0xff) << 16;
+					pix |= (val & 0xff) << 8;
+					pix |= (val & 0xff);
+				}
 				img.setRGB(x, y, pix);
 			}
 		}
@@ -492,8 +1034,7 @@ public class QXImage {
 		int scale_x = bmp.scale_x;
 		int scale_y = bmp.scale_y;
 		
-		if(rescale && (scale_x != 0 || scale_y != 0))
-		{
+		if(rescale && (scale_x != 0 || scale_y != 0)){
 			int tw = w + (scale_x << 1);
 			int th = h + (scale_y << 1);
 			img = scale(img, tw, th);
@@ -610,20 +1151,45 @@ public class QXImage {
 		FileBuffer dib_header = new FileBuffer(DIB_SIZE, false); //v4
 		FileBuffer color_table = null;
 		
+		int pcount = palettes.size();
+		QXCLUT clut = null;
+		if(myframe.palette_idx >= 0 && myframe.palette_idx < pcount){
+			clut = palettes.get(myframe.palette_idx);
+		}
+		
 		if(bitdepth == 4){
-			int offset = myframe.palette_idx * (1 << bitdepth);
 			color_table = new FileBuffer(16 << 2, false);
-			for(int i = 0; i < 16; i++){
-				int color = argb_palette[i + offset];
-				color_table.addToFile(color);
+			if(clut != null){
+				for(int i = 0; i < 16; i++){
+					color_table.addToFile(clut.getARGB(i));
+				}
+			}
+			else{
+				for(int i = 0; i < 16; i++){
+					int ii = i << 4;
+					int pix = 0xFF << 24;
+					pix |= ii << 16;
+					pix |= ii << 8;
+					pix |= ii;
+					color_table.addToFile(pix);
+				}
 			}
 		}
 		else if(bitdepth == 8){
-			int offset = myframe.palette_idx * (1 << bitdepth);
 			color_table = new FileBuffer(256 << 2, false);
-			for(int i = 0; i < 256; i++){
-				int color = argb_palette[i + offset];
-				color_table.addToFile(color);
+			if(clut != null){
+				for(int i = 0; i < 256; i++){
+					color_table.addToFile(clut.getARGB(i));
+				}
+			}
+			else{
+				for(int i = 0; i < 256; i++){
+					int pix = 0xFF << 24;
+					pix |= i << 16;
+					pix |= i << 8;
+					pix |= i;
+					color_table.addToFile(pix);
+				}
 			}
 		}
 		
@@ -870,12 +1436,12 @@ public class QXImage {
 			int alloc = 4;
 			alloc += (palette_entries << 1) * palette_count;
 			palbuff = new FileBuffer(alloc, false);
-			palbuff.addToFile(palette_count);
+			palbuff.addToFile(palette_count << bitdepth);
 			
-			int k = 0;
 			for(int i = 0; i < palette_count; i++){
+				QXCLUT clut = palettes.get(i);
 				for(int j = 0; j < palette_entries; j++){
-					palbuff.addToFile(raw_palette[k++]);
+					palbuff.addToFile(clut.getRaw16(j));
 				}
 			}
 			psize = alloc;
@@ -889,12 +1455,12 @@ public class QXImage {
 			bmp_offsets[i] += alloc + psize;
 		}
 		
+		int flags = 0;
+		flags |= HDR_FLAG_UNK00 | HDR_FLAG_UNK04 | HDR_FLAG_UNK06;
 		if(bitdepth == 4){
-			header.addToFile((short)0x71);
+			flags |= HDR_FLAG_4BIT;
 		}
-		else if(bitdepth == 8){
-			header.addToFile((short)0x51);
-		}
+		header.addToFile((short)flags);
 		for(int f = 0; f < frame_count; f++){
 			header.addToFile(bmp_offsets[f]);
 			Bitmap frame = bitmaps.get(f);
@@ -927,15 +1493,15 @@ public class QXImage {
 	}
 	
 	public boolean outputCLUTBinary(String path, int index) throws IOException{
-		if(raw_palette == null) return false;
+		if(palettes == null) return false;
 		if(index < 0) return false;
+		if(index >= palettes.size()) return false;
 		int ccount = 1 << bitdepth;
-		int offset = ccount * index;
-		if(offset >= raw_palette.length) return false;
 		
+		QXCLUT clut = palettes.get(index);
 		FileBuffer out = new FileBuffer(ccount << 1, false);
 		for(int i = 0; i < ccount; i++){
-			out.addToFile((short)raw_palette[offset+i]);
+			out.addToFile(clut.getRaw16(i));
 		}
 		out.writeFile(path);
 		

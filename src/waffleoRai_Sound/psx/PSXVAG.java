@@ -1,6 +1,7 @@
 package waffleoRai_Sound.psx;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -304,8 +305,7 @@ public class PSXVAG implements Sound{
 		return mysound;
 	}
 	
-	public void writeVAG(String outpath) throws IOException
-	{
+	public void writeVAG(String outpath) throws IOException {
 		int datSz = soundData.length * 16;
 		
 		FileBuffer mysound = new FileBuffer(datSz + 48);
@@ -342,6 +342,24 @@ public class PSXVAG implements Sound{
 		
 		mysound.writeFile(outpath);
 		
+	}
+
+	public static void writeVAGFromRawData(OutputStream out, byte[] soundData) throws IOException{
+		writeVAGFromRawData(out, 44100, soundData);
+	}
+	
+	public static void writeVAGFromRawData(OutputStream out, int sampleRate, byte[] soundData) throws IOException{
+		FileBuffer header = new FileBuffer(0x30, false);
+		header.printASCIIToFile(PSXVAG.MAGIC_LE);
+		header.addToFile(PSXVAG.WRITE_VER);
+		header.addToFile(0);
+		header.addToFile(soundData.length);
+		header.addToFile(sampleRate);
+		for(int i = 0; i < 3; i++) header.addToFile(0);
+		for(int i = 0; i < 4; i++) header.addToFile(0);
+		
+		header.writeToStream(out);
+		out.write(soundData);
 	}
 	
 	/* ----- Getters ----- */

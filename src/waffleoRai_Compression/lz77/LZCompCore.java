@@ -11,14 +11,6 @@ public abstract class LZCompCore {
 	//Some code for handling common LZ77/LZSS compression functions and algorithm
 	//	variation for attempted matching. 
 	
-	/*
-	 * Things to try:
-	 * 	- If it picks "next", return just the literal instead of literal AND
-	 * 		next match
-	 *  - Compare the events after imm and next as well WITH both imm and next variations.
-	 *  - Try a different scoring? (In combination with other adjustments?)
-	 */
-	
 	public static final int LAST_PICK_NONE = -1;
 	public static final int LAST_PICK_MINE = 0;
 	public static final int LAST_PICK_NEXT = 1;
