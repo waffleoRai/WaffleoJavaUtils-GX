@@ -469,6 +469,13 @@ public class QXImage {
 	
 	/*----- Setters -----*/
 	
+	public void setBitmapXYFactors(int xfactor, int yfactor, int frameIndex){
+		if(frameIndex < 0 || frameIndex >= bitmaps.size()) return;
+		Bitmap bmp = bitmaps.get(frameIndex);
+		bmp.scale_x = xfactor;
+		bmp.scale_y = yfactor;
+	}
+	
 	public void allocCLUTs(int CLUT_count){
 		if(bitdepth > 8) return;
 		palettes.ensureCapacity(CLUT_count);
@@ -1402,11 +1409,12 @@ public class QXImage {
 		}
 	}
 	
-	public boolean serializeTo(OutputStream output, boolean tile){
+	public FileBuffer serializeMe(boolean tile){
 		int frame_count = bitmaps.size();
+		FileBuffer output = new MultiFileBuffer(2 + frame_count);
 		
 		//Serialize bitmaps...
-		MultiFileBuffer ser_bmp = new MultiFileBuffer(frame_count);
+		FileBuffer[] serbmps = new FileBuffer[frame_count];
 		int[] bmp_offsets = new int[frame_count];
 		int size = 0;
 		for(int f = 0; f < frame_count; f++){
@@ -1424,7 +1432,7 @@ public class QXImage {
 				break;
 			}
 			size += (int)bmpbuff.getFileSize();
-			ser_bmp.addToFile(bmpbuff);
+			serbmps[f] = bmpbuff;
 		}
 		
 		//Palette
@@ -1479,11 +1487,19 @@ public class QXImage {
 			header.addToFile((short)frame.scale_y);
 		}
 		
+		output.addToFile(header);
+		if(palbuff != null) output.addToFile(palbuff);
+		for(int f = 0; f < serbmps.length; f++) output.addToFile(serbmps[f]);
+		
+		return output;
+	}
+	
+	public boolean serializeTo(OutputStream output, boolean tile){
+		FileBuffer buff = serializeMe(tile);
+		if(buff == null) return false;
 		
 		try {
-			header.writeToStream(output);
-			if(palbuff != null) palbuff.writeToStream(output);
-			ser_bmp.writeToStream(output);
+			buff.writeToStream(output);
 		} catch (IOException e) {
 			e.printStackTrace();
 			return false;
