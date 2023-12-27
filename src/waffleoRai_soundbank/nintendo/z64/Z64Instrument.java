@@ -22,7 +22,9 @@ public class Z64Instrument extends Labelable{
 	
 	protected int id;
 	
-	public Z64Instrument(){}
+	public Z64Instrument(){
+		envelope = Z64Envelope.newDefaultEnvelope();
+	}
 	
 	public byte getLowRangeTop(){return note_lo;}
 	public byte getHighRangeBottom(){return note_hi;}

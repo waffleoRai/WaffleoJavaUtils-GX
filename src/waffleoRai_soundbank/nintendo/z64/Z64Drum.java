@@ -22,6 +22,7 @@ public class Z64Drum extends Labelable{
 	
 	public Z64Drum(){
 		common_tune = new Z64Tuning();
+		envelope = Z64Envelope.newDefaultEnvelope();
 	}
 	
 	public byte getDecay(){return decay;}

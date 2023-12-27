@@ -65,6 +65,10 @@ public class QXImage {
 	public static final int PALETTE_FMT_RAW16 = 0;
 	public static final int PALETTE_FMT_ARGB = 1;
 	
+	//Higher flag byte seems to be 0x58?
+	public static final int HDR_FLAG_UNK14 = 1 << 14; //0x4000
+	public static final int HDR_FLAG_UNK12 = 1 << 12; //0x1000
+	public static final int HDR_FLAG_UNK11 = 1 << 11; //0x800
 	public static final int HDR_FLAG_UNK06 = 1 << 6; //0x40
 	public static final int HDR_FLAG_4BIT = 1 << 5; //0x20
 	public static final int HDR_FLAG_UNK04 = 1 << 4; //0x10
@@ -494,7 +498,7 @@ public class QXImage {
 		Arrays.fill(clut.palette, 0);
 		for(int j = 0; j < raw_16.length; j++){
 			if(j >= clut.palette.length) break;
-			clut.setRaw16(raw_16[j], index);
+			clut.setRaw16(raw_16[j], j);
 		}
 		return true;
 	}
@@ -509,9 +513,23 @@ public class QXImage {
 		Arrays.fill(clut.palette, 0);
 		for(int j = 0; j < argb.length; j++){
 			if(j >= clut.palette.length) break;
-			clut.setARGB(argb[j], index);
+			clut.setARGB(argb[j], j);
 		}
 		return true;
+	}
+	
+	private static int[][] swapXY(int[][] imgin){
+		int rows = imgin.length;
+		int cols = imgin[0].length;
+		
+		int[][] swapped = new int[cols][rows];
+		for(int y = 0; y < rows; y++){
+			for(int x = 0; x < cols; x++){
+				swapped[x][y] = imgin[y][x];
+			}
+		}
+		
+		return swapped;
 	}
 	
 	private boolean importTryClutMatch(int[][] inputImage, Bitmap target){
@@ -552,7 +570,7 @@ public class QXImage {
 				}
 			}
 		}
-		target.data = inputImage;
+		target.data = swapXY(inputImage);
 		
 		return true;
 	}
@@ -597,7 +615,7 @@ public class QXImage {
 				}
 			}
 		}
-		target.data = inputImage;
+		target.data = swapXY(inputImage);
 		
 		return true;
 	}
@@ -616,11 +634,11 @@ public class QXImage {
 				//Does not try to remap. Takes your word for it.
 				if(clutIndex < 0) clutIndex = 0;
 				target.palette_idx = clutIndex;
-				target.data = inputImage;
+				target.data = swapXY(inputImage);
 				break;
 			case CLUT_IMPORT_OP_IMGFILE_CLUT:
 			case CLUT_IMPORT_OP_TRY_CLUT_GEN: //No point in generating. Already has one.
-				target.data = inputImage;
+				target.data = swapXY(inputImage);
 				if(clutIndex >= 0 && clutIndex < palettes.size()){
 					clut = palettes.get(clutIndex);
 				}
@@ -646,6 +664,7 @@ public class QXImage {
 					inputImage[i][j] = argb32_to_abgr16(inputCLUT[inputImage[i][j]]);
 				}
 			}
+			target.data = swapXY(inputImage);
 		}
 		
 		return true;
@@ -664,11 +683,11 @@ public class QXImage {
 				//Does not try to remap. Takes your word for it.
 				if(clutIndex < 0) clutIndex = 0;
 				target.palette_idx = clutIndex;
-				target.data = inputImage;
+				target.data = swapXY(inputImage);
 				break;
 			case CLUT_IMPORT_OP_IMGFILE_CLUT:
 			case CLUT_IMPORT_OP_TRY_CLUT_GEN: //No point in generating. Already has one.
-				target.data = inputImage;
+				target.data = swapXY(inputImage);
 				if(clutIndex >= 0 && clutIndex < palettes.size()){
 					clut = palettes.get(clutIndex);
 				}
@@ -699,7 +718,7 @@ public class QXImage {
 						inputImage[i][j] >>>= 4;
 					}
 				}
-				target.data = inputImage;
+				target.data = swapXY(inputImage);
 				break;
 			case CLUT_IMPORT_OP_IMGFILE_CLUT:
 				return false; //Incompatible
@@ -730,7 +749,8 @@ public class QXImage {
 				clut.paletteFmt = PALETTE_FMT_ARGB;
 				gen.flush();
 				
-				target.data = CLUTCompare.remapImageToCLUT(clut.palette, inputCLUT, inputImage);
+				target.data = swapXY(inputImage);
+				target.data = CLUTCompare.remapImageToCLUT(clut.palette, inputCLUT, target.data);
 				break;
 			case CLUT_IMPORT_OP_TRY_CLUT_MATCH:
 				return importTryClutMatch(inputImage, inputCLUT, target);
@@ -744,6 +764,7 @@ public class QXImage {
 					inputImage[i][j] = argb32_to_abgr16(inputCLUT[inputImage[i][j]]);
 				}
 			}
+			target.data = swapXY(inputImage);
 		}
 		
 		return true;
@@ -784,7 +805,8 @@ public class QXImage {
 					}
 				}
 				
-				target.data = CLUTCompare.remapImageToCLUT(clutref, inputARGB);
+				target.data = swapXY(inputARGB);
+				target.data = CLUTCompare.remapImageToCLUT(clutref, target.data);
 				break;
 			case CLUT_IMPORT_OP_TRY_CLUT_GEN:
 				//Generate a new CLUT from input data
@@ -804,7 +826,8 @@ public class QXImage {
 				clut.paletteFmt = PALETTE_FMT_ARGB;
 				gen.flush();
 				
-				target.data = CLUTCompare.remapImageToCLUT(clut.palette, inputARGB);
+				target.data = swapXY(inputARGB);
+				target.data = CLUTCompare.remapImageToCLUT(clut.palette, target.data);
 				break;
 			case CLUT_IMPORT_OP_TRY_CLUT_MATCH:
 				return importTryClutMatch(inputARGB, target);
@@ -813,7 +836,7 @@ public class QXImage {
 		else{
 			//16 -> 16
 			target.palette_idx = -1;
-			target.data = inputImage;
+			target.data = swapXY(inputImage);
 		}
 		
 		return true;
@@ -853,7 +876,8 @@ public class QXImage {
 					}
 				}
 				
-				target.data = CLUTCompare.remapImageToCLUT(clutref, inputImage);
+				target.data = swapXY(inputImage);
+				target.data = CLUTCompare.remapImageToCLUT(clutref, target.data);
 				break;
 			case CLUT_IMPORT_OP_TRY_CLUT_GEN:
 				//Generate a new CLUT from input data
@@ -873,7 +897,8 @@ public class QXImage {
 				clut.paletteFmt = PALETTE_FMT_ARGB;
 				gen.flush();
 				
-				target.data = CLUTCompare.remapImageToCLUT(clut.palette, inputImage);
+				target.data = swapXY(inputImage);
+				target.data = CLUTCompare.remapImageToCLUT(clut.palette, target.data);
 				break;
 			case CLUT_IMPORT_OP_TRY_CLUT_MATCH:
 				return importTryClutMatch(inputImage, target);
@@ -892,7 +917,7 @@ public class QXImage {
 				}
 			}
 			
-			target.data = input16;
+			target.data = swapXY(input16);
 		}
 		return true;
 	}
@@ -1231,16 +1256,21 @@ public class QXImage {
 		int size = 0;
 		bmp_header.printASCIIToFile("BM");
 		if(color_table != null){
-			size = 14 + DIB_SIZE + (int)color_table.getFileSize() + (int)idata.getFileSize();
+			size = 14 + DIB_SIZE + (int)color_table.getFileSize();
 		}
 		else{
-			size = 14 + DIB_SIZE + (int)idata.getFileSize();
+			size = 14 + DIB_SIZE;
 		}
+		int idat_pos = (size + 3) & ~0x3;
+		int idat_pad = idat_pos - size;
+		size += idat_pad;
+		size += (int)idata.getFileSize();
+		
 		bmp_header.addToFile(size);
 		//I'm gonna use these two reserved fields for x scale and y scale
 		bmp_header.addToFile((short)myframe.scale_x);
 		bmp_header.addToFile((short)myframe.scale_y);
-		bmp_header.addToFile((int)(size - (int)idata.getFileSize()));
+		bmp_header.addToFile(idat_pos);
 		
 		//Output to disk
 		BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(path));
@@ -1249,6 +1279,7 @@ public class QXImage {
 		if(color_table != null){
 			color_table.writeToStream(bos);
 		}
+		for(int i = 0; i < idat_pad; i++) bos.write(0);
 		idata.writeToStream(bos);
 		bos.close();
 		
@@ -1411,7 +1442,7 @@ public class QXImage {
 	
 	public FileBuffer serializeMe(boolean tile){
 		int frame_count = bitmaps.size();
-		FileBuffer output = new MultiFileBuffer(2 + frame_count);
+		FileBuffer output = new MultiFileBuffer(3 + frame_count);
 		
 		//Serialize bitmaps...
 		FileBuffer[] serbmps = new FileBuffer[frame_count];
@@ -1465,10 +1496,12 @@ public class QXImage {
 		
 		int flags = 0;
 		flags |= HDR_FLAG_UNK00 | HDR_FLAG_UNK04 | HDR_FLAG_UNK06;
+		flags |= HDR_FLAG_UNK11 | HDR_FLAG_UNK12 | HDR_FLAG_UNK14;
 		if(bitdepth == 4){
 			flags |= HDR_FLAG_4BIT;
 		}
 		header.addToFile((short)flags);
+		header.addToFile((short)frame_count);
 		for(int f = 0; f < frame_count; f++){
 			header.addToFile(bmp_offsets[f]);
 			Bitmap frame = bitmaps.get(f);
@@ -1490,6 +1523,15 @@ public class QXImage {
 		output.addToFile(header);
 		if(palbuff != null) output.addToFile(palbuff);
 		for(int f = 0; f < serbmps.length; f++) output.addToFile(serbmps[f]);
+		
+		long currentSize = output.getFileSize();
+		long padSize = (currentSize + 3L) & ~0x3L;
+		if(padSize > currentSize){
+			int padamt = (int)(padSize - currentSize);
+			FileBuffer pad = new FileBuffer(4, false);
+			for(int i = 0; i < padamt; i++) pad.addToFile(FileBuffer.ZERO_BYTE);
+			output.addToFile(pad);
+		}
 		
 		return output;
 	}

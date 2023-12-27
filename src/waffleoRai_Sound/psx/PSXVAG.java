@@ -85,7 +85,7 @@ public class PSXVAG implements Sound{
 	
 	/* ----- Internal Classes ----- */
 	
-	public static class Chunk{
+	public static class Chunk {
 		private int range;
 		private int filter;
 		
@@ -99,41 +99,15 @@ public class PSXVAG implements Sound{
 			samples = new int[28];
 		}
 		
-		public boolean loops(){
-			return loops;
-		}
-		
-		public boolean isLoopPoint(){
-			return loopPoint;
-		}
-		
-		public boolean isEnd(){
-			return isend;
-		}
-		
-		public void setRange(int n){
-			range = n;
-		}
-		
-		public void setFilter(int n){
-			filter = n;
-		}
-		
-		public void setLoops(boolean b){
-			loops = b;
-		}
-		
-		public void setLoopPoint(boolean b){
-			loopPoint = b;
-		}
-		
-		public void setEnd(boolean b){
-			isend = b;
-		}
-		
-		public void setSample(int i, int s){
-			samples[i] = s;
-		}
+		public boolean loops(){return loops;}
+		public boolean isLoopPoint(){return loopPoint;}
+		public boolean isEnd(){return isend;}
+		public void setRange(int n){range = n;}
+		public void setFilter(int n){filter = n;}
+		public void setLoops(boolean b){loops = b;}
+		public void setLoopPoint(boolean b){loopPoint = b;}
+		public void setEnd(boolean b){isend = b;}
+		public void setSample(int i, int s){samples[i] = s;}
 		
 		public byte[] serializeMe(){
 			byte[] cbytes = new byte[16];
@@ -147,8 +121,7 @@ public class PSXVAG implements Sound{
 			if (loopPoint) flags |= 0x04;
 			cbytes[1] = (byte)flags;
 			
-			for (int i = 0; i < 14; i++)
-			{
+			for (int i = 0; i < 14; i++){
 				int si = (i*2);
 				int s0 = samples[si] & 0xF;
 				int s1 = samples[si + 1] & 0xF;
@@ -159,13 +132,11 @@ public class PSXVAG implements Sound{
 			return cbytes;
 		}
 		
-		public int[] decompressSamples(int s_last, int s_beforelast)
-		{
+		public int[] decompressSamples(int s_last, int s_beforelast){
 			int[] sdecomp = new int[28];
 			int f0 = FILTER_TABLE_1[filter];
 			int f1 = FILTER_TABLE_2[filter];
-			for (int i = 0; i < 28; i++)
-			{
+			for (int i = 0; i < 28; i++){
 				//x(n) = c(n) + [ f1*x(n-1) - f2*x(n-2)]
 				/*int s = samples[i] << 12;
 				s = s >>> range;
@@ -194,16 +165,14 @@ public class PSXVAG implements Sound{
 	
 	/* ----- Construction ----- */
 	
-	public PSXVAG(String filepath) throws IOException, UnsupportedFileTypeException
-	{
+	public PSXVAG(String filepath) throws IOException, UnsupportedFileTypeException {
 		currentFrame = 0;
 		decompressedBuffer = null;
 		FileBuffer myfile = FileBuffer.createBuffer(filepath, false);
 		parseVAG(myfile);
 	}
 	
-	public PSXVAG(FileBuffer VAGFile) throws UnsupportedFileTypeException
-	{
+	public PSXVAG(FileBuffer VAGFile) throws UnsupportedFileTypeException {
 		iloop = -1;
 		currentFrame = 0;
 		decompressedBuffer = null;
@@ -216,8 +185,7 @@ public class PSXVAG implements Sound{
 	
 	/* ----- Parsing ----- */
 	
-	private void parseVAG(FileBuffer mysound) throws UnsupportedFileTypeException
-	{
+	private void parseVAG(FileBuffer mysound) throws UnsupportedFileTypeException {
 		//Quick rejection - size must be a multiple of 16
 		long fsz = mysound.getFileSize();
 		if (fsz % 16 != 0) throw new FileBuffer.UnsupportedFileTypeException();
@@ -288,15 +256,12 @@ public class PSXVAG implements Sound{
 	
 	/* ----- Serialization ----- */
 	
-	public FileBuffer serializeVAGData()
-	{
+	public FileBuffer serializeVAGData(){
 		int datSz = soundData.length * 16;
 		FileBuffer mysound = new FileBuffer(datSz);
 		
-		for (int c = 0; c < soundData.length; c++)
-		{
-			if (soundData[c] != null)
-			{
+		for (int c = 0; c < soundData.length; c++){
+			if (soundData[c] != null){
 				byte[] row = soundData[c].serializeMe();
 				for (int i = 0; i < row.length; i++) mysound.addToFile(row[i]);
 			}
@@ -325,16 +290,13 @@ public class PSXVAG implements Sound{
 			nlen = name.length();
 		}
 		mysound.printASCIIToFile(name);
-		if (nlen < 16)
-		{
+		if (nlen < 16){
 			for (int i = nlen; i < 16; i++) mysound.addToFile((byte)0x00);
 		}
 		
 		//Data
-		for (int c = 0; c < soundData.length; c++)
-		{
-			if (soundData[c] != null)
-			{
+		for (int c = 0; c < soundData.length; c++){
+			if (soundData[c] != null){
 				byte[] row = soundData[c].serializeMe();
 				for (int i = 0; i < row.length; i++) mysound.addToFile(row[i]);
 			}
@@ -364,31 +326,26 @@ public class PSXVAG implements Sound{
 	
 	/* ----- Getters ----- */
 	
-	public String getName()
-	{
+	public String getName(){
 		return name;
 	}
 	
-	public int getVersion()
-	{
+	public int getVersion(){
 		return version;
 	}
 	
-	public int getSampleRate()
-	{
+	public int getSampleRate(){
 		return sampleRate;
 	}
 	
 	/* ----- Conversion ----- */
 	
-	public boolean loops()
-	{
+	public boolean loops(){
 		if (soundData == null) return false;
 		if(iloop >= 0) return (iloop != 0);
 		iloop = 0;
 		for (Chunk c : soundData) {
-			if (c != null)
-			{
+			if (c != null){
 				if(c.isEnd()) return (iloop != 0);
 				if (c.loops()){
 					iloop = 1;
@@ -399,42 +356,36 @@ public class PSXVAG implements Sound{
 		return (iloop != 0);
 	}
 	
-	public int getLoopPointChunkIndex()
-	{
+	public int getLoopPointChunkIndex(){
 		if (soundData == null) return -1;
-		for (int i = 0; i < soundData.length; i++) {
+		for (int i = 0; i < soundData.length; i++){
 			Chunk c = soundData[i];
-			if (c != null)
-			{
+			if (c != null){
 				if (c.isLoopPoint()) return i;
 			}
 		}
 		return -1;
 	}
 	
-	public int getLoopPointSampleIndex()
-	{
+	public int getLoopPointSampleIndex(){
 		if (soundData == null) return -1;
-		for (int i = 0; i < soundData.length; i++) {
+		for (int i = 0; i < soundData.length; i++){
 			Chunk c = soundData[i];
-			if (c != null)
-			{
+			if (c != null){
 				if (c.isLoopPoint()) return (i * 28);
 			}
 		}
 		return -1;
 	}
 	
-	public int countChunks()
-	{
+	public int countChunks(){
 		return soundData.length;
 	}
 	
-	public int countSamples()
-	{
+	public int countSamples(){
 		if (soundData == null) return 0;
 		int scount = 0;
-		for (Chunk c : soundData) {
+		for (Chunk c : soundData){
 			if (c != null) {
 				scount += 28;
 				if (c.isEnd()) break;
@@ -443,15 +394,13 @@ public class PSXVAG implements Sound{
 		return scount;
 	}
 	
-	public int[] getDecompressedSamples()
-	{
+	public int[] getDecompressedSamples(){
 		//Remember not to read past the end!
 		int[] decsamps = new int[countSamples()];
 		int si = 0;
 		int n1 = 0;
 		int n2 = 0;
-		for (Chunk c : soundData)
-		{
+		for (Chunk c : soundData){
 			if (c == null) break;
 			int[] csamps = c.decompressSamples(n1, n2);
 			for (int s : csamps) {
@@ -466,27 +415,21 @@ public class PSXVAG implements Sound{
 		return decsamps;
 	}
 
-	public int[] getDecompressedLoopChunk()
-	{
+	public int[] getDecompressedLoopChunk(){
 		if (!this.loops()) return null;
 		int n1 = 0;
 		int n2 = 0;
-		for (Chunk c : soundData)
-		{
+		for (Chunk c : soundData){
 			if (c == null) break;
 			int[] csamps = c.decompressSamples(n1, n2);
 			n1 = csamps[27];
 			n2 = csamps[26];
-			if (c.isLoopPoint())
-			{
-				return csamps;
-			}
+			if (c.isLoopPoint()) return csamps;
 		}
 		return null;
 	}
 	
-	public WAV convertToWAV()
-	{
+	public WAV convertToWAV(){
 		int[] dsamps = getDecompressedSamples(); //16 bit
 		
 		WAV mywav = new WAV(16, 1, dsamps.length);
@@ -496,8 +439,7 @@ public class PSXVAG implements Sound{
 		mywav.copyData(0, dsamps);
 		
 		//Set loop data
-		if(loops())
-		{
+		if(loops()){
 			int st = getLoopPointSampleIndex();
 			int ed = dsamps.length;
 			mywav.setLoop(WAV.LoopType.Forward, st, ed);	
@@ -508,21 +450,18 @@ public class PSXVAG implements Sound{
 	
 	/* ----- Calculations ----- */
 	
-	public int getDataSize()
-	{
+	public int getDataSize(){
 		if (soundData == null) return 0;
 		return soundData.length * CHUNK_SIZE;
 	}
 	
 	/* ----- Java Interface ----- */
 	
-	public Chunk getChunk(int i)
-	{
+	public Chunk getChunk(int i){
 		return soundData[i];
 	}
 	
-	public AudioFormat getFormat()
-	{
+	public AudioFormat getFormat(){
 		AudioFormat vagformat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, (float)sampleRate, 
 				DECOMPRESSED_SAMPLE_BITS, 
 				CHANNELS, DECOMPRESSED_BYTES_PER_FRAME,
@@ -530,8 +469,7 @@ public class PSXVAG implements Sound{
 		return vagformat;
 	}
 	
-	public AudioInputStream getStream()
-	{
+	public AudioInputStream getStream(){
 		PSXVAGInputStream rawis = new PSXVAGInputStream(this, AUDIO_STREAM_BUFFERED_CHUNKS);
 		AudioInputStream ais = new AudioInputStream(rawis, getFormat(), countSamples());
 		return ais;
@@ -539,76 +477,62 @@ public class PSXVAG implements Sound{
 	
 	/* ----- Local Interface ----- */
 	
-	public void jumpToFrame(int frame)
-	{
+	public void jumpToFrame(int frame){
 		currentFrame = frame;
 	}
 	
-	public void rewind()
-	{
+	public void rewind(){
 		currentFrame = 0;
 	}
 	
-	public int nextSample(int channel)
-	{
+	public int nextSample(int channel){
 		if (decompressedBuffer == null) decompressedBuffer = getDecompressedSamples();
 		if (currentFrame >= decompressedBuffer.length) return -1;
 		return decompressedBuffer[currentFrame];
 	}
 	
-	public int samplesLeft(int channel)
-	{
+	public int samplesLeft(int channel){
 		if (decompressedBuffer == null) decompressedBuffer = getDecompressedSamples();
 		return decompressedBuffer.length - currentFrame;
 	}
 	
-	public boolean hasSamplesLeft(int channel)
-	{
+	public boolean hasSamplesLeft(int channel){
 		return samplesLeft(channel) > 0;
 	}
 	
-	public void flushBuffer()
-	{
+	public void flushBuffer(){
 		decompressedBuffer = null;
 	}
 	
-	public int totalFrames()
-	{
+	public int totalFrames(){
 		return this.countSamples();
 	}
 	
-	public int getLoopFrame()
-	{
+	public int getLoopFrame(){
 		return getLoopPointSampleIndex();
 	}
 	
-	public int getLoopEndFrame()
-	{
+	public int getLoopEndFrame(){
 		return totalFrames();
 	}
 
-	public int[] getRawSamples(int channel)
-	{
+	public int[] getRawSamples(int channel){
 		return this.getDecompressedSamples();
 	}
 	
-	public BitDepth getBitDepth()
-	{
+	public BitDepth getBitDepth(){
 		return BitDepth.SIXTEEN_BIT_SIGNED;
 	}
 	
-	public int[] getSamples_16Signed(int channel)
-	{
+	public int[] getSamples_16Signed(int channel){
 		return getDecompressedSamples();
 	}
 	
-	public int[] getSamples_24Signed(int channel)
-	{
+	public int[] getSamples_24Signed(int channel){
 		int[] rawsamps = getDecompressedSamples();
 		int frames = rawsamps.length;
 		int[] scaled = new int[frames];
-		for (int i = 0; i < frames; i++)
-		{
+		for (int i = 0; i < frames; i++){
 			int samp = rawsamps[i];
 			scaled[i] = Sound.scaleSampleUp8Bits(samp, BitDepth.SIXTEEN_BIT_SIGNED);
 		}
@@ -616,28 +540,12 @@ public class PSXVAG implements Sound{
 		return scaled;
 	}
 	
-	public int totalChannels()
-	{
-		return 1;
-	}
+	public int totalChannels(){return 1;}
+	public int getUnityNote(){return 60;}
+	public int getFineTune(){return 0;}
+	public Sound getSingleChannel(int channel){return this;}
 	
-	public int getUnityNote()
-	{
-		return 60;
-	}
-	
-	public int getFineTune()
-	{
-		return 0;
-	}
-	
-	public Sound getSingleChannel(int channel)
-	{
-		return this;
-	}
-
-	public AudioSampleStream createSampleStream()
-	{
+	public AudioSampleStream createSampleStream(){
 		return new PSXVAGSampleStream(this);
 	}
 	
