@@ -7,6 +7,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -69,8 +70,10 @@ public class LZMu {
 	
 	/*--- Constants ---*/
 	
-	//public static final int BACK_WINDOW_SIZE = 0x1FFF;
-	public static final int BACK_WINDOW_SIZE = 0x1000; //If treated as signed 13 bit, then -4096 is most negative value
+	private static final boolean DEBUG_ON = true;
+	
+	public static final int BACK_WINDOW_SIZE = 0x2000; //Treated as unsigned 13 bit
+	//public static final int BACK_WINDOW_SIZE = 0x1000; //If treated as signed 13 bit, then -4096 is most negative value
 	public static final int MIN_RUN_SIZE = 2;
 	public static final int MAX_RUN_SIZE_SMALL = 5;
 	public static final int MIN_RUN_SIZE_LARGE = 3;
@@ -109,6 +112,10 @@ public class LZMu {
 	private long bytesWritten;
 	private long decompSize;
 	private long lastCtrlCharPos = -1L; //In compressed stream
+	private boolean hardBreak = false;
+	
+	private int overflowSize = 0;
+	private byte[] overflowData;
 	
 	/*--- General ---*/
 	
@@ -170,7 +177,15 @@ public class LZMu {
 	
 	/*--- Decode ---*/
 	
+	public int getOverflowSize(){return overflowSize;}
 	public long getBytesRead(){return bytesRead;}
+	
+	public byte[] getOverflowContents(){
+		if(overflowData == null) return null;
+		if(overflowSize < 1) return null;
+		byte[] data = Arrays.copyOf(overflowData, overflowSize);
+		return data;
+	}
 	
 	private boolean nextControlBit(StreamWrapper input){
 		if(bitmask == 0){
@@ -188,11 +203,21 @@ public class LZMu {
 	}
 	
 	private void addByteToOutput(byte b){
-		if(bytesWritten >= decompSize) return;
-		output.put(b);
+		if(bytesWritten >= decompSize){
+			if(overflowData == null){
+				overflowData = new byte[256];
+			}
+			if(overflowSize < overflowData.length){
+				overflowData[overflowSize] = b;
+			}
+			overflowSize++;
+		}
+		else{
+			output.put(b);
+			bytesWritten++;
+		}
 		if(back_window.isFull()) back_window.pop();
 		back_window.put(b);
-		bytesWritten++;
 		/*if(bytesWritten >= 0x3d7)
 		{
 			System.err.println("Compressed Position: 0x" + Long.toHexString(bytesRead));
@@ -209,6 +234,8 @@ public class LZMu {
 		last_ctrl_type = CTRLTYPE_NONE;*/
 		
 		bytesRead = 0;
+		overflowSize = 0;
+		overflowData = null;
 		if(input == null) return;
 		back_window = new ArrayWindow(8192);
 		
@@ -217,12 +244,15 @@ public class LZMu {
 		bitmask = 0x80;
 		lastCtrlCharPos = 4;
 		
-		while(!input.isEmpty() && (bytesWritten < decompSize)){
+		//while(!input.isEmpty() && (bytesWritten < decompSize)){
+		while(!input.isEmpty() && !hardBreak){
 			//Get the next bit of the ctrlbyte to decide what to do
 			boolean bit = nextControlBit(input);
 			if(bit){
 				/*--- DEBUG LOG ---*/
-				debug_logLiteralEvent(bytesWritten, lastCtrlCharPos, 1);
+				if(DEBUG_ON){
+					debug_logLiteralEvent(bytesWritten, lastCtrlCharPos, 1);
+				}
 				/*--- DEBUG LOG ---*/
 				
 				//Just copy the next byte to output
@@ -254,14 +284,19 @@ public class LZMu {
 					//Or if the next 3 bits are all 0, then the next byte (+1)
 					int b0 = (int)input.get(); bytesRead++;
 					int b1 = Byte.toUnsignedInt(input.get()); bytesRead++;
+					if((bytesWritten >= decompSize) && (b0 == 0) && (b1 == 0)){
+						//Garbage. Break.
+						hardBreak = true;
+						return;
+					}
+					
 					b0 = b0 << 5;
 					b0 |= (b1 >>> 3) & 0x1F;
 					int backset = ~b0 & 0x1FFF;
 					int n = (b1 & 0x7);
 					if(n == 0) {n = input.getFull() + 1; bytesRead++;}
 					else n += 2;
-					for(int i = 0; i < n; i++)
-					{
+					for(int i = 0; i < n; i++){
 						byte b = back_window.getFromBack(backset);
 						addByteToOutput(b);
 					}
@@ -270,14 +305,15 @@ public class LZMu {
 					//last_ctrl_type = CTRLTYPE_REFLONG;
 					
 					/*--- DEBUG LOG ---*/
-					long mypos = bytesWritten - n;
-					long backpos = mypos - backset - 1;
-					debug_logReferenceEvent(mypos, lastCtrlCharPos, backpos, n);
+					if(DEBUG_ON){
+						long mypos = (bytesWritten + overflowSize) - n;
+						long backpos = mypos - backset - 1;
+						debug_logReferenceEvent(mypos, lastCtrlCharPos, backpos, n);
+					}
 					/*--- DEBUG LOG ---*/
 					
 				}
-				else
-				{
+				else{
 					//Next two bits are number to copy -2
 					//Next byte is backset
 					int n = 2;
@@ -297,9 +333,11 @@ public class LZMu {
 					//last_ctrl_type = CTRLTYPE_REFSHORT;
 					
 					/*--- DEBUG LOG ---*/
-					long mypos = bytesWritten - n;
-					long backpos = mypos - backset - 1;
-					debug_logReferenceEvent(mypos, lastCtrlCharPos, backpos, n);
+					if(DEBUG_ON){
+						long mypos = (bytesWritten + overflowSize) - n;
+						long backpos = mypos - backset - 1;
+						debug_logReferenceEvent(mypos, lastCtrlCharPos, backpos, n);
+					}
 					/*--- DEBUG LOG ---*/
 					
 				}
@@ -309,6 +347,7 @@ public class LZMu {
 	}
 	
 	public StreamWrapper decode(StreamWrapper input, int allocate) {
+		hardBreak = false;
 		decompSize = allocate;
 		output = new ByteBufferStreamer(allocate); //Init Output
 		decode(input);
@@ -319,6 +358,7 @@ public class LZMu {
 	
 	public FileBuffer decodeToBuffer(StreamWrapper input, int allocate) {
 		decompSize = allocate;
+		hardBreak = false;
 		FileBuffer buff = new FileBuffer(allocate);
 		output = new FileBufferStreamer(buff); //Init Output
 		decode(input);
@@ -329,6 +369,7 @@ public class LZMu {
 		for(int i = 0; i < 4; i++) input.get();
 		
 		try{
+			hardBreak = false;
 			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(path));
 			output = new FileOutputStreamer(bos);
 			decode(input);
@@ -404,7 +445,7 @@ public class LZMu {
 				//Byte before current pos is -1
 				if(backoff > MAX_BACKSET_SMALL) return false;
 			}
-			if(backoff > 4096) return false;
+			if(backoff > BACK_WINDOW_SIZE) return false;
 			if(match_run > MAX_RUN_SIZE_LARGE) return false;
 			
 			return true;
@@ -417,7 +458,7 @@ public class LZMu {
 				//Byte before current pos is -1
 				if(backoff > MAX_BACKSET_SMALL) return false;
 			}
-			if(backoff > 4096) return false;
+			if(backoff > BACK_WINDOW_SIZE) return false;
 			if(match.match_run > MAX_RUN_SIZE_LARGE) return false;
 			
 			return true;
@@ -573,58 +614,70 @@ public class LZMu {
 	}
 	
 	private void finishWrite(){
-		//TODO Fills and flushes the last command, tidies up the output
-		if(bitmask == 0x80){
-			//It seems to hallucinate an extra command?
-			output_fb.addToFile((byte)0x40);
-			for(int i = 0; i < 3; i++) output_fb.addToFile((byte)0x00);
-			
-			//Just pad to 4
-			while((output_fb.getFileSize() & 0x3) != 0) output_fb.addToFile(FileBuffer.ZERO_BYTE);
-		}
-		else{
-			//TODO This is probably going to have to be tweaked a lot to match.
-			//Command stream needs to be padded out too, I guess
-			int total_size = dataBufferUsed + 1 + (int)output_fb.getFileSize();
+		//Fill out last control byte.
+		if(bitmask != 0x80){
 			int ctrl_bits_rem = 0;
 			int mask = bitmask;
 			while(mask > 0){
 				ctrl_bits_rem++;
 				mask >>>= 1;
-				//writeDataByte((byte)0);
-				//total_size++;
 			}
-			int data_pad = (4 - (total_size & 0x3)) & 0x3;
 			
 			if(ctrl_bits_rem >= 2){
+				//Write another imaginary 01 command
 				bitmask >>>= 1;
 				ctrlbyte |= bitmask;
 				bitmask >>>= 1;
-				for(int i = 0; i < 3; i++){
-					writeDataByte((byte)0);
-					total_size++;
+				ctrl_bits_rem -= 2;
+				
+				/*if(ctrl_bits_rem == 2){
+					for(int i = 0; i < 3; i++){
+						writeDataByte((byte)0x00);
+					}
 				}
-				data_pad = (4 - (total_size & 0x3)) & 0x3;
-			}
-			else if(ctrl_bits_rem == 1){
+				else{
+					writeDataByte((byte)0xff);
+					writeDataByte((byte)0xf8);
+					writeDataByte((byte)0xff);
+				}*/
+				for(int i = 0; i < 3; i++){
+					writeDataByte((byte)0x00);
+				}
+				
 				output_fb.addToFile((byte)ctrlbyte);
 				dumpDataBuffer();
-				
-				ctrlbyte = 0x80;
-				total_size++;
-				for(int i = 0; i < 3; i++){
-					writeDataByte((byte)0);
-					total_size++;
+			}
+			else{
+				output_fb.addToFile((byte)ctrlbyte);
+				dumpDataBuffer();
+				if(ctrl_bits_rem == 1){
+					output_fb.addToFile((byte)0x80);
+					for(int i = 0; i < 3; i++){
+						output_fb.addToFile((byte)0x00);
+					}
 				}
-				data_pad = (4 - (total_size & 0x3)) & 0x3;
 			}
 			
-			for(int i = 0; i < data_pad; i++){
-				writeDataByte((byte)0);
-			}
-			
-			output_fb.addToFile((byte)ctrlbyte);
-			dumpDataBuffer();
+			//If odd number of remaining bits, hallucinate one more 01
+			/*if(ctrl_bits_rem == 1){
+				output_fb.addToFile((byte)0x80);
+				for(int i = 0; i < 3; i++){
+					output_fb.addToFile((byte)0x00);
+				}
+			}*/
+		}
+		else{
+			//Last command and data batch has already been dumped to stream.
+			//Hallucinate one more 01 command
+			output_fb.addToFile((byte)0x40);
+			for(int i = 0; i < 3; i++) output_fb.addToFile((byte)0x00);
+		}
+		
+		//Pad to 4
+		int total_size = (int)output_fb.getFileSize();
+		int data_pad = (4 - (total_size & 0x3)) & 0x3;
+		for(int i = 0; i < data_pad; i++){
+			output_fb.addToFile((byte)0x00);
 		}
 	}
 	
@@ -638,12 +691,16 @@ public class LZMu {
 			if(mflush) dumpDataBuffer();
 			
 			/*--- DEBUG LOG ---*/
-			debug_logLiteralEvent(compressor.current_pos, lastCtrlCharPos, 1);
+			if(DEBUG_ON){
+				debug_logLiteralEvent(compressor.current_pos, lastCtrlCharPos, 1);
+			}
 			/*--- DEBUG LOG ---*/
 		}
 		else{
 			/*--- DEBUG LOG ---*/
-			debug_logReferenceEvent(compressor.current_pos, lastCtrlCharPos, compressor.match_pos, compressor.match_run);
+			if(DEBUG_ON){
+				debug_logReferenceEvent(compressor.current_pos, lastCtrlCharPos, compressor.match_pos, compressor.match_run);
+			}
 			/*--- DEBUG LOG ---*/
 			
 			//Backref
@@ -699,8 +756,10 @@ public class LZMu {
 		}
 		
 		/*--- DEBUG LOG ---*/
-		if(match.copy_amt > 0){
-			debug_logLiteralEvent(epos, lastCtrlCharPos, match.copy_amt);
+		if(DEBUG_ON){
+			if(match.copy_amt > 0){
+				debug_logLiteralEvent(epos, lastCtrlCharPos, match.copy_amt);
+			}
 		}
 		/*--- DEBUG LOG ---*/
 	
@@ -713,12 +772,16 @@ public class LZMu {
 			if(mflush) dumpDataBuffer();
 			
 			/*--- DEBUG LOG ---*/
-			debug_logLiteralEvent(epos, lastCtrlCharPos, 1);
+			if(DEBUG_ON){
+				debug_logLiteralEvent(epos, lastCtrlCharPos, 1);
+			}
 			/*--- DEBUG LOG ---*/
 		}
 		else{
 			/*--- DEBUG LOG ---*/
-			debug_logReferenceEvent(epos, lastCtrlCharPos, match.match_pos, match.match_run);
+			if(DEBUG_ON){
+				debug_logReferenceEvent(epos, lastCtrlCharPos, match.match_pos, match.match_run);
+			}
 			/*--- DEBUG LOG ---*/
 			
 			//Backref
@@ -764,8 +827,12 @@ public class LZMu {
 	}
 	
 	public FileBuffer encode(FileBuffer input){
+		return encode(input, 0);
+	}
+	
+	public FileBuffer encode(FileBuffer input, int overflow){
 		if(input == null) return null;
-		int alloc = (int)input.getFileSize();
+		int alloc = (int)input.getFileSize() - overflow;
 		output_fb = new FileBuffer(alloc, false);
 		output_fb.addToFile(alloc); //First word is decomped size
 		this.decompSize = alloc;
@@ -839,6 +906,7 @@ public class LZMu {
 		else if(comp_appr == COMP_LOOKAHEAD_QUICK){
 			compressor.scoreMode = true;
 			while(!compressor.atEnd()){
+				
 				//Find match
 				RunMatch match = compressor.findMatchLookaheadQuick();
 				//System.err.println("0x" + Long.toHexString(compressor.current_pos) + ": " + Integer.toHexString(compressor.lastPick));
@@ -847,6 +915,9 @@ public class LZMu {
 				if(match != null){
 					encodeNext(input, match);
 					amt += match.copy_amt + match.match_run;
+					if(match.match_run == 256){
+						compressor.resetSkipFlag();
+					}
 				}
 				else{
 					match = new MuRunMatch();
@@ -858,6 +929,7 @@ public class LZMu {
 				bytesRead += amt;
 				compressor.incrementPos(amt);
 			}
+			
 			finishWrite();
 		}
 		else if(comp_appr == COMP_STRAT_FAST){

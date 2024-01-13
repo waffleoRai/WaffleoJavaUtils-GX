@@ -19,6 +19,7 @@ import waffleoRai_Compression.lz77.LZMu.MuRunMatch;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBufferStreamer;
 import waffleoRai_Utils.FileUtils;
+import waffleoRai_Utils.MultiFileBuffer;
 import waffleoRai_Utils.StreamWrapper;
 
 public class Test_LZComp {
@@ -82,6 +83,7 @@ public class Test_LZComp {
 		String outdir_b = outdir + File.separator + "b";
 		String decHashesPath = outdir + File.separator + "dhashes.txt";
 		String[] decHashes = new String[fcount];
+		byte[][] overflow = new byte[fcount][];
 		if(!FileBuffer.directoryExists(outdir_b)) {
 			Files.createDirectories(Paths.get(outdir_b));
 		}
@@ -104,6 +106,7 @@ public class Test_LZComp {
 			
 			FileBufferStreamer instr = new FileBufferStreamer(subfile);
 			StreamWrapper outstr = lz.decode(instr, decsize);
+			overflow[i] = lz.getOverflowContents();
 			subfile.dispose();
 			
 			lz.debug_dumpLoggedEvents(logpath);
@@ -134,7 +137,7 @@ public class Test_LZComp {
 		int matched_files = 0;
 		List<Integer> nonmatches = new ArrayList<Integer>(fcount);
 		for(int i = 0; i < fcount; i++) {
-			//System.err.println("\tCompressing " + i);
+			System.err.println("\tCompressing " + i);
 			String ipath = outdir_b + File.separator + String.format("%03d.bin", i);
 			if(!FileBuffer.fileExists(ipath)) continue;
 			total_files++;
@@ -142,13 +145,21 @@ public class Test_LZComp {
 			String opath = outdir_c + File.separator + String.format("%03d.bin.lz", i);
 			String logpath = outdir_c + File.separator + String.format("%03d.log", i);
 			
+			int overflowamt = 0;
 			FileBuffer indata = FileBuffer.createBuffer(ipath, false);
+			if(overflow[i] != null){
+				MultiFileBuffer glob = new MultiFileBuffer(2);
+				glob.addToFile(indata);
+				glob.addToFile(FileBuffer.wrap(overflow[i]));
+				overflowamt = overflow[i].length;
+				indata = glob;
+			}
 			LZMu lz = new LZMu();
 			//lz.setCompressionStrategy(LZMu.COMP_LOOKAHEAD_REC);
 			lz.setCompressionStrategy(LZMu.COMP_LOOKAHEAD_QUICK);
 			//lz.setCompressionStrategy(LZMu.COMP_LOOKAHEAD_SCANALL_GREEDY);
 			//lz.setCompressionLookahead(0x1000);
-			FileBuffer encdata = lz.encode(indata);
+			FileBuffer encdata = lz.encode(indata, overflowamt);
 			lz.debug_dumpLoggedEvents(logpath);
 			
 			encdata.writeFile(opath);
@@ -396,28 +407,32 @@ public class Test_LZComp {
 					bw.write("NEXT [" + ntotal + "]\n");
 					
 					for(int j = 0; j < TBL_LINES; j++){
-						if(mmatches[j].match_run < 2){
-							//Literal
-							bw.write("\tLIT 1" + colspace + "\t");
-						}
-						else{
-							//Backcopy
-							long offamt = mmatches[j].match_pos - mmatches[j].encoder_pos;
-							bw.write("\tBCPY " + mmatches[j].match_run);
-							bw.write(" @ " + offamt);
-							bw.write(" [" + mscores[j] + "]" + colspace);
+						if(mmatches[j] != null){
+							if(mmatches[j].match_run < 2){
+								//Literal
+								bw.write("\tLIT 1" + colspace + "\t");
+							}
+							else{
+								//Backcopy
+								long offamt = mmatches[j].match_pos - mmatches[j].encoder_pos;
+								bw.write("\tBCPY " + mmatches[j].match_run);
+								bw.write(" @ " + offamt);
+								bw.write(" [" + mscores[j] + "]" + colspace);
+							}	
 						}
 						
-						if(nmatches[j].match_run < 2){
-							//Literal
-							bw.write("LIT 1\n");
-						}
-						else{
-							//Backcopy
-							long offamt = nmatches[j].match_pos - nmatches[j].encoder_pos;
-							bw.write("BCPY " + nmatches[j].match_run);
-							bw.write(" @ " + offamt);
-							bw.write(" [" + nscores[j] + "]\n");
+						if(nmatches[j] != null){
+							if(nmatches[j].match_run < 2){
+								//Literal
+								bw.write("LIT 1\n");
+							}
+							else{
+								//Backcopy
+								long offamt = nmatches[j].match_pos - nmatches[j].encoder_pos;
+								bw.write("BCPY " + nmatches[j].match_run);
+								bw.write(" @ " + offamt);
+								bw.write(" [" + nscores[j] + "]\n");
+							}	
 						}
 					}
 					

@@ -65,10 +65,16 @@ public class QXImage {
 	public static final int PALETTE_FMT_RAW16 = 0;
 	public static final int PALETTE_FMT_ARGB = 1;
 	
-	//Higher flag byte seems to be 0x58?
+	//Higher flag byte seems to be 0x5851 seems to be most common.
+	//But I am seeing 0x5f51. Or the lower byte being 0x71 (4 bit)
 	public static final int HDR_FLAG_UNK14 = 1 << 14; //0x4000
+	public static final int HDR_FLAG_UNK13 = 1 << 13; //0x2000
 	public static final int HDR_FLAG_UNK12 = 1 << 12; //0x1000
 	public static final int HDR_FLAG_UNK11 = 1 << 11; //0x800
+	public static final int HDR_FLAG_UNK10 = 1 << 10; //0x400
+	public static final int HDR_FLAG_UNK09 = 1 << 9; //0x200
+	public static final int HDR_FLAG_UNK08 = 1 << 8; //0x100
+	public static final int HDR_FLAG_UNK07 = 1 << 7; //0x80
 	public static final int HDR_FLAG_UNK06 = 1 << 6; //0x40
 	public static final int HDR_FLAG_4BIT = 1 << 5; //0x20
 	public static final int HDR_FLAG_UNK04 = 1 << 4; //0x10
@@ -100,6 +106,8 @@ public class QXImage {
 	private int bitdepth;
 	private ArrayList<Bitmap> bitmaps;
 	private ArrayList<QXCLUT> palettes;
+	
+	private int miscFlags;
 	
 	/*----- Structures -----*/
 	
@@ -354,9 +362,9 @@ public class QXImage {
 		//I think the first two bytes are flags maybe????
 		//Or just version info???
 		//Anyway, they look like QX, Q_, qX or q_ in ASCII which is where the name comes from
-		int flag0 = Byte.toUnsignedInt(file.getByte(cpos)); cpos += 2;
+		int flags = Short.toUnsignedInt(file.shortFromFile(cpos)); cpos += 2;
 		int bd = 16;
-		if((flag0 & HDR_FLAG_4BIT) != 0) bd = 4; //0x71 usually
+		if((flags & HDR_FLAG_4BIT) != 0) bd = 4; //0x71 usually
 		else bd = 8; //0x51 most of the time, but not sure which flag means 8 bit
 		
 		int frames = Short.toUnsignedInt(file.shortFromFile(cpos)); cpos+=2;
@@ -410,6 +418,8 @@ public class QXImage {
 		}
 				
 		QXImage img = new QXImage(frames, bd);
+		img.miscFlags = flags;
+		img.miscFlags &= ~QXImage.HDR_FLAG_4BIT;
 		if(clut_count > 4) img.palettes.ensureCapacity(clut_count);
 
 		if(bd < 16){
@@ -449,6 +459,8 @@ public class QXImage {
 	
 	/*----- Getters -----*/
 	
+	public int getUnkFlagField(){return miscFlags;}
+	
 	public int getFrameCount(){return bitmaps.size();}
 	
 	public int getBitDepth(){return bitdepth;}
@@ -472,6 +484,8 @@ public class QXImage {
 	}
 	
 	/*----- Setters -----*/
+	
+	public void setUnkFlagField(int val){miscFlags = val;}
 	
 	public void setBitmapXYFactors(int xfactor, int yfactor, int frameIndex){
 		if(frameIndex < 0 || frameIndex >= bitmaps.size()) return;
@@ -1494,9 +1508,7 @@ public class QXImage {
 			bmp_offsets[i] += alloc + psize;
 		}
 		
-		int flags = 0;
-		flags |= HDR_FLAG_UNK00 | HDR_FLAG_UNK04 | HDR_FLAG_UNK06;
-		flags |= HDR_FLAG_UNK11 | HDR_FLAG_UNK12 | HDR_FLAG_UNK14;
+		int flags = miscFlags;
 		if(bitdepth == 4){
 			flags |= HDR_FLAG_4BIT;
 		}

@@ -131,8 +131,10 @@ public abstract class LZCompCore {
 	protected abstract boolean matchEncodable(RunMatch match);
 	protected abstract int scoreRun(RunMatch match);
 	protected abstract int bytesToEncode(RunMatch match);
-	
+
 	protected RunMatch newRunMatch(){return new RunMatch();}
+	
+	public void resetSkipFlag(){skipNext = false;}
 	
 	public void firstMeetsReq(){
 		/*
