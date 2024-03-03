@@ -230,4 +230,5 @@ public class Z64WaveInfo {
 		copy.setLoopState(this.loop_state);
 		return copy;
 	}
+	
 }

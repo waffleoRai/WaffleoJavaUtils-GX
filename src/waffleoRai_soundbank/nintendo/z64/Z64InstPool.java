@@ -206,6 +206,19 @@ class Z64InstPool {
 		return enumStrings[slot];
 	}
 	
+	public Z64InstPool copy(Z64WavePool wavepool, Z64EnvPool envpool) {
+		Z64InstPool copy = new Z64InstPool();
+		for(int i = 0; i < slots.length; i++) {
+			if(slots[i] != null) {
+				copy.assignToSlot(slots[i].copy(wavepool, envpool), i);
+				copy.enumStrings[i] = this.enumStrings[i];
+			}
+		}
+		
+		copy.updateMaps();
+		return copy;
+	}
+	
 	/*----- Setters -----*/
 	
 	public InstBlock addToPool(InstBlock block){

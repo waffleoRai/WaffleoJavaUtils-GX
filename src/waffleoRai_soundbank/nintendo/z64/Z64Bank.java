@@ -98,6 +98,20 @@ public class Z64Bank implements WriterPrintable{
 	
 	/*----- Init -----*/
 	
+	private Z64Bank(Z64Bank copyFrom, boolean keepWaveLinks){
+		medium = copyFrom.medium;
+		cachePolicy = copyFrom.cachePolicy;
+		warc1 = copyFrom.warc1;
+		warc2 = copyFrom.warc2;
+		uid = copyFrom.uid;
+		
+		envPool = copyFrom.envPool.copy();
+		wavePool = copyFrom.wavePool.copy(keepWaveLinks);
+		sfxPool = copyFrom.sfxPool.copy(wavePool);
+		drumPool = copyFrom.drumPool.copy(wavePool, envPool);
+		instPool = copyFrom.instPool.copy(wavePool, envPool);
+	}
+	
 	public Z64Bank(){this(4);}
 	
 	public Z64Bank(int sfxAlloc){
@@ -827,6 +841,12 @@ public class Z64Bank implements WriterPrintable{
 	protected Z64InstPool getInstPool(){return instPool;}
 	protected Z64DrumPool getDrumPool(){return drumPool;}
 	protected Z64SFXPool getSFXPool(){return sfxPool;}
+	
+	/*----- Misc. -----*/
+	
+	public Z64Bank copy(boolean keepWaveLinks) {
+		return new Z64Bank(this, keepWaveLinks);
+	}
 	
 	/*----- Conversion -----*/
 	

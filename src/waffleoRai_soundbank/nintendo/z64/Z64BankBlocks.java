@@ -1,5 +1,6 @@
 package waffleoRai_soundbank.nintendo.z64;
 
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -35,6 +36,13 @@ class Z64BankBlocks {
 		public abstract int serializeTo(FileBuffer buffer, boolean uidMode, boolean target64, boolean targetLE);
 		
 		public boolean equals(Object o){return this == o;}
+		
+		public void copyTo(BankBlock copy) {
+			copy.addr = this.addr;
+			copy.flag = this.flag;
+			copy.enm_str = this.enm_str;
+			copy.pool_id = this.pool_id;
+		}
 	}
 	
 	protected static class LoopBlock extends BankBlock{
@@ -87,6 +95,18 @@ class Z64BankBlocks {
 			return serializeTo(buffer, uidMode);
 		}
 
+		public LoopBlock copy() {
+			LoopBlock copy = new LoopBlock();
+			super.copyTo(copy);
+			copy.start = this.start;
+			copy.end = this.end;
+			copy.count = this.count;
+			if(this.state_vals != null) {
+				copy.state_vals = Arrays.copyOf(state_vals, state_vals.length);
+			}
+			return copy;
+		}
+		
 	}
 	
 	protected static class Predictor extends BankBlock{
@@ -138,6 +158,14 @@ class Z64BankBlocks {
 			return true;
 		}
 		
+		public Predictor copy() {
+			Predictor copy = new Predictor();
+			super.copyTo(copy);
+			copy.order = this.order;
+			copy.count = this.count;
+			return copy;
+		}
+		
 	}
 	
 	protected static class EnvelopeBlock extends BankBlock{
@@ -184,6 +212,13 @@ class Z64BankBlocks {
 		
 		public int serializeTo(FileBuffer buffer, boolean uidMode, boolean target64, boolean targetLE){
 			return serializeTo(buffer, uidMode);
+		}
+		
+		public EnvelopeBlock copy() {
+			EnvelopeBlock copy = new EnvelopeBlock();
+			super.copyTo(copy);
+			if(data != null) copy.data = this.data.copy();
+			return copy;
 		}
 		
 	}
@@ -312,6 +347,25 @@ class Z64BankBlocks {
 				wave_info.setLoopState(loop.state_vals);
 			}
 			return wave_info;
+		}
+		
+		public WaveInfoBlock copy(boolean keepWaveLink) {
+			WaveInfoBlock copy = new WaveInfoBlock();
+			super.copyTo(copy);
+			copy.loop_offset = this.loop_offset;
+			copy.pred_offset = this.pred_offset;
+			if(loop != null) copy.loop = this.loop.copy();
+			if(pred != null) copy.pred = this.pred.copy();
+			if(keepWaveLink) {
+				copy.wave_info = this.wave_info;
+			}
+			else {
+				if(wave_info != null) {
+					copy.wave_info = this.wave_info.copy();
+				}
+			}
+			
+			return copy;
 		}
 		
 	}
@@ -450,6 +504,38 @@ class Z64BankBlocks {
 			return serialSize();
 		}
 		
+		public InstBlock copy(Z64WavePool wavePool, Z64EnvPool envPool) {
+			InstBlock copy = new InstBlock();
+			super.copyTo(copy);
+			copy.off_env = this.off_env;
+			copy.off_snd_hi = this.off_snd_hi;
+			copy.off_snd_lo = this.off_snd_lo;
+			copy.off_snd_med = this.off_snd_med;
+			if(this.data != null) copy.data = this.data.copy();
+			if(this.envelope != null) {
+				copy.envelope = envPool.findMatchInPool(this.envelope.data);
+			}
+			if(this.snd_med != null) {
+				Z64WaveInfo winfo = this.snd_med.getWaveInfo();
+				if(winfo != null) {
+					copy.snd_med = wavePool.getByUID(winfo.getUID());
+				}
+			}
+			if(this.snd_lo != null) {
+				Z64WaveInfo winfo = this.snd_lo.getWaveInfo();
+				if(winfo != null) {
+					copy.snd_lo = wavePool.getByUID(winfo.getUID());
+				}
+			}
+			if(this.snd_hi != null) {
+				Z64WaveInfo winfo = this.snd_hi.getWaveInfo();
+				if(winfo != null) {
+					copy.snd_hi = wavePool.getByUID(winfo.getUID());
+				}
+			}
+			return copy;
+		}
+		
 	}
 	
 	protected static class PercBlock extends BankBlock{
@@ -465,6 +551,7 @@ class Z64BankBlocks {
 		
 		protected Z64Drum data;
 		
+		private PercBlock() {}
 		public PercBlock(int note){data = new Z64Drum(); index = note;}
 		public PercBlock(Z64Drum drum, int note){
 			data = drum;
@@ -543,6 +630,26 @@ class Z64BankBlocks {
 			return serialSize();
 		}
 		
+		public PercBlock copy(Z64WavePool wavePool, Z64EnvPool envPool) {
+			PercBlock copy = new PercBlock();
+			super.copyTo(copy);
+			copy.index = this.index;
+			copy.tune = this.tune;
+			copy.off_env = this.off_env;
+			copy.off_snd = this.off_snd;
+			if(this.data != null) copy.data = this.data.copy();
+			if(this.envelope != null) {
+				copy.envelope = envPool.findMatchInPool(this.envelope.data);
+			}
+			if(this.sample != null) {
+				Z64WaveInfo winfo = this.sample.getWaveInfo();
+				if(winfo != null) {
+					copy.sample = wavePool.getByUID(winfo.getUID());
+				}
+			}
+			return copy;
+		}
+		
 	}
 
 	protected static class SFXBlock extends BankBlock{
@@ -593,6 +700,20 @@ class Z64BankBlocks {
 				buffer.addToFile(Float.floatToRawIntBits(data.getTuning()));	
 			}
 			return serialSize();
+		}
+		
+		public SFXBlock copy(Z64WavePool wavePool) {
+			SFXBlock copy = new SFXBlock();
+			super.copyTo(copy);
+			copy.off_snd = this.off_snd;
+			if(this.data != null) copy.data = this.data.copy();
+			if(this.sample != null) {
+				Z64WaveInfo winfo = this.sample.getWaveInfo();
+				if(winfo != null) {
+					copy.sample = wavePool.getByUID(winfo.getUID());
+				}
+			}
+			return copy;
 		}
 		
 	}

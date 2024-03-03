@@ -300,6 +300,19 @@ class Z64DrumPool {
 		return slots[slot];
 	}
 	
+	public Z64DrumPool copy(Z64WavePool wavepool, Z64EnvPool envpool) {
+		Z64DrumPool copy = new Z64DrumPool();
+		for(int i = 0; i < slots.length; i++) {
+			if(slots[i] != null) {
+				copy.setSlot(slots[i].copy(wavepool, envpool), i);
+				copy.enumStrings[i] = this.enumStrings[i];
+			}
+		}
+		
+		copy.updateMaps();
+		return copy;
+	}
+	
 	/*----- Setters -----*/
 	
 	public void updateMaps(){

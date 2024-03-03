@@ -172,6 +172,18 @@ class Z64SFXPool {
 		return copy;
 	}
 	
+	public Z64SFXPool copy(Z64WavePool wavepool) {
+		Z64SFXPool copy = new Z64SFXPool(slots.length);
+		for(int i = 0; i < slots.length; i++) {
+			if(slots[i] != null) {
+				copy.setToSlot(slots[i].copy(wavepool), i);
+			}
+		}
+		
+		copy.updateMaps();
+		return copy;
+	}
+	
 	/*----- Setters -----*/
 	
 	public int expandSlotCapacity(int size){

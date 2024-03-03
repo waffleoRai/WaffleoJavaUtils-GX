@@ -119,9 +119,20 @@ class Z64EnvPool {
 		return list;
 	}
 	
+	public Z64EnvPool copy() {
+		Z64EnvPool copy = new Z64EnvPool();
+		for(EnvelopeBlock b : this.pool) {
+			EnvelopeBlock bcpy = b.copy();
+			copy.addToPool(bcpy);
+		}
+		
+		copy.updateMaps();
+		return copy;
+	}
+	
 	/*----- Setters -----*/
 	
-	public EnvelopeBlock addToPool(EnvelopeBlock block){
+ 	public EnvelopeBlock addToPool(EnvelopeBlock block){
 		if(block == null) return null;
 		//Handles merging
 		//Check if identical envelope is already in pool.

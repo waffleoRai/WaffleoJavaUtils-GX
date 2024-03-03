@@ -40,7 +40,10 @@ public class QXImage {
 	 * 
 	 * Per Frame --
 	 * [4] Bitmap offset (from file start, I think?)
-	 * [4]	CLUT index
+	 * [1]	CLUT index
+	 * [1]	(Unknown)
+	 * [1]	(Unknown)
+	 * [1]	(Unknown)
 	 * [2]	Width (pix)
 	 * [2]	Height (pix)
 	 * [2] 	Scale factor x
@@ -116,6 +119,10 @@ public class QXImage {
 		public int[][] data;
 		public int scale_x;
 		public int scale_y;
+		
+		public int unk_05;
+		public int unk_06;
+		public int unk_07;
 		
 		public Bitmap(){}
 		
@@ -369,11 +376,16 @@ public class QXImage {
 		
 		int frames = Short.toUnsignedInt(file.shortFromFile(cpos)); cpos+=2;
 		//System.err.println("Frame count: " + frames);
-		int[][] dims = new int[frames][6];
+		int[][] dims = new int[frames][9];
 		for(int i = 0; i < frames; i++){
 			int off = file.intFromFile(cpos); cpos += 4;
 			dims[i][3] = Byte.toUnsignedInt(file.getByte(cpos)); cpos++;
-			cpos+=3; //Unknown
+			
+			//These three are unknown
+			dims[i][6] = Byte.toUnsignedInt(file.getByte(cpos)); cpos++;
+			dims[i][7] = Byte.toUnsignedInt(file.getByte(cpos)); cpos++;
+			dims[i][8] = Byte.toUnsignedInt(file.getByte(cpos)); cpos++;
+			
 			int w = Short.toUnsignedInt(file.shortFromFile(cpos)); cpos+=2;
 			int h = Short.toUnsignedInt(file.shortFromFile(cpos)); cpos+=2;
 			dims[i][0] = off;
@@ -452,6 +464,10 @@ public class QXImage {
 			img.bitmaps.add(b);
 			b.scale_x = dims[i][4];
 			b.scale_y = dims[i][5];
+			
+			b.unk_05 = dims[i][6];
+			b.unk_06 = dims[i][7];
+			b.unk_07 = dims[i][8];
 		}
 		
 		return img;
@@ -460,10 +476,26 @@ public class QXImage {
 	/*----- Getters -----*/
 	
 	public int getUnkFlagField(){return miscFlags;}
-	
 	public int getFrameCount(){return bitmaps.size();}
-	
 	public int getBitDepth(){return bitdepth;}
+	
+	public int getFrameUnk05(int frame_index){
+		if(frame_index < 0 || frame_index >= bitmaps.size()) return 0;
+		Bitmap frame = this.bitmaps.get(frame_index);
+		return frame.unk_05;
+	}
+	
+	public int getFrameUnk06(int frame_index){
+		if(frame_index < 0 || frame_index >= bitmaps.size()) return 0;
+		Bitmap frame = this.bitmaps.get(frame_index);
+		return frame.unk_06;
+	}
+	
+	public int getFrameUnk07(int frame_index){
+		if(frame_index < 0 || frame_index >= bitmaps.size()) return 0;
+		Bitmap frame = this.bitmaps.get(frame_index);
+		return frame.unk_07;
+	}
 	
 	public int getPaletteCount(){
 		if(palettes == null) return 0;
@@ -492,6 +524,24 @@ public class QXImage {
 		Bitmap bmp = bitmaps.get(frameIndex);
 		bmp.scale_x = xfactor;
 		bmp.scale_y = yfactor;
+	}
+	
+	public void setFrameUnk05(int frameIndex, int value){
+		if(frameIndex < 0 || frameIndex >= bitmaps.size()) return;
+		Bitmap bmp = bitmaps.get(frameIndex);
+		bmp.unk_05 = value;
+	}
+	
+	public void setFrameUnk06(int frameIndex, int value){
+		if(frameIndex < 0 || frameIndex >= bitmaps.size()) return;
+		Bitmap bmp = bitmaps.get(frameIndex);
+		bmp.unk_06 = value;
+	}
+	
+	public void setFrameUnk07(int frameIndex, int value){
+		if(frameIndex < 0 || frameIndex >= bitmaps.size()) return;
+		Bitmap bmp = bitmaps.get(frameIndex);
+		bmp.unk_07 = value;
 	}
 	
 	public void allocCLUTs(int CLUT_count){
@@ -1340,7 +1390,7 @@ public class QXImage {
 			return out;
 		}
 		else{
-			int alloc = (w*h + 4) >>> 1;
+			int alloc = ((w*h) >>> 1) + 4;
 			FileBuffer out = new FileBuffer(alloc, false);
 			
 			for(int y = 0; y < h; y++){
@@ -1456,7 +1506,7 @@ public class QXImage {
 	
 	public FileBuffer serializeMe(boolean tile){
 		int frame_count = bitmaps.size();
-		FileBuffer output = new MultiFileBuffer(3 + frame_count);
+		FileBuffer output = new MultiFileBuffer(3 + (frame_count*2));
 		
 		//Serialize bitmaps...
 		FileBuffer[] serbmps = new FileBuffer[frame_count];
@@ -1477,6 +1527,7 @@ public class QXImage {
 				break;
 			}
 			size += (int)bmpbuff.getFileSize();
+			size = (size + 0x3) & ~0x3;
 			serbmps[f] = bmpbuff;
 		}
 		
@@ -1517,7 +1568,10 @@ public class QXImage {
 		for(int f = 0; f < frame_count; f++){
 			header.addToFile(bmp_offsets[f]);
 			Bitmap frame = bitmaps.get(f);
-			header.addToFile(frame.palette_idx);
+			header.addToFile((byte)frame.palette_idx);
+			header.addToFile((byte)frame.unk_05);
+			header.addToFile((byte)frame.unk_06);
+			header.addToFile((byte)frame.unk_07);
 			if(tile){
 				int dim = (frame.data.length + 0x1f) & ~0x1f;
 				header.addToFile((short)dim);
@@ -1534,9 +1588,21 @@ public class QXImage {
 		
 		output.addToFile(header);
 		if(palbuff != null) output.addToFile(palbuff);
-		for(int f = 0; f < serbmps.length; f++) output.addToFile(serbmps[f]);
 		
 		long currentSize = output.getFileSize();
+		for(int f = 0; f < serbmps.length; f++){
+			//Pad
+			if(currentSize < bmp_offsets[f]){
+				FileBuffer pad = new FileBuffer(4, false);
+				int padamt = (int)(bmp_offsets[f] - currentSize);
+				for(int i = 0; i < padamt; i++) pad.addToFile(FileBuffer.ZERO_BYTE);
+				output.addToFile(pad);
+			}
+			output.addToFile(serbmps[f]);
+			currentSize = output.getFileSize();
+		}
+		
+		currentSize = output.getFileSize();
 		long padSize = (currentSize + 3L) & ~0x3L;
 		if(padSize > currentSize){
 			int padamt = (int)(padSize - currentSize);

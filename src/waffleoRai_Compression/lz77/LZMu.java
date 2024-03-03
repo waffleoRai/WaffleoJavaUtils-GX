@@ -70,7 +70,7 @@ public class LZMu {
 	
 	/*--- Constants ---*/
 	
-	private static final boolean DEBUG_ON = false;
+	private static final boolean DEBUG_ON = true;
 	
 	public static final int BACK_WINDOW_SIZE = 0x2000; //Treated as unsigned 13 bit
 	//public static final int BACK_WINDOW_SIZE = 0x1000; //If treated as signed 13 bit, then -4096 is most negative value
