@@ -10,6 +10,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 import waffleoRai_Compression.ArrayWindow;
 import waffleoRai_Compression.definitions.AbstractCompDef;
@@ -121,6 +122,7 @@ public class LZMu {
 	
 	/*--- Debug ---*/
 	
+	private int lastCtrlBitPos = 0;
 	private LZCompressionEvent dbg_last_event; //For combining literals easier
 	private List<LZCompressionEvent> dbg_events;
 	
@@ -141,7 +143,7 @@ public class LZMu {
 		dbg_last_event = event;
 	}
 	
-	private void debug_logLiteralEvent(long event_addr, long comp_addr, int amt){
+	private void debug_logLiteralEvent(long event_addr, long comp_addr, int amt, int cbit){
 		if(dbg_last_event != null && !dbg_last_event.isReference()){
 			dbg_last_event.setCopyAmount(dbg_last_event.getCopyAmount() + amt);
 		}
@@ -151,17 +153,20 @@ public class LZMu {
 			event.setCopyAmount(amt);
 			event.setCompressedPosition(comp_addr);
 			event.setPlaintextPosition(event_addr);
+			event.setControlBytePos(cbit);
 			debug_logEvent(event);
 		}
 	}
 	
-	private void debug_logReferenceEvent(long event_addr, long comp_addr, long ref_addr, int amt){
+	private void debug_logReferenceEvent(long event_addr, long comp_addr, long ref_addr, int amt, int cbit){
 		LZCompressionEvent event = new LZCompressionEvent();
 		event.setIsReference(true);
 		event.setCopyAmount(amt);
 		event.setPlaintextPosition(event_addr);
 		event.setCompressedPosition(comp_addr);
 		event.setRefPosition(ref_addr);
+		event.setControlBytePos(cbit);
+		
 		debug_logEvent(event);
 	}
 	
@@ -173,6 +178,13 @@ public class LZMu {
 		}
 		bw.close();
 		dbg_events.clear();
+	}
+	
+	public void debug_dumpLoggedEventsToMap(Map<Long, LZCompressionEvent> map) {
+		if(map == null || dbg_events == null) return;
+		for(LZCompressionEvent event : dbg_events){
+			map.put(event.getPlaintextPosition(), event);
+		}
 	}
 	
 	/*--- Decode ---*/
@@ -188,6 +200,12 @@ public class LZMu {
 	}
 	
 	private boolean nextControlBit(StreamWrapper input){
+		/*DEBUG*/
+		//Records what the position in byte was BEFORE this bit was read.
+		if(--lastCtrlBitPos < 0) {
+			lastCtrlBitPos = 7;
+		}
+		
 		if(bitmask == 0){
 			bitmask = 0x80;
 			ctrlbyte = input.getFull();
@@ -244,14 +262,22 @@ public class LZMu {
 		bitmask = 0x80;
 		lastCtrlCharPos = 4;
 		
+		int stBitPos = 7;
+		int nowBitPos = 7;
+		
 		//while(!input.isEmpty() && (bytesWritten < decompSize)){
 		while(!input.isEmpty() && !hardBreak){
+			if(DEBUG_ON){
+				stBitPos = nowBitPos;
+			}
+			
 			//Get the next bit of the ctrlbyte to decide what to do
 			boolean bit = nextControlBit(input);
 			if(bit){
 				/*--- DEBUG LOG ---*/
 				if(DEBUG_ON){
-					debug_logLiteralEvent(bytesWritten, lastCtrlCharPos, 1);
+					debug_logLiteralEvent(bytesWritten, lastCtrlCharPos, 1, stBitPos);
+					if(--nowBitPos < 0) nowBitPos = 7;
 				}
 				/*--- DEBUG LOG ---*/
 				
@@ -277,6 +303,10 @@ public class LZMu {
 				//Blegh
 				//System.err.println("ref");
 				bit = nextControlBit(input);
+				if(DEBUG_ON){
+					if(--nowBitPos < 0) nowBitPos = 7;
+					if(--nowBitPos < 0) nowBitPos = 7;
+				}
 				if(bit){
 					//Okay. So this is annoying.
 					//I think it's 13 bits for offset (wow)
@@ -308,7 +338,7 @@ public class LZMu {
 					if(DEBUG_ON){
 						long mypos = (bytesWritten + overflowSize) - n;
 						long backpos = mypos - backset - 1;
-						debug_logReferenceEvent(mypos, lastCtrlCharPos, backpos, n);
+						debug_logReferenceEvent(mypos, lastCtrlCharPos, backpos, n, stBitPos);
 					}
 					/*--- DEBUG LOG ---*/
 					
@@ -319,6 +349,11 @@ public class LZMu {
 					int n = 2;
 					if(nextControlBit(input))n+=2;
 					if(nextControlBit(input))n+=1;
+					
+					if(DEBUG_ON){
+						if(--nowBitPos < 0) nowBitPos = 7;
+						if(--nowBitPos < 0) nowBitPos = 7;
+					}
 					
 					int backset = (int)input.get(); //It's negative
 					bytesRead++;
@@ -336,7 +371,7 @@ public class LZMu {
 					if(DEBUG_ON){
 						long mypos = (bytesWritten + overflowSize) - n;
 						long backpos = mypos - backset - 1;
-						debug_logReferenceEvent(mypos, lastCtrlCharPos, backpos, n);
+						debug_logReferenceEvent(mypos, lastCtrlCharPos, backpos, n, stBitPos);
 					}
 					/*--- DEBUG LOG ---*/
 					
@@ -692,14 +727,14 @@ public class LZMu {
 			
 			/*--- DEBUG LOG ---*/
 			if(DEBUG_ON){
-				debug_logLiteralEvent(compressor.current_pos, lastCtrlCharPos, 1);
+				debug_logLiteralEvent(compressor.current_pos, lastCtrlCharPos, 1, lastCtrlBitPos);
 			}
 			/*--- DEBUG LOG ---*/
 		}
 		else{
 			/*--- DEBUG LOG ---*/
 			if(DEBUG_ON){
-				debug_logReferenceEvent(compressor.current_pos, lastCtrlCharPos, compressor.match_pos, compressor.match_run);
+				debug_logReferenceEvent(compressor.current_pos, lastCtrlCharPos, compressor.match_pos, compressor.match_run, lastCtrlBitPos);
 			}
 			/*--- DEBUG LOG ---*/
 			
@@ -758,7 +793,7 @@ public class LZMu {
 		/*--- DEBUG LOG ---*/
 		if(DEBUG_ON){
 			if(match.copy_amt > 0){
-				debug_logLiteralEvent(epos, lastCtrlCharPos, match.copy_amt);
+				debug_logLiteralEvent(epos, lastCtrlCharPos, match.copy_amt, lastCtrlBitPos);
 			}
 		}
 		/*--- DEBUG LOG ---*/
@@ -773,14 +808,14 @@ public class LZMu {
 			
 			/*--- DEBUG LOG ---*/
 			if(DEBUG_ON){
-				debug_logLiteralEvent(epos, lastCtrlCharPos, 1);
+				debug_logLiteralEvent(epos, lastCtrlCharPos, 1, lastCtrlBitPos);
 			}
 			/*--- DEBUG LOG ---*/
 		}
 		else{
 			/*--- DEBUG LOG ---*/
 			if(DEBUG_ON){
-				debug_logReferenceEvent(epos, lastCtrlCharPos, match.match_pos, match.match_run);
+				debug_logReferenceEvent(epos, lastCtrlCharPos, match.match_pos, match.match_run, lastCtrlBitPos);
 			}
 			/*--- DEBUG LOG ---*/
 			
