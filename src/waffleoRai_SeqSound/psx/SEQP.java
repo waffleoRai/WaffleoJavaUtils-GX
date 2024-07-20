@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
@@ -64,7 +65,7 @@ public class SEQP {
 	
 	private long loopStart = -1;
 	private long loopEnd = -1;
-	private int loopCount = -1;
+	private int loopCount = 0x7f;
 	
 	//private Sequence contents;
 	
@@ -146,13 +147,18 @@ public class SEQP {
 				
 				switch(mtype) {
 				case META:
-					//Any meta events not on track 1 are ignored.
+					byte metaType = bytes[1];
+					
+					if(metaType == MIDIMetaCommands.END) {
+						break;
+					}
+					
+					//Any other meta events not on track 1 are ignored.
 					if(i != 0) {
 						if(verbose) System.err.println("SEQP.fromMIDI || Meta event found on track " + (i+1) + ", ignoring...");
 						continue;
 					}
 					
-					byte metaType = bytes[1];
 					if(tick == 0) {
 						if(metaType == MIDIMetaCommands.TEMPO) {
 							seqp.MicrosecondsPerQNote = 0;
@@ -160,9 +166,6 @@ public class SEQP {
 								seqp.MicrosecondsPerQNote <<= 8;
 								seqp.MicrosecondsPerQNote |= Byte.toUnsignedInt(bytes[2+k]);
 							}
-						}
-						else if(metaType == MIDIMetaCommands.END) {
-							seqp.eventMap.addValue(tick, ev);
 						}
 						else if(metaType == MIDIMetaCommands.TIMESIG) {
 							seqp.timeSigNumerator = Byte.toUnsignedInt(bytes[2]);
@@ -175,9 +178,6 @@ public class SEQP {
 					}
 					else {
 						if(metaType == MIDIMetaCommands.TEMPO) {
-							seqp.eventMap.addValue(tick, ev);
-						}
-						else if(metaType == MIDIMetaCommands.END) {
 							seqp.eventMap.addValue(tick, ev);
 						}
 						else {
@@ -290,11 +290,6 @@ public class SEQP {
 				//		51 (tempo change) - 3 bytes
 				if (metatype == MIDIMetaCommands.END){
 					trackend = true;
-					for (int i = 0; i < 16; i++){
-						byte[] mdata = {0x00};
-						MetaMessage msg = new MetaMessage(metatype, mdata, 1);
-						eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
-					}
 				}
 				else if (metatype == MIDIMetaCommands.TEMPO){
 					//Next three bytes are the data.
@@ -516,7 +511,7 @@ public class SEQP {
 	
 	private FileBuffer serializeData() throws IOException, InvalidMidiDataException{
 		//Alloc amount
-		int alloc = 9; //For loops, if needed
+		int alloc = 16; //For loops, if needed. End command and padding.
 		Collection<MidiEvent> allEvents = eventMap.allValues();
 		for(MidiEvent ev : allEvents) {
 			alloc += 4; //Max delta time
@@ -526,28 +521,31 @@ public class SEQP {
 		
 		long tickPos = 0;
 		FileBuffer buffer = new FileBuffer(alloc, true);
-		Set<Long> keyset = eventMap.getBackingMap().keySet();
+		Set<Long> keyset = new HashSet<Long>();
+		keyset.addAll(eventMap.getBackingMap().keySet());
 		if(loopStart >= 0) keyset.add(loopStart);
 		if(loopEnd >= 0) keyset.add(loopEnd);
 		
 		List<Long> keys = new ArrayList<Long>(keyset.size()+1);
 		keys.addAll(keyset);
 		Collections.sort(keys);
+		int lastStat = -1;
 		for(Long tickVal : keys) {
 			int delta = (int)(tickVal - tickPos);
 			byte[] vlq = MIDI.makeVLQ(delta);
 			for(int i = 0; i < vlq.length; i++) buffer.addToFile(vlq[i]);
 			
 			boolean encodeDelta = false;
-			int lastStat = -1;
 			if(tickVal == loopStart) {
 				buffer.addToFile((byte) 0xb0);
 				buffer.addToFile((byte) MIDIControllers.NRPN_MSB);
 				buffer.addToFile((byte) NRPN_LOOP_START);
 				
-				buffer.addToFile((byte) 0x00); //Delta
-				buffer.addToFile((byte) MIDIControllers.DATA_ENTRY);
-				buffer.addToFile((byte) loopCount);
+				if(loopCount >= 0) {
+					buffer.addToFile((byte) 0x00); //Delta
+					buffer.addToFile((byte) MIDIControllers.DATA_ENTRY);
+					buffer.addToFile((byte) loopCount);	
+				}
 				encodeDelta = true;
 				lastStat = 0xb0;
 			}
@@ -571,7 +569,6 @@ public class SEQP {
 						//Encode stat.
 						//SEQP allows for running status on meta events, though vanilla midi does not. I think.
 						buffer.addToFile((byte) stat);
-						lastStat = stat;
 					}
 					
 					byte[] mbytes = msg.getMessage();
@@ -584,11 +581,22 @@ public class SEQP {
 						for(int i = 1; i < mbytes.length; i++) buffer.addToFile(mbytes[i]);
 					}
 					
+					lastStat = stat;
 					encodeDelta = true;
 				}
 			}
 			tickPos = tickVal;
 		}
+		
+		//Write end event.
+		buffer.addToFile((byte) 0x00); //Delta
+		buffer.addToFile((byte) 0xff);
+		buffer.addToFile((byte) MIDIMetaCommands.END);
+		
+		//Pad to 4
+		int tsize = (int)(15L + buffer.getFileSize());
+		int padding = (4 - (tsize & 0x3)) & 0x3;
+		for(int i = 0; i < padding; i++) buffer.addToFile((byte) 0x00);
 		
 		return buffer;
 	}
@@ -794,7 +802,8 @@ public class SEQP {
 			
 			//Do events (don't forget loop points)
 			//Omit end track events (since there should only be one)
-			Set<Long> keyset = eventMap.getBackingMap().keySet();
+			Set<Long> keyset = new HashSet<Long>();
+			keyset.addAll(eventMap.getBackingMap().keySet());
 			if(loopStart >= 0) keyset.add(loopStart);
 			if(loopEnd >= 0) keyset.add(loopEnd);
 			
@@ -802,14 +811,14 @@ public class SEQP {
 			keys.addAll(keyset);
 			Collections.sort(keys);
 			for(Long tick : keys) {
-				if(tick == loopStart) {
+				if(tick == loopStart && loopStart >= 0) {
 					mmsg = new ShortMessage(0xb0, MIDIControllers.NRPN_MSB, NRPN_LOOP_START);
 					tracks[0].add(new MidiEvent(mmsg, loopStart));
 					
 					mmsg = new ShortMessage(0xb0, MIDIControllers.DATA_ENTRY, loopCount);
 					tracks[0].add(new MidiEvent(mmsg, loopStart));
 				}
-				else if(tick == loopEnd) {
+				else if(tick == loopEnd && loopEnd >= 0) {
 					mmsg = new ShortMessage(0xb0, MIDIControllers.NRPN_MSB, NRPN_LOOP_END);
 					tracks[0].add(new MidiEvent(mmsg, loopEnd));
 				}
