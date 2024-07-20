@@ -9,6 +9,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 
 import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.midi.MetaMessage;
@@ -18,14 +19,19 @@ import javax.sound.midi.Sequence;
 import javax.sound.midi.ShortMessage;
 import javax.sound.midi.Track;
 
+import waffleoRai_DataContainers.MultiValMap;
 import waffleoRai_Files.Converter;
 import waffleoRai_Files.FileTypeDefinition;
 import waffleoRai_Files.tree.FileNode;
 import waffleoRai_SeqSound.MIDI;
+import waffleoRai_SeqSound.MIDIMetaCommands;
+import waffleoRai_SeqSound.MidiMessageGenerator;
 import waffleoRai_SeqSound.SortableMidiEvent;
 import waffleoRai_SeqSound.SoundSeqDef;
 import waffleoRai_SeqSound.MIDI.MessageType;
+import waffleoRai_SeqSound.MIDIControllers;
 import waffleoRai_Utils.BitStreamer;
+import waffleoRai_Utils.BufferReference;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.MultiFileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
@@ -41,6 +47,9 @@ public class SEQP {
 	public static final byte[] INFINITE_LOOP_ST = {(byte)0xB0, 0x63, 0x14, 0x00, 0x06, 0x7F};
 	public static final byte[] INFINITE_LOOP_ED = {(byte)0xB0, 0x63, 0x1E};
 	
+	public static final int NRPN_LOOP_START = 0x14;
+	public static final int NRPN_LOOP_END = 0x1e;
+	
 	public static final String FNMETAKEY_BANKUID = "PSX_BNK_ID";
 	public static final String FNMETAKEY_BANKPATH = "PSX_BNK_PATH";
 	
@@ -53,53 +62,184 @@ public class SEQP {
 	private int timeSigNumerator;
 	private int timeSigDenominator; //True time sig denom is 2^(this value)
 	
-	private Sequence contents;
+	private long loopStart = -1;
+	private long loopEnd = -1;
+	private int loopCount = -1;
+	
+	//private Sequence contents;
+	
+	private MultiValMap<Long, MidiEvent> eventMap;
 	
 	/*--- Construction/Parsing ---*/
-	
-	public SEQP() throws InvalidMidiDataException
-	{
+
+	public SEQP() throws InvalidMidiDataException {
 		version = 1;
 		TicksPerQNote = 0x1E0;
 		//Default tempo: 120 bpm
 		MicrosecondsPerQNote = 5000000;
 		timeSigNumerator = 4;
 		timeSigDenominator = 2; //(2^2)
-		contents = new Sequence(Sequence.PPQ, TicksPerQNote, 16);
+		//contents = new Sequence(Sequence.PPQ, TicksPerQNote, 16);
+		eventMap = new MultiValMap<Long, MidiEvent>();
 	}
 	
-	public SEQP(String filepath) throws IOException, UnsupportedFileTypeException, InvalidMidiDataException
-	{
+	public SEQP(String filepath) throws IOException, UnsupportedFileTypeException, InvalidMidiDataException {
 		this(filepath, 0);
 	}
 	
-	public SEQP(String filepath, long stpos) throws IOException, UnsupportedFileTypeException, InvalidMidiDataException
-	{
+	public SEQP(String filepath, long stpos) throws IOException, UnsupportedFileTypeException, InvalidMidiDataException {
 		FileBuffer seq = FileBuffer.createBuffer(filepath, true);
-		parseSEQ(seq, stpos);
+		eventMap = new MultiValMap<Long, MidiEvent>();
+		parseSEQ(seq.getReferenceAt(stpos));
 	}
 	
-	public SEQP(FileBuffer file, long stpos) throws UnsupportedFileTypeException, InvalidMidiDataException
-	{
-		parseSEQ(file, stpos);
+	public SEQP(FileBuffer file, long stpos) throws UnsupportedFileTypeException, InvalidMidiDataException {
+		this(file.getReferenceAt(stpos));
 	}
 	
-	public static SEQP fromMIDI(MIDI mid) throws InvalidMidiDataException{
-		SEQP seq = new SEQP();
-		seq.TicksPerQNote = mid.getTPQN();
-		seq.contents = mid.getSequence();
-		return seq;
+	public SEQP(BufferReference data) throws UnsupportedFileTypeException, InvalidMidiDataException {
+		eventMap = new MultiValMap<Long, MidiEvent>();
+		parseSEQ(data);
 	}
 	
-	public static MessageType getMessageType(byte stat)
-	{
+	public static SEQP fromMIDI(MIDI mid, boolean verbose) throws InvalidMidiDataException{
+		SEQP seqp = new SEQP();
+		seqp.TicksPerQNote = mid.getTPQN();
+
+		//Need to scan all tracks and events as they come in.
+		Sequence mseq = mid.getSequence();
+		Track[] tracks = mseq.getTracks();
+		MidiMessage lastmsg = null;
+		for(int i = 0; i < tracks.length; i++) {
+			if(tracks[i] == null) continue;
+			int ecount = tracks[i].size();
+			for(int j = 0; j < ecount; j++) {
+				MidiEvent ev = tracks[i].get(j);
+				long tick = ev.getTick();
+
+				MidiMessage mmsg = ev.getMessage();
+				List<MidiEvent> existingEvents = seqp.eventMap.getValues(tick);
+				byte[] bytes = mmsg.getMessage();
+				//Throw away anything redundant.
+				if(existingEvents != null && !existingEvents.isEmpty()) {
+					boolean match = false;
+					for(MidiEvent other : existingEvents) {
+						byte[] obytes = other.getMessage().getMessage();
+						if(bytes.length != obytes.length) continue;
+						boolean mismatch = false;
+						for(int k = 0; k < bytes.length; k++) {
+							if(obytes[k] != bytes[k]) {
+								mismatch = true;
+								break;
+							}
+						}
+						if(!mismatch) {
+							match = true;
+							break;
+						}
+					}
+					if(match) continue;
+				}
+				
+				int stat = mmsg.getStatus() & 0xff;
+				MessageType mtype = getMessageType((byte)stat);
+				
+				switch(mtype) {
+				case META:
+					//Any meta events not on track 1 are ignored.
+					if(i != 0) {
+						if(verbose) System.err.println("SEQP.fromMIDI || Meta event found on track " + (i+1) + ", ignoring...");
+						continue;
+					}
+					
+					byte metaType = bytes[1];
+					if(tick == 0) {
+						if(metaType == MIDIMetaCommands.TEMPO) {
+							seqp.MicrosecondsPerQNote = 0;
+							for(int k = 0; k < MIDIMetaCommands.LEN_TEMPO; k++) {
+								seqp.MicrosecondsPerQNote <<= 8;
+								seqp.MicrosecondsPerQNote |= Byte.toUnsignedInt(bytes[2+k]);
+							}
+						}
+						else if(metaType == MIDIMetaCommands.END) {
+							seqp.eventMap.addValue(tick, ev);
+						}
+						else if(metaType == MIDIMetaCommands.TIMESIG) {
+							seqp.timeSigNumerator = Byte.toUnsignedInt(bytes[2]);
+							seqp.timeSigDenominator = Byte.toUnsignedInt(bytes[3]);
+						}
+						else {
+							if(verbose) { System.err.println("SEQP.fromMIDI || Incompatible meta event will be skipped (Track " + (i+1) + "): " +
+									String.format("%02x", metaType));}
+						}
+					}
+					else {
+						if(metaType == MIDIMetaCommands.TEMPO) {
+							seqp.eventMap.addValue(tick, ev);
+						}
+						else if(metaType == MIDIMetaCommands.END) {
+							seqp.eventMap.addValue(tick, ev);
+						}
+						else {
+							if(verbose) { System.err.println("SEQP.fromMIDI || Incompatible meta event will be skipped (Track " + (i+1) + "): " +
+									String.format("%02x", metaType));}
+						}
+					}
+					break;
+				case SYSEX:
+					if(verbose) {
+						System.err.println("SEQP.fromMIDI || Sysex events are not supported. Event skipped. (Track " + (i+1) + ")");
+					}
+					break;
+				case MIDI:
+					if((stat & 0xf0) == 0xb0) {
+						//Check for loop info.
+						boolean noAdd = false;
+						if(bytes[1] == MIDIControllers.NRPN_MSB) {
+							if(bytes[2] == NRPN_LOOP_START) {
+								seqp.loopStart = tick;
+								noAdd = true;
+							}
+							else if(bytes[2] == NRPN_LOOP_END) {
+								seqp.loopEnd = tick;
+								noAdd = true;
+							}
+						}
+						else if(bytes[1] == MIDIControllers.DATA_ENTRY) {
+							if(lastmsg != null && lastmsg.getStatus() == stat) {
+								byte[] lbytes = lastmsg.getMessage();
+								if(lbytes[1] == MIDIControllers.NRPN_MSB && lbytes[2] == NRPN_LOOP_START) {
+									//Loop count.
+									seqp.loopCount = Byte.toUnsignedInt(lbytes[2]);
+									noAdd = true;
+								}
+							}
+						}
+						if(!noAdd) seqp.eventMap.addValue(tick, ev);
+					}
+					else {
+						seqp.eventMap.addValue(tick, ev);
+					}
+					break;
+				default: 
+					if(verbose) {
+						System.err.println("SEQP.fromMIDI || Unknown event type. Event skipped. (Track " + (i+1) + "): " + 
+								String.format("%02x", stat));
+					}
+					break;
+				}
+				lastmsg = mmsg;
+			}
+		}
+		return seqp;
+	}
+	
+	public static MessageType getMessageType(byte stat) {
 		int istat = Byte.toUnsignedInt(stat);
 		if (istat == 0xFF) return MessageType.META;
 		else if(istat == 0xF0 || istat == 0xF7) return MessageType.SYSEX;
-		else
-		{
-			if (BitStreamer.readABit(stat, 7) && (((istat >> 4) & 0xF) != 0xF))
-			{
+		else {
+			if (BitStreamer.readABit(stat, 7) && (((istat >> 4) & 0xF) != 0xF)) {
 				return MessageType.MIDI;
 			}
 			else if (!BitStreamer.readABit(stat, 7)) return MessageType.RUNNING;
@@ -108,242 +248,194 @@ public class SEQP {
 		return null;
 	}
 	
-	private void parseSEQ(FileBuffer myfile, long stpos) throws UnsupportedFileTypeException, InvalidMidiDataException
-	{
-		//Run checks
-		myfile.setEndian(true);
+	private void parseSEQ(BufferReference data) throws UnsupportedFileTypeException, InvalidMidiDataException{
+		data.setByteOrder(true);
 		
-		//Read header
-		long cpos = myfile.findString(stpos, stpos + 0x10, MAGIC);
-		if (cpos != stpos) throw new FileBuffer.UnsupportedFileTypeException();
-		cpos += 4;
+		String mCheck = data.nextASCIIString(4);
+		if(!MAGIC.equals(mCheck)) throw new UnsupportedFileTypeException("SEQP.parseSEQ || SEQP magic number not found!");
 		
-		version = myfile.intFromFile(cpos); cpos += 4;
-		TicksPerQNote = Short.toUnsignedInt(myfile.shortFromFile(cpos)); cpos += 2;
-		MicrosecondsPerQNote = myfile.shortishFromFile(cpos); cpos += 3;
-		timeSigNumerator = Byte.toUnsignedInt(myfile.getByte(cpos)); cpos++;
-		timeSigDenominator = Byte.toUnsignedInt(myfile.getByte(cpos)); cpos++;
-		//System.err.println("Tempo: 0x" + Integer.toHexString(MicrosecondsPerQNote));
-		
-		//Prepare sequence
-		contents = new Sequence(Sequence.PPQ, TicksPerQNote, 16);
-		Track[] tracks = contents.getTracks();
-		
-		//Add time sig and tempo metadata
-		byte[] timesig = {(byte)timeSigNumerator, (byte)timeSigDenominator, 24, 8};
-		MetaMessage mmsg = new MetaMessage(0x58, timesig, 4);
-		//tracks[0].add(new MidiEvent(mmsg, 0));
-		byte[] tempo = {(byte)((MicrosecondsPerQNote >>> 16) & 0xFF),
-						(byte)((MicrosecondsPerQNote >>> 8) & 0xFF),
-						(byte)(MicrosecondsPerQNote & 0xFF)};
-		mmsg = new MetaMessage(0x51, tempo, 3);
-		tracks[0].add(new MidiEvent(mmsg, 0));
-		
-		//Parse the messages. 
-		//Note the channel of each message, and distribute to the track with the same index
+		version = data.nextInt();
+		TicksPerQNote = Short.toUnsignedInt(data.nextShort());
+		MicrosecondsPerQNote = data.next24Bits();
+		timeSigNumerator = Byte.toUnsignedInt(data.nextByte());
+		timeSigDenominator = Byte.toUnsignedInt(data.nextByte());
 		
 		//End is noted by track end message
 		boolean trackend = false;
 		long tickPos = 0;
 		MidiMessage lastmsg = null;
 		
-		while(!trackend)
-		{
-			//System.err.println();
+		while(!trackend) {
 			//1. Get delta time
-			int[] delTime = MIDI.getVLQ(myfile, cpos);
-			int delta = delTime[0];
-			cpos += (long)delTime[1];
-			//System.err.print("Delta: 0x" + Integer.toHexString(delta));
+			int delta = MIDI.getVLQ(data);
 			
 			//2. Interpret delta time
 			tickPos += Integer.toUnsignedLong(delta);
-			//System.err.print("\tTick: 0x" + Long.toHexString(tickPos));
 			
 			//3. Figure out message type
-			byte stat = myfile.getByte(cpos);
-			cpos++;
+			byte stat = data.nextByte();
 			MessageType type = getMessageType(stat);
-			if (type == null) throw new FileBuffer.UnsupportedFileTypeException();
-			//System.err.print("\tStat: 0x" + String.format("%02x", stat));
-			//System.err.print("\tType: " + type.toString());
+			if (type == null) throw new UnsupportedFileTypeException("SEQP.parseSEQ || Could not determine message type for command: " +
+					String.format("0x%02x", stat));
 			
-			switch(type)
-			{
+			switch(type) {
 			case META:
 				//Get type
-				byte metatype = myfile.getByte(cpos); cpos++;
+				byte metatype = data.nextByte();
+				
 				//SEQp files do NOT have a length field!
 				//I guess it knows depending on the type. 
 				// SEQp files should only have 1 of 2 types: 
 				//		2F (track end) - 1 Byte (0x00)
 				//		51 (tempo change) - 3 bytes
-				if (metatype == 0x2F){
+				if (metatype == MIDIMetaCommands.END){
 					trackend = true;
-					for (int i = 0; i < 16; i++)
-					{
-						byte[] data = {0x00};
-						MetaMessage msg = new MetaMessage(0x2F, data, 1);
-						tracks[i].add(new MidiEvent(msg, tickPos));
+					for (int i = 0; i < 16; i++){
+						byte[] mdata = {0x00};
+						MetaMessage msg = new MetaMessage(metatype, mdata, 1);
+						eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
 					}
 				}
-				else if (metatype == 0x51)
-				{
+				else if (metatype == MIDIMetaCommands.TEMPO){
 					//Next three bytes are the data.
-					byte[] data = new byte[3];
-					for (int i = 0; i < 3; i++)
-					{
-						data[i] = myfile.getByte(cpos);
-						cpos++;
+					byte[] mdata = new byte[MIDIMetaCommands.LEN_TEMPO];
+					for (int i = 0; i < MIDIMetaCommands.LEN_TEMPO; i++){
+						mdata[i] = data.nextByte();
 					}
 					//Add to track 0 only?
-					MetaMessage msg = new MetaMessage(0x51, data, 3);
-					tracks[0].add(new MidiEvent(msg, tickPos));
+					MetaMessage msg = new MetaMessage(metatype, mdata, MIDIMetaCommands.LEN_TEMPO);
+					eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
 					lastmsg = msg;
 				}
-				else
-				{
-					System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || Illegal Meta Event Encountered -- ");
-					System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || Type: 0x" + String.format("%02X", metatype));
-					System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || File Offset: 0x" + Long.toHexString(cpos - 1));
-					throw new FileBuffer.UnsupportedFileTypeException();
+				else{
+					throw new UnsupportedFileTypeException("SEQP.parseSEQ || Illegal Meta Event Encountered -- 0x" + String.format("%02x", metatype));
 				}
 				break;
 			case MIDI:
 				//Get channel
 				int sint = Byte.toUnsignedInt(stat);
-				int ch = sint & 0xF;
+				//int ch = sint & 0xF;
 				int stype = (sint & 0xF0) >>> 4;
-				//System.err.print("\tChannel: " + ch);
+
 				//Determine whether we are looking at one or two data bytes
-				if (stype == 0xC || stype == 0xD)
-				{
+				if (stype == 0xC || stype == 0xD){
 					//One byte
-					int dByte = Byte.toUnsignedInt(myfile.getByte(cpos)); cpos++;
-					//if(stype == 0xC) dByte--; //Program number down?
+					int dByte = Byte.toUnsignedInt(data.nextByte());
 					ShortMessage msg = new ShortMessage(sint, dByte, 0);
-					tracks[ch].add(new MidiEvent(msg, tickPos));
+					eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
 					lastmsg = msg;
 				}
-				else
-				{
+				else{
 					//Two bytes
-					int d1 = Byte.toUnsignedInt(myfile.getByte(cpos)); cpos++;
-					int d2 = Byte.toUnsignedInt(myfile.getByte(cpos)); cpos++;
+					int d1 = Byte.toUnsignedInt(data.nextByte());
+					int d2 = Byte.toUnsignedInt(data.nextByte());
+					
 					//Note if it's a potential loop point
-					if (stype == 0xB && d1 == 0x63)
-					{
-						if (d2 == 0x14)
-						{
+					boolean noAdd = false;
+					if (stype == 0xB && d1 == MIDIControllers.NRPN_MSB){
+						if (d2 == NRPN_LOOP_START){
 							//It's loop start
 							//Skip ahead to look for the loop value
-							//System.err.println("Loop start found.");
-							int val = 0x7F;
-							byte nxt = myfile.getByte(cpos + 1);
-							if (nxt == 0x06) val = Byte.toUnsignedInt(myfile.getByte(cpos + 2));
-							//Drop a marker
-							String marker = "SEQp Loop Start (0x" + String.format("%02X", val);
-							MetaMessage msg = new MetaMessage(0x06, marker.getBytes(), marker.length());
-							tracks[0].add(new MidiEvent(msg, tickPos));
+							
+							/*int val = 0x7F;
+							byte nxt = data.getByte(1);
+							if (nxt == MIDIControllers.DATA_ENTRY) val = Byte.toUnsignedInt(data.getByte(2));
+							loopCount = val;*/
+							
+							loopStart = tickPos;
+							noAdd = true;
 						}
-						else if (d2 == 0x1E)
-						{
+						else if (d2 == NRPN_LOOP_END){
 							//It's loop end
-							//System.err.println("Loop end found.");
-							String marker = "SEQp Loop End";
-							MetaMessage msg = new MetaMessage(0x06, marker.getBytes(), marker.length());
-							tracks[0].add(new MidiEvent(msg, tickPos));
+							loopEnd = tickPos;
+							noAdd = true;
 						}
 					}
+					if (stype == 0xB && d1 == MIDIControllers.DATA_ENTRY){
+						if(lastmsg != null) {
+							byte[] lastBytes = lastmsg.getMessage();
+							if(lastBytes[1] == MIDIControllers.NRPN_MSB && lastBytes[2] == NRPN_LOOP_START) {
+								loopCount = d2;
+								noAdd = true;
+							}
+						}
+					}
+					
 					ShortMessage msg = new ShortMessage(sint, d1, d2);
-					tracks[ch].add(new MidiEvent(msg, tickPos));
+					if(!noAdd) {
+						eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
+					}
 					lastmsg = msg;
 				}
 				break;
 			case RUNNING:
-				if (lastmsg == null) throw new FileBuffer.UnsupportedFileTypeException();
+				if (lastmsg == null) throw new UnsupportedFileTypeException("SEQP.parseSEQ || Assumed running message, but no previous message to run off of!");
+				
 				//"stat" is actually the first data byte of this message
 				int istat = lastmsg.getStatus();
 				MessageType lasttype = getMessageType((byte)istat);
-				switch(lasttype)
-				{
-				case META:
-					//Only type this should be is 0x51
-					if (stat == 0x51)
-					{
-						//Next three bytes are the data.
-						byte[] data = new byte[3];
-						for (int i = 0; i < 3; i++)
-						{
-							data[i] = myfile.getByte(cpos);
-							cpos++;
+				switch(lasttype) {
+					case META:
+						//Only type this should be is 0x51
+						if (stat == MIDIMetaCommands.TEMPO) {
+							//Next three bytes are the data.
+							byte[] mdata = new byte[3];
+							for (int i = 0; i < 3; i++) {
+								mdata[i] = data.nextByte();
+							}
+							//Add to track 0 only?
+							MetaMessage msg = new MetaMessage(MIDIMetaCommands.TEMPO, mdata, 3);
+							eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
+							lastmsg = msg;
 						}
-						//Add to track 0 only?
-						MetaMessage msg = new MetaMessage(0x51, data, 3);
-						tracks[0].add(new MidiEvent(msg, tickPos));
-						lastmsg = msg;
-					}
-					else
-					{
-						System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || Illegal Meta Event Encountered -- ");
-						System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || Type: 0x" + String.format("%02X", stat));
-						System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || File Offset: 0x" + Long.toHexString(cpos - 1));
+						else {
+							throw new UnsupportedFileTypeException("SEQP.parseSEQ || Illegal Meta Event Encountered -- " + "Type: 0x" + String.format("%02X", stat));
+						}
+						break;
+					case MIDI:
+						//It seems that note-on/note-off can be run together if it's the same note
+						int statType = (istat >>> 4) & 0xF;
+						//int chan = istat & 0xF;
+						if (statType == 0xC || statType == 0xD) {
+							//One byte
+							int dByte = Byte.toUnsignedInt(stat);
+							ShortMessage msg = new ShortMessage(istat, dByte, 0);
+							eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
+							lastmsg = msg;
+						}
+						else {
+							int d1 = Byte.toUnsignedInt(stat);
+							int d2 = Byte.toUnsignedInt(data.nextByte());
+							
+							//Don't add if loop count
+							boolean noAdd = false;
+							if(statType == 0xB && d1 == MIDIControllers.DATA_ENTRY) {
+								byte[] lastBytes = lastmsg.getMessage();
+								if(lastBytes[1] == MIDIControllers.NRPN_MSB && lastBytes[2] == NRPN_LOOP_START) {
+									noAdd = true;
+								}
+							}
+							
+							ShortMessage msg = new ShortMessage(istat, d1, d2);
+							if(!noAdd) eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
+							lastmsg = msg;
+						}
+						break;
+					case RUNNING:
+						//Should not be possible
+						System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || Parsing Error! Previous message should contain status, even if running status!");
+						throw new FileBuffer.UnsupportedFileTypeException();
+					case SYSEX:
+						//Should not be possible
+						System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || Illegal Sysex Event Encountered -- ");
 						throw new FileBuffer.UnsupportedFileTypeException();
 					}
 					break;
-				case MIDI:
-					//It seems that note-on/note-off can be run together if it's the same note
-					int statType = (istat >>> 4) & 0xF;
-					int chan = istat & 0xF;
-					if (statType == 0xC || statType == 0xD)
-					{
-						//One byte
-						int dByte = Byte.toUnsignedInt(stat);
-						ShortMessage msg = new ShortMessage(istat, dByte, 0);
-						tracks[chan].add(new MidiEvent(msg, tickPos));
-						lastmsg = msg;
-					}
-					else
-					{
-						int d1 = Byte.toUnsignedInt(stat);
-						int d2 = Byte.toUnsignedInt(myfile.getByte(cpos)); cpos++;
-						//For the vel0 = note off trick.
-						//Un-comment this if want/need to explicitly turn into note off.
-						/*if (statType == 0x9)
-						{
-							if (d2 == 0)
-							{
-								//This is interpreted as a "note off vel = 0x40" signal
-								istat = 0x90 | chan;
-								d2 = 0x40;
-							}
-						}*/
-						ShortMessage msg = new ShortMessage(istat, d1, d2);
-						tracks[chan].add(new MidiEvent(msg, tickPos));
-						lastmsg = msg;
-					}
-					break;
-				case RUNNING:
-					//Should not be possible
-					System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || Parsing Error! Previous message should contain status, even if running status!");
-					throw new FileBuffer.UnsupportedFileTypeException();
 				case SYSEX:
-					//Should not be possible
-					System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || Illegal Sysex Event Encountered -- ");
-					throw new FileBuffer.UnsupportedFileTypeException();
-				}
-				break;
-			case SYSEX:
-				//SEQp does not appear to use SYSEX messages
-				System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || Illegal Sysex Event Encountered -- ");
-				System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || Type: 0x" + String.format("%02X", stat));
-				System.err.println(Thread.currentThread().getName() + " || SEQP.parseSEQ || File Offset: 0x" + Long.toHexString(cpos - 1));
-				throw new FileBuffer.UnsupportedFileTypeException();
+					//SEQp does not appear to use SYSEX messages
+					throw new UnsupportedFileTypeException("SEQP.parseSEQ || Illegal Sysex Event Encountered -- " + "Type: 0x" + String.format("%02X", stat));
 			}
-			
 		}
-		
-		
 	}
 	
 	/*--- Getters ---*/
@@ -381,6 +473,10 @@ public class SEQP {
 		return (int)Math.pow(2.0, (double)timeSigDenominator);
 	}
 	
+	public long getLoopStart() {return loopStart;}
+	public long getLoopEnd() {return loopEnd;}
+	public int getLoopCount() {return loopCount;}
+	
 	/*--- Setters ---*/
 	
 	public void setResolution(int ticksPerQuarterNote)
@@ -393,6 +489,10 @@ public class SEQP {
 		double n = 1.0/(double)beatsPerMinute;
 		n *= 60000000.0;
 		MicrosecondsPerQNote = (int)Math.round(n);
+	}
+	
+	public void setUSPQN(int microsecondsPerQuarterNode) {
+		this.MicrosecondsPerQNote = microsecondsPerQuarterNode;
 	}
 	
 	public void setTimeSignature(int num, int denom)
@@ -408,112 +508,89 @@ public class SEQP {
 		timeSigDenominator = log;
 	}
 	
+	public void setLoopStart(long val) {loopStart = val;}
+	public void setLoopEnd(long val) {loopEnd = val;}
+	public void setLoopCount(int val) {loopCount = val;}
+	
 	/*--- Serialization ---*/
 	
-	private FileBuffer serializeData() throws IOException, InvalidMidiDataException
-	{
-		//There is only one track; no channels.
-		//Just dump all midi events together
-		List<SortableMidiEvent> allevents = new LinkedList<SortableMidiEvent>();
-		Track[] tracks = contents.getTracks();
-		if (tracks == null) return null;
-		for (int i = 0; i < tracks.length; i++)
-		{
-			int ecount = tracks[i].size();
-			for (int j = 0; j < ecount; j++)
-			{
-				allevents.add(new SortableMidiEvent(tracks[i].get(j)));
-			}
-		}
-		Collections.sort(allevents);
-		
-		//Calculate max size needed. May be less due to running status signals
-		int tsz = 0;
-		for (SortableMidiEvent e : allevents)
-		{
-			tsz += e.getEvent().getMessage().getLength();
+	private FileBuffer serializeData() throws IOException, InvalidMidiDataException{
+		//Alloc amount
+		int alloc = 9; //For loops, if needed
+		Collection<MidiEvent> allEvents = eventMap.allValues();
+		for(MidiEvent ev : allEvents) {
+			alloc += 4; //Max delta time
+			MidiMessage mmsg = ev.getMessage();
+			alloc += mmsg.getLength();
 		}
 		
-		long tickpos = 0;
-		MidiMessage lastmsg = null;
-		FileBuffer data = FileBuffer.createWritableBuffer("seqp_serialize", tsz, true);
+		long tickPos = 0;
+		FileBuffer buffer = new FileBuffer(alloc, true);
+		Set<Long> keyset = eventMap.getBackingMap().keySet();
+		if(loopStart >= 0) keyset.add(loopStart);
+		if(loopEnd >= 0) keyset.add(loopEnd);
 		
-		for (SortableMidiEvent e : allevents)
-		{
-			long rawtime = e.getEvent().getTick();
-			int delta = (int)(rawtime - tickpos);
+		List<Long> keys = new ArrayList<Long>(keyset.size()+1);
+		keys.addAll(keyset);
+		Collections.sort(keys);
+		for(Long tickVal : keys) {
+			int delta = (int)(tickVal - tickPos);
+			byte[] vlq = MIDI.makeVLQ(delta);
+			for(int i = 0; i < vlq.length; i++) buffer.addToFile(vlq[i]);
 			
-			MidiMessage rawmsg = e.getEvent().getMessage();
-			if (rawmsg instanceof MetaMessage)
-			{
-				MetaMessage mmsg = (MetaMessage)rawmsg;
-				//See if type is legal
-				if (mmsg.getType() != 0x51 && mmsg.getType() != 0x2F){
-					System.err.println(Thread.currentThread().getName() + " || SEQP.serializeData || Illegal Meta Event Encountered -- ");
-					System.err.println(Thread.currentThread().getName() + " || SEQP.serializeData || Type Code: 0x" + String.format("%02X", mmsg.getType()));
-					System.err.println(Thread.currentThread().getName() + " || SEQP.serializeData || Event will not be included in output file. ");
-					continue;
-				}
-				//Add delta time
-				byte[] dtime = MIDI.makeVLQ(delta);
-				for (byte b : dtime) data.addToFile(b);
-				//Is it running? Only qualifier is if the previous status byte was also 0xFF
-				boolean rs = false;
-				if (lastmsg != null && lastmsg instanceof MetaMessage) rs = true;
-				if(!rs)
-				{
-					//Add status byte
-					data.addToFile((byte)0xFF);
-				}
-				//Add meta type & data - no length field in SEQ
-				data.addToFile((byte)mmsg.getType());
-				byte[] mdat = mmsg.getData();
-				for (byte b : mdat) data.addToFile(b);
+			boolean encodeDelta = false;
+			int lastStat = -1;
+			if(tickVal == loopStart) {
+				buffer.addToFile((byte) 0xb0);
+				buffer.addToFile((byte) MIDIControllers.NRPN_MSB);
+				buffer.addToFile((byte) NRPN_LOOP_START);
 				
-				//Note
-				tickpos += delta;
-				lastmsg = mmsg;
+				buffer.addToFile((byte) 0x00); //Delta
+				buffer.addToFile((byte) MIDIControllers.DATA_ENTRY);
+				buffer.addToFile((byte) loopCount);
+				encodeDelta = true;
+				lastStat = 0xb0;
 			}
-			else if (rawmsg instanceof ShortMessage)
-			{
-				ShortMessage smsg = (ShortMessage)rawmsg;
-				//See if running status
-				boolean rs = false;
-				if (lastmsg != null && lastmsg instanceof ShortMessage)
-				{
-					if (lastmsg.getStatus() == smsg.getStatus()) rs = true;
-					else
-					{
-						//A note-on command with a velocity of 0 is treated as a note-off command
-						if (smsg.getCommand() == ShortMessage.NOTE_OFF)
-						{
-							ShortMessage lmsg = (ShortMessage)lastmsg;
-							if (lmsg.getChannel() == smsg.getChannel() && lmsg.getCommand() == ShortMessage.NOTE_ON)
-							{
-								//We can just change this to a vel 0 note on to save ever so much space
-								rs = true;
-								smsg.setMessage(lmsg.getStatus(), smsg.getData1(), 0);
-							}
-						}
+			else if(tickVal == loopEnd) {
+				
+				buffer.addToFile((byte) 0xb0);
+				buffer.addToFile((byte) MIDIControllers.NRPN_MSB);
+				buffer.addToFile((byte) NRPN_LOOP_END);
+				encodeDelta = true;
+				lastStat = 0xb0;
+			}
+			
+			List<MidiEvent> events = eventMap.getValues(tickVal);
+			if(events != null && !events.isEmpty()) {
+				for(MidiEvent event : events) {
+					if(encodeDelta) buffer.addToFile((byte) 0x00);
+					
+					MidiMessage msg = event.getMessage();
+					int stat = msg.getStatus();
+					if(stat != lastStat) {
+						//Encode stat.
+						//SEQP allows for running status on meta events, though vanilla midi does not. I think.
+						buffer.addToFile((byte) stat);
+						lastStat = stat;
 					}
+					
+					byte[] mbytes = msg.getMessage();
+					if(stat == 0xff) {
+						//Don't want length field.
+						for(int i = 2; i < mbytes.length; i++) buffer.addToFile(mbytes[i]);
+					}
+					else {
+						//Just copy.
+						for(int i = 1; i < mbytes.length; i++) buffer.addToFile(mbytes[i]);
+					}
+					
+					encodeDelta = true;
 				}
-				//Add delta time
-				byte[] dtime = MIDI.makeVLQ(delta);
-				for (byte b : dtime) data.addToFile(b);
-				//Add status if needed
-				if (!rs) data.addToFile((byte)smsg.getStatus());
-				//Add data
-				data.addToFile((byte)smsg.getData1());
-				if (smsg.getLength() > 2) data.addToFile((byte)smsg.getData2());
-				
-				//Note
-				tickpos += delta;
-				lastmsg = smsg;
 			}
-			//Otherwise, it is ignored
+			tickPos = tickVal;
 		}
 		
-		return data;
+		return buffer;
 	}
 	
 	public boolean serializeSEQ(OutputStream out) throws IOException, InvalidMidiDataException
@@ -582,8 +659,7 @@ public class SEQP {
 		return elist;
 	}
 	
-	public static void writeAsSEQ(Sequence sequence, OutputStream output, long loopStartTick, long loopEndTick) throws IOException
-	{
+	public static void writeAsSEQ(Sequence sequence, OutputStream output, long loopStartTick, long loopEndTick) throws IOException {
 		//Events need to be rearranged into one track.
 		List<SortableMidiEvent> elist = sortMidiEvents(sequence);
 		
@@ -693,19 +769,104 @@ public class SEQP {
 	
 	/*--- Conversion ---*/
 	
-	public Sequence getSequence()
-	{
-		return contents;
+	public Sequence getSequence() {
+		//Distributes events by channel into 16 tracks.
+		//Also adds tempo marker at beginning.
+		//Loop points are kept as NRPNs as-is
+		
+		Sequence mseq;
+		try {
+			mseq = new Sequence(Sequence.PPQ, TicksPerQNote);
+			Track[] tracks = new Track[16];
+
+			for(int i = 0; i < 16; i++) {
+				tracks[i] = mseq.createTrack();
+			}
+			
+			long tickPos = 0;
+			MidiMessage mmsg = null;
+			MidiMessageGenerator mgen = new MidiMessageGenerator();
+			byte[] mbytes = null;
+			
+			//Add stuff at start for track 0
+			mmsg = mgen.genTempoSet(MicrosecondsPerQNote);
+			tracks[0].add(new MidiEvent(mmsg, 0L));
+			
+			//Do events (don't forget loop points)
+			//Omit end track events (since there should only be one)
+			Set<Long> keyset = eventMap.getBackingMap().keySet();
+			if(loopStart >= 0) keyset.add(loopStart);
+			if(loopEnd >= 0) keyset.add(loopEnd);
+			
+			List<Long> keys = new ArrayList<Long>(keyset.size()+1);
+			keys.addAll(keyset);
+			Collections.sort(keys);
+			for(Long tick : keys) {
+				if(tick == loopStart) {
+					mmsg = new ShortMessage(0xb0, MIDIControllers.NRPN_MSB, NRPN_LOOP_START);
+					tracks[0].add(new MidiEvent(mmsg, loopStart));
+					
+					mmsg = new ShortMessage(0xb0, MIDIControllers.DATA_ENTRY, loopCount);
+					tracks[0].add(new MidiEvent(mmsg, loopStart));
+				}
+				else if(tick == loopEnd) {
+					mmsg = new ShortMessage(0xb0, MIDIControllers.NRPN_MSB, NRPN_LOOP_END);
+					tracks[0].add(new MidiEvent(mmsg, loopEnd));
+				}
+				
+				List<MidiEvent> events = eventMap.getValues(tick);
+				if(events != null && !events.isEmpty()) {
+					for(MidiEvent event : events) {
+						mmsg = event.getMessage();
+						int stat = mmsg.getStatus();
+						int statGroup = (stat >>> 4) & 0xf;
+						int channel = stat & 0xf;
+						switch(statGroup) {
+						case 0x8:
+						case 0x9:
+						case 0xA:
+						case 0xB:
+						case 0xC:
+						case 0xD:
+						case 0xE:
+							tracks[channel].add(event);
+							break;
+						case 0xF:
+							if(stat == 0xff) {
+								mbytes = mmsg.getMessage();
+								if(mbytes[1] == MIDIMetaCommands.END) continue;
+							}
+							tracks[0].add(event);
+							break;
+						}
+					}
+				}
+				
+				tickPos = tick;
+			}
+			
+			//Add track ends
+			for(int i = 0; i < 16; i++) {
+				mmsg = mgen.genTrackEnd();
+				tracks[i].add(new MidiEvent(mmsg, tickPos));
+			}
+			
+			return mseq;
+		} 
+		catch (InvalidMidiDataException e) {
+			e.printStackTrace();
+		}
+		
+		return null;
 	}
 	
 	public void writeMIDI(OutputStream out) throws IOException{
-		MIDI midi = new MIDI(contents);
+		MIDI midi = new MIDI(getSequence());
 		midi.serializeTo(out);
 	}
 	
-	public void writeMIDI(String path) throws IOException
-	{
-		MIDI midi = new MIDI(contents);
+	public void writeMIDI(String path) throws IOException {
+		MIDI midi = new MIDI(getSequence());
 		midi.writeMIDI(path);
 	}
 
