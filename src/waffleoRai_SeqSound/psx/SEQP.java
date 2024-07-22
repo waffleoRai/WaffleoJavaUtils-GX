@@ -67,6 +67,10 @@ public class SEQP {
 	private long loopEnd = -1;
 	private int loopCount = 0x7f;
 	
+	private boolean lpStEvent = false;
+	private boolean lpEdEvent = false;
+	private boolean lpCtEvent = false;
+	
 	//private Sequence contents;
 	
 	private MultiValMap<Long, MidiEvent> eventMap;
@@ -110,7 +114,6 @@ public class SEQP {
 		//Need to scan all tracks and events as they come in.
 		Sequence mseq = mid.getSequence();
 		Track[] tracks = mseq.getTracks();
-		MidiMessage lastmsg = null;
 		for(int i = 0; i < tracks.length; i++) {
 			if(tracks[i] == null) continue;
 			int ecount = tracks[i].size();
@@ -119,9 +122,10 @@ public class SEQP {
 				long tick = ev.getTick();
 
 				MidiMessage mmsg = ev.getMessage();
-				List<MidiEvent> existingEvents = seqp.eventMap.getValues(tick);
 				byte[] bytes = mmsg.getMessage();
+				
 				//Throw away anything redundant.
+				/*List<MidiEvent> existingEvents = seqp.eventMap.getValues(tick);
 				if(existingEvents != null && !existingEvents.isEmpty()) {
 					boolean match = false;
 					for(MidiEvent other : existingEvents) {
@@ -140,7 +144,7 @@ public class SEQP {
 						}
 					}
 					if(match) continue;
-				}
+				}*/
 				
 				int stat = mmsg.getStatus() & 0xff;
 				MessageType mtype = getMessageType((byte)stat);
@@ -194,28 +198,27 @@ public class SEQP {
 				case MIDI:
 					if((stat & 0xf0) == 0xb0) {
 						//Check for loop info.
-						boolean noAdd = false;
+						//boolean noAdd = false;
 						if(bytes[1] == MIDIControllers.NRPN_MSB) {
 							if(bytes[2] == NRPN_LOOP_START) {
 								seqp.loopStart = tick;
-								noAdd = true;
+								seqp.lpStEvent = true;
+								//noAdd = true;
 							}
 							else if(bytes[2] == NRPN_LOOP_END) {
 								seqp.loopEnd = tick;
-								noAdd = true;
+								seqp.lpEdEvent = true;
+								//noAdd = true;
 							}
 						}
 						else if(bytes[1] == MIDIControllers.DATA_ENTRY) {
-							if(lastmsg != null && lastmsg.getStatus() == stat) {
-								byte[] lbytes = lastmsg.getMessage();
-								if(lbytes[1] == MIDIControllers.NRPN_MSB && lbytes[2] == NRPN_LOOP_START) {
-									//Loop count.
-									seqp.loopCount = Byte.toUnsignedInt(lbytes[2]);
-									noAdd = true;
-								}
+							if((seqp.loopStart >= 0) && (tick == (seqp.loopStart + 1))) {
+								seqp.loopCount = Byte.toUnsignedInt(bytes[2]);
+								seqp.lpCtEvent = true;
 							}
 						}
-						if(!noAdd) seqp.eventMap.addValue(tick, ev);
+						//if(!noAdd) seqp.eventMap.addValue(tick, ev);
+						seqp.eventMap.addValue(tick, ev);
 					}
 					else {
 						seqp.eventMap.addValue(tick, ev);
@@ -228,7 +231,6 @@ public class SEQP {
 					}
 					break;
 				}
-				lastmsg = mmsg;
 			}
 		}
 		return seqp;
@@ -326,40 +328,33 @@ public class SEQP {
 					int d2 = Byte.toUnsignedInt(data.nextByte());
 					
 					//Note if it's a potential loop point
-					boolean noAdd = false;
+					//boolean noAdd = false;
 					if (stype == 0xB && d1 == MIDIControllers.NRPN_MSB){
 						if (d2 == NRPN_LOOP_START){
 							//It's loop start
-							//Skip ahead to look for the loop value
-							
-							/*int val = 0x7F;
-							byte nxt = data.getByte(1);
-							if (nxt == MIDIControllers.DATA_ENTRY) val = Byte.toUnsignedInt(data.getByte(2));
-							loopCount = val;*/
-							
 							loopStart = tickPos;
-							noAdd = true;
+							lpStEvent = true;
+							//noAdd = true;
 						}
 						else if (d2 == NRPN_LOOP_END){
 							//It's loop end
 							loopEnd = tickPos;
-							noAdd = true;
+							lpEdEvent = true;
+							//noAdd = true;
 						}
 					}
 					if (stype == 0xB && d1 == MIDIControllers.DATA_ENTRY){
-						if(lastmsg != null) {
-							byte[] lastBytes = lastmsg.getMessage();
-							if(lastBytes[1] == MIDIControllers.NRPN_MSB && lastBytes[2] == NRPN_LOOP_START) {
-								loopCount = d2;
-								noAdd = true;
-							}
+						if((loopStart >= 0) && (tickPos == (loopStart + 1))) {
+							loopCount = d2;
+							lpCtEvent = true;
 						}
 					}
 					
 					ShortMessage msg = new ShortMessage(sint, d1, d2);
-					if(!noAdd) {
+					/*if(!noAdd) {
 						eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
-					}
+					}*/
+					eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
 					lastmsg = msg;
 				}
 				break;
@@ -402,17 +397,32 @@ public class SEQP {
 							int d1 = Byte.toUnsignedInt(stat);
 							int d2 = Byte.toUnsignedInt(data.nextByte());
 							
-							//Don't add if loop count
-							boolean noAdd = false;
+							//Don't add if loop
+							//boolean noAdd = false;
+							if (statType == 0xB && d1 == MIDIControllers.NRPN_MSB){
+								if (d2 == NRPN_LOOP_START){
+									//It's loop start
+									loopStart = tickPos;
+									lpStEvent = true;
+									//noAdd = true;
+								}
+								else if (d2 == NRPN_LOOP_END){
+									//It's loop end
+									loopEnd = tickPos;
+									lpEdEvent = true;
+									//noAdd = true;
+								}
+							}
 							if(statType == 0xB && d1 == MIDIControllers.DATA_ENTRY) {
-								byte[] lastBytes = lastmsg.getMessage();
-								if(lastBytes[1] == MIDIControllers.NRPN_MSB && lastBytes[2] == NRPN_LOOP_START) {
-									noAdd = true;
+								if((loopStart >= 0) && (tickPos == (loopStart + 1))) {
+									loopCount = d2;
+									lpCtEvent = true;
 								}
 							}
 							
 							ShortMessage msg = new ShortMessage(istat, d1, d2);
-							if(!noAdd) eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
+							//if(!noAdd) eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
+							eventMap.addValue(tickPos, new MidiEvent(msg, tickPos));
 							lastmsg = msg;
 						}
 						break;
@@ -431,6 +441,47 @@ public class SEQP {
 					throw new UnsupportedFileTypeException("SEQP.parseSEQ || Illegal Sysex Event Encountered -- " + "Type: 0x" + String.format("%02X", stat));
 			}
 		}
+	}
+	
+	public static boolean isLoopStartEvent(MidiEvent ev) {
+		if(ev == null) return false;
+		MidiMessage msg = ev.getMessage();
+		int stat = msg.getStatus();
+		if((stat & 0xf0) == 0xb0) {
+			byte[] mbytes = msg.getMessage();
+			if(mbytes.length < 3) return false;
+			if(mbytes[1] != MIDIControllers.NRPN_MSB) return false;
+			if(mbytes[2] != NRPN_LOOP_START) return false;
+			return true;
+		}
+		return false;
+	}
+	
+	public static boolean isLoopEndEvent(MidiEvent ev) {
+		if(ev == null) return false;
+		MidiMessage msg = ev.getMessage();
+		int stat = msg.getStatus();
+		if((stat & 0xf0) == 0xb0) {
+			byte[] mbytes = msg.getMessage();
+			if(mbytes.length < 3) return false;
+			if(mbytes[1] != MIDIControllers.NRPN_MSB) return false;
+			if(mbytes[2] != NRPN_LOOP_END) return false;
+			return true;
+		}
+		return false;
+	}
+	
+	public static boolean isDataEntryEvent(MidiEvent ev) {
+		if(ev == null) return false;
+		MidiMessage msg = ev.getMessage();
+		int stat = msg.getStatus();
+		if((stat & 0xf0) == 0xb0) {
+			byte[] mbytes = msg.getMessage();
+			if(mbytes.length < 3) return false;
+			if(mbytes[1] != MIDIControllers.DATA_ENTRY) return false;
+			return true;
+		}
+		return false;
 	}
 	
 	/*--- Getters ---*/
@@ -503,9 +554,66 @@ public class SEQP {
 		timeSigDenominator = log;
 	}
 	
-	public void setLoopStart(long val) {loopStart = val;}
-	public void setLoopEnd(long val) {loopEnd = val;}
-	public void setLoopCount(int val) {loopCount = val;}
+	public void setLoopStart(long val) {
+		if(lpStEvent && (loopStart >= 0)) {
+			//Remove
+			List<MidiEvent> elist = eventMap.getValues(loopStart);
+			if(elist != null && !elist.isEmpty()) {
+				eventMap.getBackingMap().remove(loopStart);
+				List<MidiEvent> nlist = new LinkedList<MidiEvent>();
+				for(MidiEvent e : elist) {
+					if(!isLoopStartEvent(e)) nlist.add(e);
+				}
+				if(!nlist.isEmpty()) {
+					eventMap.getBackingMap().put(loopStart, nlist);
+				}
+			}
+		}
+		lpStEvent = false;
+		if(lpCtEvent && (loopStart >= 0)) {
+			//Needs to know the old loop position.
+			setLoopCount(loopCount); //Clears loop count event as well.
+		}
+		loopStart = val;
+	}
+	
+	public void setLoopEnd(long val) {
+		if(lpEdEvent && (loopEnd >= 0)) {
+			//Remove
+			List<MidiEvent> elist = eventMap.getValues(loopEnd);
+			if(elist != null && !elist.isEmpty()) {
+				eventMap.getBackingMap().remove(loopEnd);
+				List<MidiEvent> nlist = new LinkedList<MidiEvent>();
+				for(MidiEvent e : elist) {
+					if(!isLoopEndEvent(e)) nlist.add(e);
+				}
+				if(!nlist.isEmpty()) {
+					eventMap.getBackingMap().put(loopEnd, nlist);
+				}
+			}
+		}
+		lpEdEvent = false;
+		loopEnd = val;
+	}
+	
+	public void setLoopCount(int val) {
+		if(lpCtEvent && (loopStart >= 0)) {
+			long tick = loopStart + 1;
+			List<MidiEvent> elist = eventMap.getValues(tick);
+			if(elist != null && !elist.isEmpty()) {
+				eventMap.getBackingMap().remove(tick);
+				List<MidiEvent> nlist = new LinkedList<MidiEvent>();
+				for(MidiEvent e : elist) {
+					if(!isDataEntryEvent(e)) nlist.add(e);
+				}
+				if(!nlist.isEmpty()) {
+					eventMap.getBackingMap().put(tick, nlist);
+				}
+			}
+		}
+		lpCtEvent = false;
+		loopCount = val;
+	}
 	
 	/*--- Serialization ---*/
 	
@@ -523,43 +631,45 @@ public class SEQP {
 		FileBuffer buffer = new FileBuffer(alloc, true);
 		Set<Long> keyset = new HashSet<Long>();
 		keyset.addAll(eventMap.getBackingMap().keySet());
-		if(loopStart >= 0) keyset.add(loopStart);
+		if(loopStart >= 0) {
+			keyset.add(loopStart);
+			keyset.add(loopStart+1);
+		}
 		if(loopEnd >= 0) keyset.add(loopEnd);
 		
 		List<Long> keys = new ArrayList<Long>(keyset.size()+1);
 		keys.addAll(keyset);
 		Collections.sort(keys);
 		int lastStat = -1;
+		//boolean lstFlag = false;
 		for(Long tickVal : keys) {
 			int delta = (int)(tickVal - tickPos);
 			byte[] vlq = MIDI.makeVLQ(delta);
 			for(int i = 0; i < vlq.length; i++) buffer.addToFile(vlq[i]);
 			
 			boolean encodeDelta = false;
-			if(tickVal == loopStart) {
-				buffer.addToFile((byte) 0xb0);
+			if(!lpStEvent && (tickVal == loopStart)) {
+				if(lastStat != 0xb0) buffer.addToFile((byte) 0xb0);
 				buffer.addToFile((byte) MIDIControllers.NRPN_MSB);
 				buffer.addToFile((byte) NRPN_LOOP_START);
+				//lstFlag = true;
 				
-				if(loopCount >= 0) {
-					buffer.addToFile((byte) 0x00); //Delta
-					buffer.addToFile((byte) MIDIControllers.DATA_ENTRY);
-					buffer.addToFile((byte) loopCount);	
-				}
 				encodeDelta = true;
 				lastStat = 0xb0;
 			}
-			else if(tickVal == loopEnd) {
-				
-				buffer.addToFile((byte) 0xb0);
-				buffer.addToFile((byte) MIDIControllers.NRPN_MSB);
-				buffer.addToFile((byte) NRPN_LOOP_END);
+			else if(!lpCtEvent && (loopStart >= 0) && (tickVal == (loopStart + 1))) {
+				if(encodeDelta) buffer.addToFile((byte) 0x00);
+				if(lastStat != 0xb0) buffer.addToFile((byte) 0xb0);
+				buffer.addToFile((byte) MIDIControllers.DATA_ENTRY);
+				if(loopCount >= 0) buffer.addToFile((byte) loopCount);
+				else buffer.addToFile((byte) 0x7f);
 				encodeDelta = true;
 				lastStat = 0xb0;
 			}
 			
 			List<MidiEvent> events = eventMap.getValues(tickVal);
 			if(events != null && !events.isEmpty()) {
+				
 				for(MidiEvent event : events) {
 					if(encodeDelta) buffer.addToFile((byte) 0x00);
 					
@@ -574,7 +684,8 @@ public class SEQP {
 					byte[] mbytes = msg.getMessage();
 					if(stat == 0xff) {
 						//Don't want length field.
-						for(int i = 2; i < mbytes.length; i++) buffer.addToFile(mbytes[i]);
+						buffer.addToFile(mbytes[1]);
+						for(int i = 3; i < mbytes.length; i++) buffer.addToFile(mbytes[i]);
 					}
 					else {
 						//Just copy.
@@ -585,6 +696,16 @@ public class SEQP {
 					encodeDelta = true;
 				}
 			}
+			
+			if(!lpEdEvent && (tickVal == loopEnd)) {
+				if(encodeDelta) buffer.addToFile((byte) 0x00);
+				if(lastStat != 0xb0) buffer.addToFile((byte) 0xb0);
+				buffer.addToFile((byte) MIDIControllers.NRPN_MSB);
+				buffer.addToFile((byte) NRPN_LOOP_END);
+				encodeDelta = true;
+				lastStat = 0xb0;
+			}
+			
 			tickPos = tickVal;
 		}
 		
@@ -595,7 +716,7 @@ public class SEQP {
 		
 		//Pad to 4
 		int tsize = (int)(15L + buffer.getFileSize());
-		int padding = (4 - (tsize & 0x3)) & 0x3;
+		int padding = 4 - (tsize & 0x3);
 		for(int i = 0; i < padding; i++) buffer.addToFile((byte) 0x00);
 		
 		return buffer;
@@ -778,6 +899,10 @@ public class SEQP {
 	/*--- Conversion ---*/
 	
 	public Sequence getSequence() {
+		return getSequence(true);
+	}
+	
+	public Sequence getSequence(boolean trackSplit) {
 		//Distributes events by channel into 16 tracks.
 		//Also adds tempo marker at beginning.
 		//Loop points are kept as NRPNs as-is
@@ -785,10 +910,17 @@ public class SEQP {
 		Sequence mseq;
 		try {
 			mseq = new Sequence(Sequence.PPQ, TicksPerQNote);
-			Track[] tracks = new Track[16];
-
-			for(int i = 0; i < 16; i++) {
-				tracks[i] = mseq.createTrack();
+			Track[] tracks = null;
+			
+			if(trackSplit) {
+				tracks = new Track[16];
+				for(int i = 0; i < 16; i++) {
+					tracks[i] = mseq.createTrack();
+				}
+			}
+			else {
+				tracks = new Track[1];
+				tracks[0] = mseq.createTrack();
 			}
 			
 			long tickPos = 0;
@@ -804,23 +936,25 @@ public class SEQP {
 			//Omit end track events (since there should only be one)
 			Set<Long> keyset = new HashSet<Long>();
 			keyset.addAll(eventMap.getBackingMap().keySet());
-			if(loopStart >= 0) keyset.add(loopStart);
+			if(loopStart >= 0) {
+				keyset.add(loopStart);
+				keyset.add(loopStart + 1);
+			}
 			if(loopEnd >= 0) keyset.add(loopEnd);
 			
 			List<Long> keys = new ArrayList<Long>(keyset.size()+1);
 			keys.addAll(keyset);
 			Collections.sort(keys);
 			for(Long tick : keys) {
-				if(tick == loopStart && loopStart >= 0) {
+				if(!lpStEvent && (tick == loopStart) && (loopStart >= 0)) {
 					mmsg = new ShortMessage(0xb0, MIDIControllers.NRPN_MSB, NRPN_LOOP_START);
 					tracks[0].add(new MidiEvent(mmsg, loopStart));
-					
-					mmsg = new ShortMessage(0xb0, MIDIControllers.DATA_ENTRY, loopCount);
-					tracks[0].add(new MidiEvent(mmsg, loopStart));
+					//lstFlag = true;
 				}
-				else if(tick == loopEnd && loopEnd >= 0) {
-					mmsg = new ShortMessage(0xb0, MIDIControllers.NRPN_MSB, NRPN_LOOP_END);
-					tracks[0].add(new MidiEvent(mmsg, loopEnd));
+				else if(!lpCtEvent && (loopStart >= 0) && (tick == loopStart + 1)) {
+					if(loopCount < 0) loopCount = 0x7f;
+					mmsg = new ShortMessage(0xb0, MIDIControllers.DATA_ENTRY, loopCount);
+					tracks[0].add(new MidiEvent(mmsg, loopStart+1));
 				}
 				
 				List<MidiEvent> events = eventMap.getValues(tick);
@@ -838,7 +972,8 @@ public class SEQP {
 						case 0xC:
 						case 0xD:
 						case 0xE:
-							tracks[channel].add(event);
+							if(trackSplit) tracks[channel].add(event);
+							else tracks[0].add(event);
 							break;
 						case 0xF:
 							if(stat == 0xff) {
@@ -851,11 +986,16 @@ public class SEQP {
 					}
 				}
 				
+				if(!lpEdEvent && (tick == loopEnd) && (loopEnd >= 0)) {
+					mmsg = new ShortMessage(0xb0, MIDIControllers.NRPN_MSB, NRPN_LOOP_END);
+					tracks[0].add(new MidiEvent(mmsg, loopEnd));
+				}
+				
 				tickPos = tick;
 			}
 			
 			//Add track ends
-			for(int i = 0; i < 16; i++) {
+			for(int i = 0; i < tracks.length; i++) {
 				mmsg = mgen.genTrackEnd();
 				tracks[i].add(new MidiEvent(mmsg, tickPos));
 			}
@@ -867,6 +1007,16 @@ public class SEQP {
 		}
 		
 		return null;
+	}
+
+	public void writeMIDISingleTrack(OutputStream out) throws IOException {
+		MIDI midi = new MIDI(getSequence(false));
+		midi.serializeTo(out);
+	}
+	
+	public void writeMIDISingleTrack(String path) throws IOException {
+		MIDI midi = new MIDI(getSequence(false));
+		midi.writeMIDI(path);
 	}
 	
 	public void writeMIDI(OutputStream out) throws IOException{
