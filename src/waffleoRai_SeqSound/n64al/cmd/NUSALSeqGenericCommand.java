@@ -2,20 +2,29 @@ package waffleoRai_SeqSound.n64al.cmd;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 
 public class NUSALSeqGenericCommand extends NUSALSeqCommand{
 
 	private boolean str_hex;
 	
-	public NUSALSeqGenericCommand(NUSALSeqCmdType cmd) {
-		super(cmd, cmd.getBaseCommand());
+	public NUSALSeqGenericCommand(NUSALSeqCommandDef def) {
+		super(def, def.getMinCommand());
 		//byte_size = cmd.getMinimumSizeInBytes();
 	}
 	
-	public NUSALSeqGenericCommand(NUSALSeqCmdType cmd, int idx) {
-		super(cmd, (byte)(cmd.getBaseCommand() + idx));
+	public NUSALSeqGenericCommand(NUSALSeqCommandDef def, int idx) {
+		super(def, (byte)(def.getMinCommand() + idx));
 		super.setParam(0, idx);
 		//byte_size = cmd.getMinimumSizeInBytes();
+	}
+	
+	public NUSALSeqGenericCommand(NUSALSeqCmdType funcCmd) {
+		super(funcCmd, null);
+	}
+	
+	public NUSALSeqGenericCommand(NUSALSeqCmdType funcCmd, NUSALSeqCommandBook book) {
+		super(funcCmd, book);
 	}
 	
 	public void setDisplayStringHex(boolean b){str_hex = b;}
@@ -28,7 +37,13 @@ public class NUSALSeqGenericCommand extends NUSALSeqCommand{
 		for(int i = 0; i < pcount; i++){
 			if(i != 0) sb.append(" ");
 			sb.append("0x");
-			if(super.getCommand().getMinimumSizeInBytes() > 2) sb.append(String.format("%04x", super.getParam(i)));
+			NUSALSeqCommandDef def = getCommandDef();
+			if(def != null) {
+				if(def.getMinSize() > 2) {
+					sb.append(String.format("%04x", super.getParam(i)));
+				}
+				else sb.append(String.format("%02x", super.getParam(i)));
+			}
 			else sb.append(String.format("%02x", super.getParam(i)));
 		}
 		return sb.toString();

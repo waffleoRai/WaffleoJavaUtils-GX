@@ -4,13 +4,14 @@ import waffleoRai_SeqSound.n64al.NUSALSeq;
 import waffleoRai_SeqSound.n64al.NUSALSeqChannel;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
 
 public class FCommands {
 	
 	/*--- Command Reader ---*/
 	
-	public static NUSALSeqCommand parseFCommand(String cmd, String[] args){
+	public static NUSALSeqCommand parseFCommandOld(String cmd, String[] args){
 		//References handled by outer functions
 		cmd = cmd.toLowerCase();
 		if(cmd.equals("end")) return new C_EndRead();
@@ -49,12 +50,20 @@ public class FCommands {
 	
 	/*--- ABCs ---*/
 	public static abstract class BranchCommand extends NUSALSeqReferenceCommand{
-		protected BranchCommand(NUSALSeqCmdType cmd, int value, boolean rel) {
-			super(cmd, value, rel);
+		protected BranchCommand(NUSALSeqCommandDef def, int value, boolean rel) {
+			super(def, value, rel);
 		}
 		
-		protected BranchCommand(NUSALSeqCmdType cmd, int idx, int value, boolean rel) {
-			super(cmd, idx, value, rel);
+		protected BranchCommand(NUSALSeqCommandDef def, int idx, int value, boolean rel) {
+			super(def, idx, value, rel);
+		}
+		
+		protected BranchCommand(NUSALSeqCmdType funcCmd, NUSALSeqCommandBook book, int value, boolean rel) {
+			super(funcCmd, book, value, rel);
+		}
+		
+		protected BranchCommand(NUSALSeqCmdType funcCmd, NUSALSeqCommandBook book, int idx, int value, boolean rel) {
+			super(funcCmd, book, value, rel);
 		}
 		
 		protected abstract boolean checkCondition(NUSALSeq sequence);
@@ -88,6 +97,12 @@ public class FCommands {
 
 	/*--- f0: unreservenotes ---*/
 	public static class C_UnreserveNotes extends CMD_IgnoredCommand{
+		public C_UnreserveNotes(NUSALSeqCommandBook book) {
+			super(NUSALSeqCmdType.UNRESERVE_NOTES, book);
+		}
+		public C_UnreserveNotes(NUSALSeqCommandDef def) {
+			super(def);
+		}
 		public C_UnreserveNotes() {
 			super(NUSALSeqCmdType.UNRESERVE_NOTES);
 		}
@@ -95,6 +110,15 @@ public class FCommands {
 	
 	/*--- f1: reservenotes ---*/
 	public static class C_ReserveNotes extends CMD_IgnoredCommand{
+		public C_ReserveNotes(NUSALSeqCommandBook book, int notes) {
+			super(NUSALSeqCmdType.RESERVE_NOTES, book);
+			super.setParam(0, notes);
+		}
+		public C_ReserveNotes(NUSALSeqCommandDef def, int notes) {
+			super(def);
+			super.setParam(0, notes);
+		}
+		
 		public C_ReserveNotes(int notes) {
 			super(NUSALSeqCmdType.RESERVE_NOTES);
 			super.setParam(0, notes);
@@ -103,7 +127,9 @@ public class FCommands {
 	
 	/*--- f2: rbltz ---*/
 	public static class C_rbltz extends BranchCommand{
-		public C_rbltz(int offset) {super(NUSALSeqCmdType.BRANCH_IF_LTZ_REL, offset, true);}
+		public C_rbltz(int offset) {super(NUSALSeqCmdType.BRANCH_IF_LTZ_REL, null, offset, true);}
+		public C_rbltz(int offset, NUSALSeqCommandBook book) {super(NUSALSeqCmdType.BRANCH_IF_LTZ_REL, book, offset, true);}
+		public C_rbltz(int offset, NUSALSeqCommandDef def) {super(def, offset, true);}
 		protected boolean checkCondition(NUSALSeq sequence){return sequence.getVarQ() < 0;}
 		protected boolean checkCondition(NUSALSeqChannel channel){return channel.getVarQ() < 0;}
 		protected boolean checkCondition(NUSALSeqLayer voice){return voice.getVarQ() < 0;}
@@ -113,7 +139,9 @@ public class FCommands {
 	
 	/*--- f3: rbeqz ---*/
 	public static class C_rbeqz extends BranchCommand{
-		public C_rbeqz(int offset) {super(NUSALSeqCmdType.BRANCH_IF_EQZ_REL, offset, true);}
+		public C_rbeqz(int offset) {super(NUSALSeqCmdType.BRANCH_IF_EQZ_REL, null, offset, true);}
+		public C_rbeqz(int offset, NUSALSeqCommandBook book) {super(NUSALSeqCmdType.BRANCH_IF_EQZ_REL, book, offset, true);}
+		public C_rbeqz(int offset, NUSALSeqCommandDef def) {super(def, offset, true);}
 		protected boolean checkCondition(NUSALSeq sequence){return sequence.getVarQ() == 0;}
 		protected boolean checkCondition(NUSALSeqChannel channel){return channel.getVarQ() == 0;}
 		protected boolean checkCondition(NUSALSeqLayer voice){return voice.getVarQ() == 0;}
@@ -123,7 +151,9 @@ public class FCommands {
 	
 	/*--- f4: rjump ---*/
 	public static class C_rjump extends BranchCommand{
-		public C_rjump(int offset) {super(NUSALSeqCmdType.BRANCH_ALWAYS_REL, offset, true);}
+		public C_rjump(int offset) {super(NUSALSeqCmdType.BRANCH_ALWAYS_REL, null, offset, true);}
+		public C_rjump(int offset, NUSALSeqCommandBook book) {super(NUSALSeqCmdType.BRANCH_ALWAYS_REL, book, offset, true);}
+		public C_rjump(int offset, NUSALSeqCommandDef def) {super(def, offset, true);}
 		protected boolean checkCondition(NUSALSeq sequence){return true;}
 		protected boolean checkCondition(NUSALSeqChannel channel){return true;}
 		protected boolean checkCondition(NUSALSeqLayer voice){return true;}
@@ -133,7 +163,9 @@ public class FCommands {
 	
 	/*--- f5: bgez ---*/
 	public static class C_bgez extends BranchCommand{
-		public C_bgez(int address) {super(NUSALSeqCmdType.BRANCH_IF_GTEZ, address, false);}
+		public C_bgez(int address) {super(NUSALSeqCmdType.BRANCH_IF_GTEZ, null, address, false);}
+		public C_bgez(int address, NUSALSeqCommandBook book) {super(NUSALSeqCmdType.BRANCH_IF_GTEZ, book, address, false);}
+		public C_bgez(int address, NUSALSeqCommandDef def) {super(def, address, false);}
 		protected boolean checkCondition(NUSALSeq sequence){return sequence.getVarQ() >= 0;}
 		protected boolean checkCondition(NUSALSeqChannel channel){return channel.getVarQ() >= 0;}
 		protected boolean checkCondition(NUSALSeqLayer voice){return voice.getVarQ() >= 0;}
@@ -144,6 +176,8 @@ public class FCommands {
 	/*--- f6: break ---*/
 	public static class C_Break extends NUSALSeqGenericCommand{
 		public C_Break() {super(NUSALSeqCmdType.BREAK);}
+		public C_Break(NUSALSeqCommandBook book) {super(NUSALSeqCmdType.BREAK, book);}
+		public C_Break(NUSALSeqCommandDef def) {super(def);}
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
 			sequence.breakLoop();
@@ -166,6 +200,8 @@ public class FCommands {
 	/*--- f7: loopend ---*/
 	public static class C_LoopEnd extends NUSALSeqGenericCommand{
 		public C_LoopEnd() {super(NUSALSeqCmdType.LOOP_END);}
+		public C_LoopEnd(NUSALSeqCommandBook book) {super(NUSALSeqCmdType.LOOP_END, book);}
+		public C_LoopEnd(NUSALSeqCommandDef def) {super(def);}
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
 			sequence.signalLoopEnd();
@@ -188,6 +224,8 @@ public class FCommands {
 	/*--- f8: loop ---*/
 	public static class C_LoopStart extends NUSALSeqGenericCommand{
 		public C_LoopStart(int loopCount) {super(NUSALSeqCmdType.LOOP_START); setParam(0, loopCount);}
+		public C_LoopStart(int loopCount, NUSALSeqCommandBook book) {super(NUSALSeqCmdType.LOOP_START, book); setParam(0, loopCount);}
+		public C_LoopStart(int loopCount, NUSALSeqCommandDef def) {super(def); setParam(0, loopCount);}		
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
 			sequence.signalLoopStart(super.getParam(0));
@@ -209,7 +247,9 @@ public class FCommands {
 	
 	/*--- f9: bltz ---*/
 	public static class C_bltz extends BranchCommand{
-		public C_bltz(int address) {super(NUSALSeqCmdType.BRANCH_IF_LTZ, address, false);}
+		public C_bltz(int address) {super(NUSALSeqCmdType.BRANCH_IF_LTZ, null, address, false);}
+		public C_bltz(int address, NUSALSeqCommandBook book) {super(NUSALSeqCmdType.BRANCH_IF_LTZ, book, address, false);}
+		public C_bltz(int address, NUSALSeqCommandDef def) {super(def, address, false);}
 		protected boolean checkCondition(NUSALSeq sequence){return sequence.getVarQ() < 0;}
 		protected boolean checkCondition(NUSALSeqChannel channel){return channel.getVarQ() < 0;}
 		protected boolean checkCondition(NUSALSeqLayer voice){return voice.getVarQ() < 0;}
@@ -219,7 +259,9 @@ public class FCommands {
 	
 	/*--- fa: beqz ---*/
 	public static class C_beqz extends BranchCommand{
-		public C_beqz(int address) {super(NUSALSeqCmdType.BRANCH_IF_EQZ, address, false);}
+		public C_beqz(int address) {super(NUSALSeqCmdType.BRANCH_IF_EQZ, null, address, false);}
+		public C_beqz(int address, NUSALSeqCommandBook book) {super(NUSALSeqCmdType.BRANCH_IF_EQZ, book, address, false);}
+		public C_beqz(int address, NUSALSeqCommandDef def) {super(def, address, false);}
 		protected boolean checkCondition(NUSALSeq sequence){return sequence.getVarQ() == 0;}
 		protected boolean checkCondition(NUSALSeqChannel channel){return channel.getVarQ() == 0;}
 		protected boolean checkCondition(NUSALSeqLayer voice){return voice.getVarQ() == 0;}
@@ -229,7 +271,9 @@ public class FCommands {
 	
 	/*--- fb: jump ---*/
 	public static class C_Jump extends BranchCommand{
-		public C_Jump(int address) {super(NUSALSeqCmdType.BRANCH_ALWAYS, address, false);}
+		public C_Jump(int address) {super(NUSALSeqCmdType.BRANCH_ALWAYS, null, address, false);}
+		public C_Jump(int address, NUSALSeqCommandBook book) {super(NUSALSeqCmdType.BRANCH_ALWAYS, book, address, false);}
+		public C_Jump(int address, NUSALSeqCommandDef def) {super(def, address, false);}
 		protected boolean checkCondition(NUSALSeq sequence){return true;}
 		protected boolean checkCondition(NUSALSeqChannel channel){return true;}
 		protected boolean checkCondition(NUSALSeqLayer voice){return true;}
@@ -240,7 +284,15 @@ public class FCommands {
 	/*--- fc: call ---*/
 	public static class C_Call extends NUSALSeqReferenceCommand{
 		public C_Call(int address) {
-			super(NUSALSeqCmdType.CALL, address, false);
+			super(NUSALSeqCmdType.CALL, null, address, false);
+		}
+		
+		public C_Call(int address, NUSALSeqCommandBook book) {
+			super(NUSALSeqCmdType.CALL, book, address, false);
+		}
+		
+		public C_Call(int address, NUSALSeqCommandDef def) {
+			super(def, address, false);
 		}
 
 		public boolean doCommand(NUSALSeq sequence){
@@ -276,6 +328,12 @@ public class FCommands {
 		public C_Wait(int ticks) {
 			super(NUSALSeqCmdType.WAIT, ticks);
 		}
+		public C_Wait(NUSALSeqCommandBook book, int ticks) {
+			super(NUSALSeqCmdType.WAIT, book, ticks);
+		}
+		public C_Wait(NUSALSeqCommandDef def, int ticks) {
+			super(def, ticks);
+		}
 	}
 	
 	/*--- fe: yield ---*/
@@ -283,7 +341,13 @@ public class FCommands {
 		public C_Yield() {
 			super(NUSALSeqCmdType.YIELD, 1);
 		}
-		protected StringBuilder toMMLCommand_child(){
+		public C_Yield(NUSALSeqCommandBook book) {
+			super(NUSALSeqCmdType.YIELD, book, 1);
+		}
+		public C_Yield(NUSALSeqCommandDef def) {
+			super(def, 1);
+		}
+		protected StringBuilder toMMLCommand_child(int syntax){
 			StringBuilder sb = new StringBuilder(32);
 			sb.append("yield");
 			return sb;
@@ -293,6 +357,8 @@ public class FCommands {
 	/*--- ff: end ---*/
 	public static class C_EndRead extends NUSALSeqGenericCommand{
 		public C_EndRead() {super(NUSALSeqCmdType.END_READ);}
+		public C_EndRead(NUSALSeqCommandBook book) {super(NUSALSeqCmdType.END_READ, book);}
+		public C_EndRead(NUSALSeqCommandDef def) {super(def);}
 		public boolean isEndCommand(){return true;}		
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();

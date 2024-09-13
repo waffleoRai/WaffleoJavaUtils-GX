@@ -4,24 +4,33 @@ import waffleoRai_SeqSound.n64al.NUSALSeq;
 import waffleoRai_SeqSound.n64al.NUSALSeqChannel;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
 
 public class CMD_IgnoredCommand extends NUSALSeqCommand{
 
 	//private int size;
 	
-	public CMD_IgnoredCommand(NUSALSeqCmdType cmd, byte cmd_byte) {
-		super(cmd, cmd_byte);
-		//size = bytes;
+	protected CMD_IgnoredCommand(NUSALSeqCmdType en) {
+		super(en, en.getBaseCommand());
 	}
 	
-	public CMD_IgnoredCommand(NUSALSeqCmdType cmd) {
-		super(cmd, cmd.getBaseCommand());
-		//size = bytes;
+	protected CMD_IgnoredCommand(NUSALSeqCmdType en, byte cmd_byte) {
+		super(en, cmd_byte);
+	}
+	
+	protected CMD_IgnoredCommand(NUSALSeqCmdType en, NUSALSeqCommandBook book) {
+		super(en, book);
+	}
+	
+	public CMD_IgnoredCommand(NUSALSeqCommandDef cmdDef, byte cmd_byte) {
+		super(cmdDef, cmd_byte);
+	}
+	
+	public CMD_IgnoredCommand(NUSALSeqCommandDef cmdDef) {
+		super(cmdDef, cmdDef.getMinCommand());
 	}
 
-	//public int getSizeInBytes() {return size;}
-	
 	public boolean doCommand(NUSALSeq sequence){
 		super.flagSeqUsed();
 		return true;

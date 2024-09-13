@@ -2,6 +2,7 @@ package waffleoRai_SeqSound.n64al.cmd;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
 import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
 import waffleoRai_Utils.BufferReference;
@@ -9,7 +10,7 @@ import waffleoRai_Utils.BufferReference;
 public class LayerCommands {
 	
 	/*--- Parser ---*/
-	public static NUSALSeqCommand parseLayerCommand(BufferReference dat, boolean shortMode){
+	public static NUSALSeqCommand parseLayerCommandOld(BufferReference dat, boolean shortMode){
 		//TODO
 		int cmdi = Byte.toUnsignedInt(dat.getByte());
 		int cmdhi = (cmdi & 0xf0) >>> 4;
@@ -160,7 +161,7 @@ public class LayerCommands {
 		return null;
 	}
 	
-	public static NUSALSeqCommand parseLayerCommand(String cmd, String[] args){
+	public static NUSALSeqCommand parseLayerCommandOld(String cmd, String[] args){
 		/*
 		 * The following commands are not currently supported:
 		 * 	lenvelope
@@ -253,8 +254,60 @@ public class LayerCommands {
 			return new C_L_ShortGateTbl(n);
 		}
 		
-		NUSALSeqCommand command = FCommands.parseFCommand(cmd, args);
+		NUSALSeqCommand command = FCommands.parseFCommandOld(cmd, args);
 		return command;
+	}
+	
+	public static NUSALSeqCommand parseLayerCommand(BufferReference dat, NUSALSeqCommandBook book, boolean shortMode){
+		int[] params = new int[4];
+		int bb = Byte.toUnsignedInt(dat.nextByte());
+		NUSALSeqCommandDef def = book.getLayerCommand((byte)bb, shortMode);
+		NUSALSeqCommand.readBinArgs(params, dat, def, bb);
+		switch(def.getFunctionalType()) {
+		case PLAY_NOTE_NTVG:
+		case PLAY_NOTE_NTV:
+		case PLAY_NOTE_NVG:
+		case SHORT_NOTE_NTVG:
+		case SHORT_NOTE_NTV:
+		case SHORT_NOTE_NVG:
+			return NUSALSeqNoteCommand.fromBinRead(def, params);
+		case REST: return new C_L_Rest(def, params[0]);
+		case L_SHORTVEL: return null; //TODO
+		case L_TRANSPOSE: return null; //TODO
+		case L_SHORTTIME: return null; //TODO
+		case LEGATO_ON: return null; //TODO
+		case LEGATO_OFF: return null; //TODO
+		case L_SET_PROGRAM: return null; //TODO
+		case PORTAMENTO_ON: return null; //TODO
+		case PORTAMENTO_OFF: return null; //TODO
+		case L_SHORTGATE: return null; //TODO
+		case L_PAN: return null; //TODO
+		case L_ENVELOPE: return null; //TODO
+		case DRUMPAN_OFF: return null; //TODO
+		case L_REVERB_PHASE: return null; //TODO
+		case L_PITCHBEND_ALT: return null; //TODO
+		case L_RELEASE: return null; //TODO
+		case SHORTTBL_VEL: return null; //TODO
+		case SHORTTBL_GATE: return null; //TODO
+		
+		case UNRESERVE_NOTES: return new C_UnreserveNotes(def);
+		case RESERVE_NOTES: return new C_ReserveNotes(def, params[0]);
+		case BRANCH_IF_LTZ_REL: return new C_rbltz(params[0], def);
+		case BRANCH_IF_EQZ_REL: return new C_rbeqz(params[0], def);
+		case BRANCH_ALWAYS_REL: return new C_rjump(params[0], def);
+		case BRANCH_IF_GTEZ: return new C_bgez(params[0], def);
+		case BREAK: return new C_Break(def);
+		case LOOP_END: return new C_LoopEnd(def);
+		case LOOP_START: return new C_LoopStart(params[0], def);
+		case BRANCH_IF_LTZ: return new C_bltz(params[0], def);
+		case BRANCH_IF_EQZ: return new C_beqz(params[0], def);
+		case BRANCH_ALWAYS: return new C_Jump(params[0], def);
+		case CALL: return new C_Call(params[0], def);
+		case WAIT: return new C_Wait(def, params[0]);
+		case YIELD: return new C_Yield(def);
+		case END_READ: return new C_EndRead(def);
+		 default: return null;
+		}
 	}
 	
 	/*--- 0x00:0x3f notedvg ---*/
@@ -266,12 +319,22 @@ public class LayerCommands {
 		public C_L_Rest(int ticks) {
 			super(NUSALSeqCmdType.REST, ticks);
 		}
+		public C_L_Rest(NUSALSeqCommandBook book, int ticks) {
+			super(NUSALSeqCmdType.REST, book, ticks);
+		}
+		public C_L_Rest(NUSALSeqCommandDef def, int ticks) {
+			super(def, ticks);
+		}
 	}
 	
 	/*--- 0xc1 shortvel ---*/
 	public static class C_L_ShortVel extends NUSALSeqGenericCommand{
 		public C_L_ShortVel(int value) {
 			super(NUSALSeqCmdType.L_SHORTVEL); 
+			setParam(0, value);
+		}
+		public C_L_ShortVel(NUSALSeqCommandBook book, int value) {
+			super(NUSALSeqCmdType.L_SHORTVEL, book); 
 			setParam(0, value);
 		}
 		public boolean doCommand(NUSALSeqLayer voice){
@@ -287,6 +350,10 @@ public class LayerCommands {
 			super(NUSALSeqCmdType.L_TRANSPOSE); 
 			setParam(0, value);
 		}
+		public C_L_Transpose(NUSALSeqCommandBook book, int value) {
+			super(NUSALSeqCmdType.L_TRANSPOSE, book); 
+			setParam(0, value);
+		}
 		public boolean doCommand(NUSALSeqLayer voice){
 			flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 			voice.setTranspose(getParam(0));
@@ -298,6 +365,10 @@ public class LayerCommands {
 	public static class C_L_ShortDelay extends NUSALSeqGenericCommand{
 		public C_L_ShortDelay(int value) {
 			super(NUSALSeqCmdType.L_SHORTTIME); 
+			setParam(0, value);
+		}
+		public C_L_ShortDelay(NUSALSeqCommandBook book, int value) {
+			super(NUSALSeqCmdType.L_SHORTTIME, book); 
 			setParam(0, value);
 		}
 		public boolean doCommand(NUSALSeqLayer voice){
@@ -312,6 +383,9 @@ public class LayerCommands {
 		public C_L_LegatoOn() {
 			super(NUSALSeqCmdType.LEGATO_ON); 
 		}
+		public C_L_LegatoOn(NUSALSeqCommandBook book) {
+			super(NUSALSeqCmdType.LEGATO_ON, book); 
+		}
 		public boolean doCommand(NUSALSeqLayer voice){
 			flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 			voice.setLegato(true);
@@ -324,6 +398,9 @@ public class LayerCommands {
 		public C_L_LegatoOff() {
 			super(NUSALSeqCmdType.LEGATO_OFF); 
 		}
+		public C_L_LegatoOff(NUSALSeqCommandBook book) {
+			super(NUSALSeqCmdType.LEGATO_OFF, book); 
+		}
 		public boolean doCommand(NUSALSeqLayer voice){
 			flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 			voice.setLegato(false);
@@ -335,6 +412,10 @@ public class LayerCommands {
 	public static class C_L_SetProgram extends NUSALSeqGenericCommand{
 		public C_L_SetProgram(int value) {
 			super(NUSALSeqCmdType.L_SET_PROGRAM); 
+			setParam(0, value);
+		}
+		public C_L_SetProgram(NUSALSeqCommandBook book, int value) {
+			super(NUSALSeqCmdType.L_SET_PROGRAM, book); 
 			setParam(0, value);
 		}
 		public boolean doCommand(NUSALSeqLayer voice){
@@ -352,6 +433,12 @@ public class LayerCommands {
 			setParam(1, target);
 			setParam(2, time);
 		}
+		public C_L_Portamento(NUSALSeqCommandBook book, int mode, int target, int time) {
+			super(NUSALSeqCmdType.PORTAMENTO_ON, book); 
+			setParam(0, mode);
+			setParam(1, target);
+			setParam(2, time);
+		}
 		public boolean doCommand(NUSALSeqLayer voice){
 			flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 			voice.setPortamento(getParam(0), getParam(1), getParam(2));
@@ -362,6 +449,9 @@ public class LayerCommands {
 	/*--- 0xc8 portamentooff ---*/
 	public static class C_L_PortamentoOff extends NUSALSeqGenericCommand{
 		public C_L_PortamentoOff() {
+			super(NUSALSeqCmdType.PORTAMENTO_OFF); 
+		}
+		public C_L_PortamentoOff(NUSALSeqCommandBook book) {
 			super(NUSALSeqCmdType.PORTAMENTO_OFF); 
 		}
 		public boolean doCommand(NUSALSeqLayer voice){
@@ -377,6 +467,10 @@ public class LayerCommands {
 			super(NUSALSeqCmdType.L_SHORTGATE); 
 			setParam(0, value);
 		}
+		public C_L_ShortGate(NUSALSeqCommandBook book, int value) {
+			super(NUSALSeqCmdType.L_SHORTGATE, book); 
+			setParam(0, value);
+		}
 		public boolean doCommand(NUSALSeqLayer voice){
 			flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 			voice.setShortGate((byte)getParam(0));
@@ -390,6 +484,10 @@ public class LayerCommands {
 			super(NUSALSeqCmdType.L_PAN); 
 			setParam(0, value);
 		}
+		public C_L_Pan(NUSALSeqCommandBook book, int value) {
+			super(NUSALSeqCmdType.L_PAN, book); 
+			setParam(0, value);
+		}
 		public boolean doCommand(NUSALSeqLayer voice){
 			flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 			voice.setPan((byte)getParam(0));
@@ -400,7 +498,13 @@ public class LayerCommands {
 	/*--- 0xcb lenvelope ---*/
 	public static class C_L_Envelope extends NUSALSeqDataRefCommand{
 		public C_L_Envelope(int addr, int release) {
-			super(NUSALSeqCmdType.L_ENVELOPE, addr, 16); //I think it's 16? 
+			super(NUSALSeqCmdType.L_ENVELOPE, null, addr, 16); //I think it's 16? 
+			//setParam(0, addr);
+			setParam(1, release);
+			super.setLabelPrefix("env");
+		}
+		public C_L_Envelope(NUSALSeqCommandBook book, int addr, int release) {
+			super(NUSALSeqCmdType.L_ENVELOPE, book, addr, 16); 
 			//setParam(0, addr);
 			setParam(1, release);
 			super.setLabelPrefix("env");
@@ -418,6 +522,9 @@ public class LayerCommands {
 		public C_L_DrumPanOff() {
 			super(NUSALSeqCmdType.DRUMPAN_OFF); 
 		}
+		public C_L_DrumPanOff(NUSALSeqCommandBook book) {
+			super(NUSALSeqCmdType.DRUMPAN_OFF, book); 
+		}
 		public boolean doCommand(NUSALSeqLayer voice){
 			flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 			voice.drumPanOff();
@@ -431,12 +538,20 @@ public class LayerCommands {
 			super(NUSALSeqCmdType.L_REVERB_PHASE);
 			super.setParam(0, val);
 		}
+		public C_L_ReverbPhase(NUSALSeqCommandBook book, int val) {
+			super(NUSALSeqCmdType.L_REVERB_PHASE, book);
+			super.setParam(0, val);
+		}
 	}
 	
 	/*--- 0xce lbend2 ---*/
 	public static class C_L_PitchBendAlt extends NUSALSeqGenericCommand{
 		public C_L_PitchBendAlt(int value) {
 			super(NUSALSeqCmdType.L_PITCHBEND_ALT); 
+			setParam(0, value);
+		}
+		public C_L_PitchBendAlt(NUSALSeqCommandBook book, int value) {
+			super(NUSALSeqCmdType.L_PITCHBEND_ALT, book); 
 			setParam(0, value);
 		}
 		public boolean doCommand(NUSALSeqLayer voice){
@@ -452,6 +567,10 @@ public class LayerCommands {
 			super(NUSALSeqCmdType.L_RELEASE); 
 			setParam(0, value);
 		}
+		public C_L_Release(NUSALSeqCommandBook book, int value) {
+			super(NUSALSeqCmdType.L_RELEASE, book); 
+			setParam(0, value);
+		}
 		public boolean doCommand(NUSALSeqLayer voice){
 			flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 			voice.setRelease(getParam(0));
@@ -465,6 +584,10 @@ public class LayerCommands {
 			super(NUSALSeqCmdType.SHORTTBL_VEL); 
 			setParam(0, idx);
 		}
+		public C_L_ShortVelTbl(NUSALSeqCommandBook book, int idx) {
+			super(NUSALSeqCmdType.SHORTTBL_VEL, book); 
+			setParam(0, idx);
+		}
 		public boolean doCommand(NUSALSeqLayer voice){
 			flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 			voice.setShortVelFromTable(getParam(0));
@@ -476,6 +599,10 @@ public class LayerCommands {
 	public static class C_L_ShortGateTbl extends NUSALSeqGenericCommand{
 		public C_L_ShortGateTbl(int idx) {
 			super(NUSALSeqCmdType.SHORTTBL_GATE); 
+			setParam(0, idx);
+		}
+		public C_L_ShortGateTbl(NUSALSeqCommandBook book, int idx) {
+			super(NUSALSeqCmdType.SHORTTBL_GATE, book); 
 			setParam(0, idx);
 		}
 		public boolean doCommand(NUSALSeqLayer voice){

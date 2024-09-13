@@ -27,6 +27,23 @@ import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_Files.tree.FileNode;
 
+/*
+ * Format
+ * 
+ * CHAR Block
+ * 0x00 [2] Width (in tiles) ?
+ * 0x02 [2] Height (in tiles) ?
+ * 0x04 [1] Bit depth indicator? (3 is 4-bit, 4 is 8-bit?)
+ * 0x05 [3] (Unknown)
+ * 0x08 [8] (Unknown)
+ * 0x10 [4] Size in bytes of bitmap
+ * 0x14 [4] (Unknown)
+ * 0x18 [Var] Bitmap data
+ * 
+ * CPOS Block
+ * 
+ */
+
 public class NCGR extends NDKDSFile{
 	
 	/*----- Constants -----*/

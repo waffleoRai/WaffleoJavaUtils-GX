@@ -19,6 +19,7 @@ import java.util.TreeSet;
 import waffleoRai_SeqSound.n64al.NUSALSeq;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandSource;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
 import waffleoRai_SeqSound.n64al.NUSALSeqDataType;
@@ -65,6 +66,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	private FileBuffer data;
 	private Map<Integer, NUSALSeqCommand> cmdmap;
 	private Map<String, NUSALSeqCommand> lblmap;
+	private NUSALSeqCommandBook cmdBook;
 	//private Map<Integer, Integer> tickmap; //Address -> tick (first tick it can appear at)
 	
 	//Bookkeeping during parsing TODO (new parsing method Oct 2022)
@@ -97,12 +99,64 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	/*--- Initialization ---*/
 	
 	public NUSALSeqReader(){
+		this(SysCommandBook.ZELDA64);
+	}
+	
+	public NUSALSeqReader(SysCommandBook sysBook){
+		if(sysBook == null) throw new IllegalArgumentException("System command book enum cannot be null!");
+		try {
+			cmdBook = sysBook.loadBook();
+		} catch (IOException e) {
+			e.printStackTrace();
+			throw new IllegalArgumentException("Command book load failed!");
+		}
+		initInternal();
+	}
+	
+	public NUSALSeqReader(NUSALSeqCommandBook commandBook){
+		cmdBook = commandBook;
+		if(cmdBook == null) {
+			//Use Zelda defualt
+			try {
+				cmdBook = SysCommandBook.ZELDA64.loadBook();
+			} catch (IOException e) {
+				e.printStackTrace();
+				throw new IllegalArgumentException("Tried to load default command book, but failed!");
+			}
+		}
 		initInternal();
 	}
 	
  	public NUSALSeqReader(FileBuffer seqData){
+		this(seqData, SysCommandBook.ZELDA64);
+	}
+ 	
+ 	public NUSALSeqReader(FileBuffer seqData, SysCommandBook sysBook){
+ 		if(seqData == null) throw new IllegalArgumentException("Data source cannot be null!");
+ 		if(sysBook == null) throw new IllegalArgumentException("System command book enum cannot be null!");
+		data = seqData;
+		try {
+			cmdBook = sysBook.loadBook();
+		} catch (IOException e) {
+			e.printStackTrace();
+			throw new IllegalArgumentException("Command book load failed!");
+		}
+		initInternal();
+	}
+ 	
+ 	public NUSALSeqReader(FileBuffer seqData, NUSALSeqCommandBook commandBook){
 		if(seqData == null) throw new IllegalArgumentException("Data source cannot be null!");
 		data = seqData;
+		cmdBook = commandBook;
+		if(cmdBook == null) {
+			//Use Zelda defualt
+			try {
+				cmdBook = SysCommandBook.ZELDA64.loadBook();
+			} catch (IOException e) {
+				e.printStackTrace();
+				throw new IllegalArgumentException("Tried to load default command book, but failed!");
+			}
+		}
 		initInternal();
 	}
  	
@@ -891,11 +945,11 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  	private NUSALSeqCommand parseCommandAt(int addr, int tick, ParseContext context){
  		NUSALSeqCommand cmd = null;
  		if(context.isSeq()){
-			cmd = SeqCommands.parseSequenceCommand(data.getReferenceAt(addr));
+			cmd = SeqCommands.parseSequenceCommand(data.getReferenceAt(addr), cmdBook);
 			if(cmd != null) cmd.flagSeqUsed();
 		}
 		else if(context.isChannel()){
-			cmd = ChannelCommands.parseChannelCommand(data.getReferenceAt(addr));
+			cmd = ChannelCommands.parseChannelCommand(data.getReferenceAt(addr), cmdBook);
 			if(cmd != null){
 				int ch = context.getChannel();
 				if(ch < 16) cmd.flagChannelUsed(ch);
@@ -979,7 +1033,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  			now_addr += ncmd.getSizeInBytes();
  			
  			//Check if end.
- 			NUSALSeqCmdType ctype = ncmd.getCommand();
+ 			NUSALSeqCmdType ctype = ncmd.getFunctionalType();
  			if(ctype == NUSALSeqCmdType.END_READ){
  				res.end_type = BRANCHEND_END;
  				break;

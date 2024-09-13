@@ -19,6 +19,18 @@ import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
 import waffleoRai_Files.tree.FileNode;
 
+/*
+ * Format:
+ * 
+ * TTLP
+ * 	[2] ?
+ * 	[2] ?
+ * 	[4] ?
+ * 	[4] Palette Data Size
+ * 	[4] Palette Entries
+ * 
+ */
+
 public class NCLR extends NDKDSFile{
 	
 	/*----- Constants -----*/
@@ -63,6 +75,9 @@ public class NCLR extends NDKDSFile{
 			for(int i = 0; i < pcount; i++)ids[i] = pmcp.nextShort();	
 		}
 		
+		//TODO I have a 4 in the first header field in a clearly 4-bit palette.
+		// This can't be the same bit depth marker.
+		
 		//Read Palette Data
 		FileBuffer ttlp = me.getSectionData(MAGIC_TTLP);
 		ttlp.skipBytes(8);
@@ -72,7 +87,7 @@ public class NCLR extends NDKDSFile{
 		else if (bid == 4) bit8 = true;
 		ttlp.skipBytes(4);
 		int datsz = ttlp.nextInt();
-		if((0x200 - datsz) > 0) datsz = 0x200-datsz;
+		//if((0x200 - datsz) > 0) datsz = 0x200-datsz;
 		if(pmcp == null){
 			//Calculate palette count from data size
 			int psize = 0x20; //4 bit

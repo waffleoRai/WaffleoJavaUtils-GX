@@ -12,8 +12,8 @@ import waffleoRai_soundbank.adsr.EnvelopeStreamer;
 import waffleoRai_soundbank.adsr.Release;
 import waffleoRai_soundbank.adsr.Sustain;
 import waffleoRai_soundbank.vab.PSXVAB;
-import waffleoRai_soundbank.vab.PSXVAB.Program;
-import waffleoRai_soundbank.vab.PSXVAB.Tone;
+import waffleoRai_soundbank.vab.VABProgram;
+import waffleoRai_soundbank.vab.VABTone;
 
 public class VABSynthSampleStream extends SynthSampleStream{
 
@@ -72,7 +72,7 @@ public class VABSynthSampleStream extends SynthSampleStream{
 	
 	/* ----- Construction ----- */
 	
-	public VABSynthSampleStream(AudioSampleStream src, PSXVAB bank, Program prog, Tone tone, byte key, byte vel, float outSampleRate) throws InterruptedException
+	public VABSynthSampleStream(AudioSampleStream src, PSXVAB bank, VABProgram prog, VABTone tone, byte key, byte vel, float outSampleRate) throws InterruptedException
 	{
 		//TODO
 		//source = src;

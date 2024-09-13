@@ -2,6 +2,7 @@ package waffleoRai_SeqSound.n64al.cmd;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
 
 public class NUSALSeqNoteCommand extends NUSALSeqCommand{
@@ -17,6 +18,10 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 	
 	private NUSALSeqNoteCommand(NUSALSeqCmdType type, byte cmdbyte){
 		super(type,cmdbyte);
+	}
+	
+	private NUSALSeqNoteCommand(NUSALSeqCommandDef def){
+		super(def);
 	}
 	
 	public NUSALSeqNoteCommand(byte midi_note, int pitch_shift, int time, byte velocity, byte gate){
@@ -125,9 +130,49 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		return cmd;
 	}
 	
+	public static NUSALSeqNoteCommand fromBinRead(NUSALSeqCommandDef def, int[] params) {
+		NUSALSeqNoteCommand cmd = new NUSALSeqNoteCommand(def);
+		cmd.setParam(0, params[0]);
+		switch(def.getFunctionalType()) {
+			case PLAY_NOTE_NTVG:
+				cmd.idx_time = 1; cmd.setParam(1, params[1]);
+				cmd.idx_vel = 2; cmd.setParam(2, params[2]);
+				cmd.idx_gate = 3; cmd.setParam(3, params[3]);
+				break;
+			case PLAY_NOTE_NTV:
+				cmd.idx_time = 1; cmd.setParam(1, params[1]);
+				cmd.idx_vel = 2; cmd.setParam(2, params[2]);
+				cmd.idx_gate = -1;
+				break;
+			case PLAY_NOTE_NVG:
+				cmd.idx_time = -1;
+				cmd.idx_vel = 1; cmd.setParam(1, params[1]);
+				cmd.idx_gate = 2; cmd.setParam(2, params[2]);
+				break;
+			case SHORT_NOTE_NTVG:
+				cmd.idx_time = 1; cmd.setParam(1, params[1]);
+				cmd.idx_vel = -2;
+				cmd.idx_gate = -2;
+				break;
+			case SHORT_NOTE_NTV:
+				cmd.idx_time = -2; //Layer value
+				cmd.idx_vel = -2;
+				cmd.idx_gate = -1; //Last value
+				break;
+			case SHORT_NOTE_NVG:
+				cmd.idx_time = -1;
+				cmd.idx_vel = -2;
+				cmd.idx_gate = -2;
+				break;
+			default: return null;
+		}
+
+		return cmd;
+	}
+	
 	public byte getMidiNote(){return tru_midi;}
 	public int getSetPitchShift(){return p_shamt;}
-	public byte getVelocity(){return (byte)super.getParam(idx_vel);}
+	public int getVelocity(){return (idx_vel < 0) ? -1 : super.getParam(idx_vel);}
 	
 	public void setEnvironmentalPitchShift(int val){
 		//Update the NUSAL note & command byte
@@ -145,6 +190,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 	public int getTime(){
 		int itr = 0; //Break if it gets ridiculous
 		if(idx_time < 0){
+			if(idx_time == -2) return -1;
 			NUSALSeqCommand prev = getPreviousCommand();
 			while(prev != null){
 				if(prev instanceof NUSALSeqNoteCommand){
@@ -164,19 +210,37 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		return super.getParam(idx_time);
 	}
 	
-	public byte getGate(){return (byte)super.getParam(idx_gate);}
+	public int getGate(){return (idx_gate < 0) ? -1 : super.getParam(idx_gate);}
 	
-	public boolean ntvg2ntv(){
-		if(super.getCommand() != NUSALSeqCmdType.PLAY_NOTE_NTVG) return false;
-		int[] oldargs = super.restructureCommand(NUSALSeqCmdType.PLAY_NOTE_NTV, (byte)(super.getCommandByte() + 0x40));
+	public boolean ntvg2ntv(NUSALSeqCommandBook cmdbook){
+		NUSALSeqCommandDef d = super.getCommandDef();
+		if(d == null) return false;
+		NUSALSeqCmdType t = d.getFunctionalType();
+		if(t != NUSALSeqCmdType.PLAY_NOTE_NTVG) return false;
+		
+		if(cmdbook == null) cmdbook = SysCommandBook.ZELDA64.getBook();
+		if(cmdbook == null) return false;
+		d = cmdbook.getLayerCommand(NUSALSeqCmdType.PLAY_NOTE_NTV);
+		if(d == null) return false;
+		
+		int[] oldargs = super.restructureCommand(d, (byte)(super.getCommandByte() + 0x40));
 		for(int i = 0; i < 3; i++) super.setParam(i, oldargs[i]);
 		idx_gate = -1;
 		return true;
 	}
 	
-	public boolean ntvg2nvg(){
-		if(super.getCommand() != NUSALSeqCmdType.PLAY_NOTE_NTVG) return false;
-		int[] oldargs = super.restructureCommand(NUSALSeqCmdType.PLAY_NOTE_NVG, (byte)(super.getCommandByte() + 0x80));
+	public boolean ntvg2nvg(NUSALSeqCommandBook cmdbook){
+		NUSALSeqCommandDef d = super.getCommandDef();
+		if(d == null) return false;
+		NUSALSeqCmdType t = d.getFunctionalType();
+		if(t != NUSALSeqCmdType.PLAY_NOTE_NTVG) return false;
+		
+		if(cmdbook == null) cmdbook = SysCommandBook.ZELDA64.getBook();
+		if(cmdbook == null) return false;
+		d = cmdbook.getLayerCommand(NUSALSeqCmdType.PLAY_NOTE_NVG);
+		if(d == null) return false;
+		
+		int[] oldargs = super.restructureCommand(d, (byte)(super.getCommandByte() + 0x80));
 		super.setParam(0, oldargs[0]);
 		super.setParam(1, oldargs[2]);
 		super.setParam(2, oldargs[3]);
@@ -184,10 +248,19 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		return true;
 	}
 	
-	public boolean nvg2ntvg(){
-		if(super.getCommand() != NUSALSeqCmdType.PLAY_NOTE_NVG) return false;
+	public boolean nvg2ntvg(NUSALSeqCommandBook cmdbook){
+		NUSALSeqCommandDef d = super.getCommandDef();
+		if(d == null) return false;
+		NUSALSeqCmdType t = d.getFunctionalType();
+		if(t != NUSALSeqCmdType.PLAY_NOTE_NVG) return false;
+		
+		if(cmdbook == null) cmdbook = SysCommandBook.ZELDA64.getBook();
+		if(cmdbook == null) return false;
+		d = cmdbook.getLayerCommand(NUSALSeqCmdType.PLAY_NOTE_NTVG);
+		if(d == null) return false;
+		
 		int time = getTime(); //Try to get time
-		int[] oldargs = super.restructureCommand(NUSALSeqCmdType.PLAY_NOTE_NTVG, (byte)(super.getCommandByte() & 0x3F));
+		int[] oldargs = super.restructureCommand(d, (byte)(super.getCommandByte() & 0x3F));
 		super.setParam(0, oldargs[0]);
 		super.setParam(1, time);
 		super.setParam(2, oldargs[1]);
@@ -241,22 +314,30 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 	
 	public boolean doCommand(NUSALSeqLayer voice){
 		if(voice == null) return false;
-		if(idx_time < 0){
-			voice.playNote(getCommandNote(), getVelocity(), getGate());
-		}
-		else if(idx_gate < 0){
-			voice.playNote(getCommandNote(), getVelocity(), getTime());
-		}
-		else{
+		if(idx_vel == -2 || idx_time == -2 || idx_gate == -2) {
+			//Short note
 			voice.playNote(getCommandNote(), getVelocity(), getGate(), getTime());
+		}
+		else {
+			if(idx_time < 0){
+				voice.playNoteNVG(getCommandNote(), getVelocity(), getGate());
+			}
+			else if(idx_gate < 0){
+				voice.playNoteNDV(getCommandNote(), getVelocity(), getTime());
+			}
+			else{
+				voice.playNote(getCommandNote(), getVelocity(), getGate(), getTime());
+			}	
 		}
 		super.flagLayerUsed(voice.getChannelIndex(), voice.getLayerIndex());
 		return true;
 	}
 	
-	protected StringBuilder toMMLCommand_child(){
+	protected StringBuilder toMMLCommand_child(int syntax){
 		StringBuilder sb = new StringBuilder(256);
-		sb.append(super.getCommand().toString());
+		NUSALSeqCommandDef def = super.getCommandDef();
+		if(def != null) sb.append(def.getMnemonic(syntax));
+		else sb.append("<NULL DEF>");
 		sb.append(' ');
 		sb.append(super.getParam(0));
 		
@@ -270,7 +351,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		
 		if(idx_gate >= 0){
 			sb.append(", ");
-			sb.append(Byte.toUnsignedInt(getGate()));
+			sb.append(getGate());
 		}
 		return sb;
 	}
@@ -293,7 +374,7 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		//Gate, if applicable
 		if(idx_gate >= 0){
 			sb.append(", g");
-			sb.append(Byte.toUnsignedInt(getGate()));
+			sb.append(getGate());
 		}
 		
 		return sb.toString();

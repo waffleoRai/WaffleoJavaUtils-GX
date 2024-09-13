@@ -17,7 +17,7 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 	private LinkedList<NUSALSeqCommand> commands;
 	
 	public NUSALSeqCommandChunk() {
-		super(NUSALSeqCmdType.MULTI_EVENT_CHUNK, (byte)0x00);
+		super(NUSALSeqCommandDef.getChunkDummyDef(), (byte)0x00);
 		commands = new LinkedList<NUSALSeqCommand>();
 	}
 
@@ -144,11 +144,14 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 			if(cmd instanceof NUSALSeqCommandChunk){
 				((NUSALSeqCommandChunk)cmd).linearizeTo(cmdlist);
 			}
-			else if(cmd.getCommand().flagSet(NUSALSeqCommands.FLAG_CALL)){
-				//TODO Maybe I'll do this eventually, but it would require duplication and eh.
-				cmdlist.add(cmd);
+			else {
+				NUSALSeqCommandDef def = cmd.getCommandDef();
+				if(def != null && def.flagsSet(NUSALSeqCommands.FLAG_CALL)) {
+					//TODO Maybe I'll do this eventually, but it would require duplication and eh.
+					cmdlist.add(cmd);
+				}
+				else cmdlist.add(cmd);
 			}
-			else cmdlist.add(cmd);
 		}
 	}
 	
@@ -165,13 +168,14 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		commands = new LinkedList<NUSALSeqCommand>();
 		NUSALSeqCmdType ctype = null;
 		for(NUSALSeqCommand cmd : old){
-			ctype = cmd.getCommand();
-			if(ctype.flagSet(NUSALSeqCommands.FLAG_ISWAIT) || cmd instanceof NUSALSeqNoteCommand){
-				if(cmd.getSizeInTicks() > 0) commands.add(cmd);
+			ctype = cmd.getFunctionalType();
+			if(ctype != null) {
+				if(ctype.flagSet(NUSALSeqCommands.FLAG_ISWAIT) || cmd instanceof NUSALSeqNoteCommand){
+					if(cmd.getSizeInTicks() > 0) commands.add(cmd);
+				}
+				else commands.add(cmd);
 			}
-			else{
-				commands.add(cmd);
-			}
+			else commands.add(cmd);
 		}
 		linkSequentialCommands();
 	}
@@ -192,10 +196,10 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		for(NUSALSeqCommand cmd : commands) cmd.mapByAddress(map);
 	}
 	
-	public String toMMLCommand(boolean comment_addr){
+	public String toMMLCommand(boolean comment_addr, int syntax){
 		String out = "";
 		for(NUSALSeqCommand cmd : commands){
-			out += cmd.toMMLCommand(comment_addr) + "\n";
+			out += cmd.toMMLCommand(comment_addr, syntax) + "\n";
 		}
 		return out;
 	}

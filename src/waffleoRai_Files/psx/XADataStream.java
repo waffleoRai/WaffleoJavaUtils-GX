@@ -5,7 +5,7 @@ import java.io.IOException;
 import waffleoRai_Sound.psx.PSXXAStream;
 import waffleoRai_Utils.FileBuffer;
 
-public class XADataStream {
+public class XADataStream implements IXAAudioDataSource{
 
 	/*----- Constants -----*/
 	
@@ -104,6 +104,10 @@ public class XADataStream {
 	
 	public boolean isDone(){return done;}
 	
+	public FileBuffer peekSector(){
+		return peekSector(false);
+	}
+	
 	public FileBuffer peekSector(boolean copy){
 		try {
 			if(copy) return src.createCopy(cpos, cpos+SEC_SIZE);
@@ -114,6 +118,10 @@ public class XADataStream {
 		}
 		
 		return null;
+	}
+	
+	public FileBuffer nextSectorBuffer(){
+		return nextSectorBuffer(false);
 	}
 	
 	public FileBuffer nextSectorBuffer(boolean copy){
@@ -151,6 +159,13 @@ public class XADataStream {
 		
 		return src.getBytes(cpos-SEC_SIZE, cpos);
 	}
+	
+	/*----- Interface -----*/
+	
+	public boolean audioDataOnly() {return false;}
+	public int getSampleRate() {return 0;}
+	public int getBitDepth() {return 0;}
+	public int getChannelCount() {return 0;}
 	
 	/*----- Setters -----*/
 	

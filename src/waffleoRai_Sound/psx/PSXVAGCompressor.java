@@ -5,6 +5,8 @@ public class PSXVAGCompressor {
 	//This comes from reverse engineering ENCVAG.DLL from the PS1 SDK version 4.4
 	//	(Also using ENCVAG.H of course)
 	
+	//Debugging with help from https://github.com/eurotools/es-ps2-vag-tool/PS2VagTool/Vag%20Functions/SonyVagEncoder.cs
+	
 	/*Yeah also turns out Ghidra isn't that amazing at decomping x86 FPU code
 	 so I had basically do it from assembly
 		2/10 don't recommend
@@ -14,15 +16,17 @@ public class PSXVAGCompressor {
 	/* ----- Constants ----- */
 	
 	private double COEFF_TABLE_FLOAT[][] = {{0.0, 0.0},
-										    {-0.9375, 0.0},
-										    {-1.796875, 0.8125},
-										    {-1.53125, 0.859375},
-										    {-1.90625, 0.9375}};
+										    {-60.0 / 64.0, 0.0},
+										    {-115.0 / 64.0, 52.0 / 64.0},
+										    {-98.0 / 64.0, 55.0 / 64.0},
+										    {-122.0 / 64.0, 60.0 / 64.0}};
 		
 	/* ----- Instance Variables ----- */
 	
 	private short lastIn1 = 0;
 	private short lastIn2 = 0;
+	private double lastInD1 = 0.0;
+	private double lastInD2 = 0.0;
 	private double lastOut1 = 0.0;
 	private double lastOut2 = 0.0;
 	
@@ -39,6 +43,7 @@ public class PSXVAGCompressor {
 	public void init(int encmode){
 		lastIn1 = 0; lastIn2 = 0;
 		lastOut1 = 0.0; lastOut2 = 0.0;
+		lastInD1 = 0.0; lastInD2 = 0.0;
 		lastAmp1 = 0.0;
 		unk_1ff68 = 0.0;
 		lastErrors = new double[4];
@@ -124,46 +129,66 @@ public class PSXVAGCompressor {
 	private double[] testCoeffs(double[] vec_in){
 		//func_10016c0
 
-		double st0 = 0.0;
 		int tempi = 0;
 		
 		double lastAbs = 0.0;
-		double scaledMaxAmp = Double.MAX_VALUE;
+		double min = Double.MAX_VALUE;
 		double[] maxAmp = new double[5];
 		
 		double[][] testSamples = new double[5][28];
 		
+		double s1 = 0.0;
+		double s2 = 0.0;
 		for(int i = 0; i < 5; i++){
 			lastAbs = lastAmp1;
 			maxAmp[i] = 0.0;
 			
+			s1 = lastInD1;
+			s2 = lastInD2;
+			
 			for(int j = 0; j < 28; j++){
-				double val = unk_1ff68 * COEFF_TABLE_FLOAT[i][0];
+				double smpl = (double)vec_in[j];
+				double val = smpl;
+				if(val > (double)0x77ff) val = 0x77ff;
+				if(val < (double)-0x7800) val = -0x7800;
+				
+				val += s1 * COEFF_TABLE_FLOAT[i][0];
+				val += s2 * COEFF_TABLE_FLOAT[i][1];
+				
+				testSamples[i][j] = val;
+			
+				if(val < 0.0) val = -val;
+				if(val > maxAmp[i]) maxAmp[i] = val;
+				s2 = s1;
+				s1 = smpl;
+				
+				/*double val = unk_1ff68 * COEFF_TABLE_FLOAT[i][0];
 				val += lastAbs * COEFF_TABLE_FLOAT[i][1];
 				val += vec_in[j];
 				testSamples[i][j] = val;
 				
 				if(val < 0.0) val = -val;
 				if(val > maxAmp[i]) maxAmp[i] = val;
-				lastAbs = val;
+				lastAbs = val;*/
 			}
 			
 			double cmp = modeFactors[i] * maxAmp[i];
-			st0 = cmp;
-			if(scaledMaxAmp >= cmp){
+			unk_1ff68 = cmp;
+			if(min > cmp){
 				tblIdx = i;
-				scaledMaxAmp = cmp;
+				min = cmp;
 			}
 			
-			if((i == 0) && (maxAmp[i] < 7.0)){
+			if(min <= (7.0 * modeFactors[i])){
 				tblIdx = 0;
-				st0 = maxAmp[i];
+				unk_1ff68 = maxAmp[i];
 				break;
 			}
 		}
+		lastInD1 = s1;
+		lastInD2 = s2;
 		
-		unk_1ff68 = st0;
-		lastAmp1 = lastAbs;
+		//lastAmp1 = lastAbs;
 		
 		double[] vec_out = new double[28];
 		for(int j = 0; j < 28; j++){
@@ -198,13 +223,13 @@ public class PSXVAGCompressor {
 		int samp = 0;
 		
 		for(int i = 0; i < 28; i++){
-			temp0 = lastErrors[1] * COEFF_TABLE_FLOAT[tblIdx][0];
-			temp0 += lastErrors[0] * COEFF_TABLE_FLOAT[tblIdx][1];
+			temp0 = lastErrors[1] * COEFF_TABLE_FLOAT[tblIdx][1];
+			temp0 += lastErrors[0] * COEFF_TABLE_FLOAT[tblIdx][0];
 			//temp0 *= vec_in[i];
 			temp0 += vec_in[i];
 			sampd = temp0 * scale;
 			
-			samp = (int)Math.round(sampd);
+			samp = (int)sampd;
 			samp += 0x800;
 			samp &= ~0xfff;
 			if(samp > 0x7fff) samp = 0x7fff;
@@ -352,4 +377,15 @@ public class PSXVAGCompressor {
 		return outdata;
 	}
 
+	public static byte[] encodeXA(short[][] samples, int encmode) {
+		if(samples == null) return null;
+		int chCount = samples.length;
+		byte[][] data = new byte[chCount][];
+		for(int c = 0; c < chCount; c++) {
+			data[c] = encode(samples[c], encmode, -1, -1);
+		}
+		
+		return PSXXAAudio.bitReorder_smpl2str(data);
+	}
+	
 }

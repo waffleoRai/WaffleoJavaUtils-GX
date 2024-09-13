@@ -10,7 +10,7 @@ public class NUSALSeqCopyCommand extends NUSALSeqCommand{
 	private NUSALSeqCommand trg;
 	
 	public NUSALSeqCopyCommand(NUSALSeqCommand cmd) {
-		super(cmd.getCommand(), cmd.getCommandByte());
+		super(cmd.getCommandDef(), cmd.getCommandByte());
 		trg = cmd;
 	}
 	
@@ -26,7 +26,7 @@ public class NUSALSeqCopyCommand extends NUSALSeqCommand{
 	
 	public String[][] getParamStrings(){return trg.getParamStrings();}
 	public String toString(){return trg.toString();}
-	public String toMMLCommand(){return trg.toMMLCommand();}
+	public String toMMLCommand(int syntax){return trg.toMMLCommand(syntax);}
 	public byte[] serializeMe(){return trg.serializeMe();}
 
 }

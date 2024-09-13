@@ -21,8 +21,9 @@ public class DSRLE {
 	
 	public static final int COMPDEF_ID = 0x98573947;
 	
-	private static void decode(StreamWrapper input, StreamWrapper out){
-		while(!input.isEmpty()){
+	private static void decode(StreamWrapper input, StreamWrapper out, int wmax){
+		int wcount = 0;
+		while(!input.isEmpty() && (wmax < 0 || wcount < wmax)){
 			//Read info byte...
 			int header = input.getFull();
 			boolean comp = (header & 0x80) != 0;
@@ -36,6 +37,7 @@ public class DSRLE {
 				amt++;
 				for(int i = 0; i < amt; i++) out.put(input.get());
 			}
+			wcount += amt;
 		}
 		
 	}
@@ -44,7 +46,7 @@ public class DSRLE {
 		ByteBufferStreamer in = ByteBufferStreamer.wrap(input); //Init Input
 		ByteBufferStreamer output = new ByteBufferStreamer(alloc);
 		
-		decode(in, output);
+		decode(in, output, alloc);
 		output.rewind();
 		return output;
 	}
@@ -53,7 +55,7 @@ public class DSRLE {
 		ByteBufferStreamer in = ByteBufferStreamer.wrap(input); //Init Input
 		ByteBufferStreamer output = new ByteBufferStreamer(alloc);
 		
-		decode(in, output);
+		decode(in, output, alloc);
 		output.rewind();
 		return output;
 	}
@@ -61,7 +63,7 @@ public class DSRLE {
 	public static StreamWrapper decode(StreamWrapper input, int alloc){
 		ByteBufferStreamer output = new ByteBufferStreamer(alloc);
 		
-		decode(input, output);
+		decode(input, output, alloc);
 		output.rewind();
 		return output;
 	}
@@ -69,7 +71,7 @@ public class DSRLE {
 	public static boolean decodeTo(StreamWrapper input, OutputStream output){
 		if(output == null) return false;
 		if(input == null) return false;
-		decode(input, new FileOutputStreamer(output));
+		decode(input, new FileOutputStreamer(output), -1);
 		
 		return true;
 	}
@@ -100,7 +102,7 @@ public class DSRLE {
 			}
 			try{
 				BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(bufferPath));
-				DSRLE.decode(input, new FileOutputStreamer(bos));
+				DSRLE.decode(input, new FileOutputStreamer(bos), -1);
 				bos.close();
 			}
 			catch(IOException ex){
@@ -118,7 +120,7 @@ public class DSRLE {
 				}
 				
 				BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(bufferPath));
-				DSRLE.decode(new FileInputStreamer(input), new FileOutputStreamer(bos));
+				DSRLE.decode(new FileInputStreamer(input), new FileOutputStreamer(bos), -1);
 				bos.close();
 			}
 			catch(IOException ex){
@@ -136,7 +138,7 @@ public class DSRLE {
 				BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(bufferPath));
 				FileBuffer inbuff = input.getBuffer();
 				inbuff.setCurrentPosition(input.getBufferPosition());
-				DSRLE.decode(new FileBufferStreamer(inbuff), new FileOutputStreamer(bos));
+				DSRLE.decode(new FileBufferStreamer(inbuff), new FileOutputStreamer(bos), -1);
 				bos.close();
 			}
 			catch(IOException ex){
@@ -153,10 +155,10 @@ public class DSRLE {
 				for(int i = 0; i < 4; i++) dshead.addToFile(input.get());
 				
 				DSCompHeader chead = DSCompHeader.read(dshead, 0);
-				allocAmount = chead.getDecompressedSize();
+				if(allocAmount <= 0) allocAmount = chead.getDecompressedSize();
 			}
 			FileBuffer buff = new FileBuffer(allocAmount, false);
-			DSRLE.decode(input, new FileBufferStreamer(buff));
+			DSRLE.decode(input, new FileBufferStreamer(buff), allocAmount);
 			
 			return buff;
 		}
@@ -173,10 +175,10 @@ public class DSRLE {
 				}
 				
 				DSCompHeader chead = DSCompHeader.read(dshead, 0);
-				allocAmount = chead.getDecompressedSize();
+				if(allocAmount <= 0) allocAmount = chead.getDecompressedSize();
 			}
 			FileBuffer buff = new FileBuffer(allocAmount, false);
-			DSRLE.decode(new FileInputStreamer(input), new FileBufferStreamer(buff));
+			DSRLE.decode(new FileInputStreamer(input), new FileBufferStreamer(buff), allocAmount);
 			
 			return buff;
 		}
@@ -187,12 +189,12 @@ public class DSRLE {
 				for(int i = 0; i < 4; i++) dshead.addToFile(Byte.toUnsignedInt(input.nextByte()));
 				
 				DSCompHeader chead = DSCompHeader.read(dshead, 0);
-				allocAmount = chead.getDecompressedSize();
+				if(allocAmount <= 0) allocAmount = chead.getDecompressedSize();
 			}
 			FileBuffer buff = new FileBuffer(allocAmount, false);
 			FileBuffer inbuff = input.getBuffer();
 			inbuff.setCurrentPosition(input.getBufferPosition());
-			DSRLE.decode(new FileBufferStreamer(inbuff), new FileBufferStreamer(buff));
+			DSRLE.decode(new FileBufferStreamer(inbuff), new FileBufferStreamer(buff), allocAmount);
 			
 			return buff;
 		}

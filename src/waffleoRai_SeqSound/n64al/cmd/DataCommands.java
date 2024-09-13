@@ -164,7 +164,10 @@ public class DataCommands {
 		else if(cmdtype == NUSALSeqCmdType.LOAD_SHORTTBL_VEL){
 			return NUSALSeqDataType.VEL_TABLE;
 		}
-		else if(cmdtype == NUSALSeqCmdType.STORE_TO_SELF){
+		else if(cmdtype == NUSALSeqCmdType.STORE_TO_SELF_S){
+			return NUSALSeqDataType.BUFFER;
+		}
+		else if(cmdtype == NUSALSeqCmdType.STORE_TO_SELF_C){
 			return NUSALSeqDataType.BUFFER;
 		}
 		else if(cmdtype == NUSALSeqCmdType.SET_CH_FILTER){
@@ -205,10 +208,11 @@ public class DataCommands {
 		NUSALSeqCommand next = cmd.getSubsequentCommand();
 		NUSALSeqCommand ref = null;
 		while(next != null){
-			switch(next.getCommand()){
+			switch(next.getFunctionalType()){
 			case LOAD_SAMPLE:
 			case STORE_CHIO:
-			case STORE_IO:
+			case STORE_IO_S:
+			case STORE_IO_C:
 			case VOICE_OFFSET_TABLE:
 			case DYNTABLE_READ:
 			case DYNTABLE_LOAD:
@@ -218,7 +222,8 @@ public class DataCommands {
 				return next;
 			case LOAD_FROM_SELF:
 				return guessQUsage(next);
-			case STORE_TO_SELF:
+			case STORE_TO_SELF_S:
+			case STORE_TO_SELF_C:
 				ref = next.getBranchTarget();
 				if(ref != null){
 					return ref;
@@ -243,7 +248,7 @@ public class DataCommands {
 		NUSALSeqCommand next = cmd.getSubsequentCommand();
 		NUSALSeqCommand ref = null;
 		while(next != null){
-			switch(next.getCommand()){
+			switch(next.getFunctionalType()){
 			case STORE_TO_SELF_P:
 				//See what the stps is modifying.
 				//Might be a command param
@@ -269,7 +274,7 @@ public class DataCommands {
 		NUSALSeqCommand ret = null;
 		next = cmd.getSubsequentCommand();
 		while(next != null){
-			switch(next.getCommand()){
+			switch(next.getFunctionalType()){
 			case VOICE_OFFSET_TABLE:
 				return next;
 			case DYNTABLE_READ:
@@ -304,7 +309,7 @@ public class DataCommands {
  			//Look for one we can use to figure it out.
  			//These are commands likely to reference the table itself.
  			//	What the table is for might not be in that command, but a nearby one.
- 			switch(referee.getCommand()){
+ 			switch(referee.getFunctionalType()){
  			case CALL_TABLE: 
  				//Probably seq subroutines.
  				return referee;

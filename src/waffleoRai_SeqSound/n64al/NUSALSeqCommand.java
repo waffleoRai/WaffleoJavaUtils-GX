@@ -8,10 +8,17 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
+import waffleoRai_SeqSound.n64al.NUSALSeq.InvalidCommandBookException;
+import waffleoRai_SeqSound.n64al.cmd.NUSALSeqCommandDef;
+import waffleoRai_SeqSound.n64al.cmd.NUSALSeqReader;
 import waffleoRai_SeqSound.n64al.cmd.STSResult;
+import waffleoRai_SeqSound.n64al.cmd.SysCommandBook;
+import waffleoRai_Utils.BufferReference;
 import waffleoRai_Utils.FileBuffer;
 
 public abstract class NUSALSeqCommand {
+	
+	/*----- Constants -----*/
 	
 	protected static final STSResult[] STS_RES_PRI = 
 		{STSResult.FAIL, STSResult.REPARSE, STSResult.INVALID, STSResult.RELINK, STSResult.OKAY, STSResult.OUTSIDE};
@@ -33,8 +40,15 @@ public abstract class NUSALSeqCommand {
 	public static final int SERIALFMT_NOTE = 13;
 	public static final int SERIALFMT_CPARAMS = 14;
 	public static final int SERIALFMT_COPYFILTER = 15;
+	public static final int SERIALFMT_SNOTE = 16;
+	public static final int SERIALFMT_Lp8 = 17;
+	public static final int SERIALFMT_Lp81 = 18;
+	public static final int SERIALFMT_Lp82 = 19;
 	
-	private NUSALSeqCmdType command;
+	/*----- Instance Variables -----*/
+	
+	//private NUSALSeqCmdType command;
+	private NUSALSeqCommandDef def;
 	private byte cmdbyte;
 	private int[] params;
 	
@@ -52,35 +66,83 @@ public abstract class NUSALSeqCommand {
 	private NUSALSeqCommand prev_cmd = null;
 	private List<NUSALSeqCommand> referees;
 	
-	public NUSALSeqCommand(NUSALSeqCmdType cmd, byte cmd_byte){
+	/*----- Init -----*/
+	
+	public NUSALSeqCommand(NUSALSeqCommandDef cmdDef) {
+		this(cmdDef, cmdDef.getMinCommand());
+	}
+	
+	public NUSALSeqCommand(NUSALSeqCommandDef cmdDef, byte cmd_byte){
 		cmdbyte = cmd_byte;
-		command = cmd;
-		if(cmd.getParameterCount() > 0) params = new int[cmd.getParameterCount()];
+		def = cmdDef;
+		if(cmdDef.getParamCount() > 0) params = new int[cmdDef.getParamCount()];
 		ch_ctx = new TreeSet<Integer>();
 		seq_ctx = false;
 		onInit();
 	}
 	
-	protected void onInit(){}
+	protected NUSALSeqCommand(NUSALSeqCmdType funcCmd, byte cmd_byte) {
+		this(funcCmd, null, cmd_byte);
+	}
+
+	protected NUSALSeqCommand(NUSALSeqCmdType funcCmd, NUSALSeqCommandBook book) {
+		if(book == null) book = SysCommandBook.ZELDA64.getBook();
+		if(book == null) throw new InvalidCommandBookException("NUSALSeqCommand.<init> || Could not retrieve valid command book");
+		
+		def = book.getCommand(funcCmd);
+		if(def == null ) throw new InvalidCommandBookException("NUSALSeqCommand.<init> || Could not retrieve valid command definition");
+		
+		if(def.getParamCount() > 0) params = new int[def.getParamCount()];
+		ch_ctx = new TreeSet<Integer>();
+		seq_ctx = false;
+		onInit();	
+	}
 	
-	protected int[] restructureCommand(NUSALSeqCmdType newtype, byte cmd_byte){
+	protected NUSALSeqCommand(NUSALSeqCmdType funcCmd, NUSALSeqCommandBook book, byte cmd_byte) {
+		this(funcCmd, book);
+		cmdbyte = cmd_byte;
+	}
+	
+	protected void onInit(){}
+		
+	/*----- Internal Utils -----*/
+	
+	protected void reallocParamArray(int size){params = new int[size];}
+	
+	protected int[] restructureCommand(NUSALSeqCommandDef cmdDef, byte cmd_byte){
 		int[] oldparams = params;
 		cmdbyte = cmd_byte;
-		command = newtype;
-		if(newtype.getParameterCount() > 0) params = new int[newtype.getParameterCount()];
+		//command = newtype;
+		//if(newtype.getParameterCount() > 0) params = new int[newtype.getParameterCount()];
+		def = cmdDef;
+		if(cmdDef.getParamCount() > 0) params = new int[cmdDef.getParamCount()];
 		else params = null;
 		return oldparams;
 	}
 	
-	public NUSALSeqCmdType getCommand(){return command;}
-	public byte getCommandByte(){return cmdbyte;}
-	protected void setCommand(NUSALSeqCmdType cmd){command = cmd;}
-	protected void setCommandByte(byte b){cmdbyte = b;}
-	protected void reallocParamArray(int size){params = new int[size];}
+	/*----- Getters -----*/
 	
+	public NUSALSeqCommandDef getCommandDef(){return def;}
+	public byte getCommandByte(){return cmdbyte;}
 	public NUSALSeqCommand getSubsequentCommand(){return next_cmd;}
 	public NUSALSeqCommand getPreviousCommand(){return prev_cmd;}
-	public void setReference(NUSALSeqCommand target){}
+	public boolean seqUsed(){return seq_ctx;}
+	public int getAddress(){return address;}
+	public int getTickAddress(){return tick_addr;}
+	public String getLabel(){return label;}
+	public boolean isBranch(){return false;}
+	public boolean isRelativeBranch(){return false;}
+	public int getBranchAddress(){return -1;}
+	public NUSALSeqCommand getBranchTarget(){return null;}
+	public boolean isChunk(){return false;}
+	public NUSALSeqCommand getChunkHead(){return this;}
+	public boolean isEndCommand(){return false;}
+	public int getSizeInTicks(){return 0;}
+	
+	public NUSALSeqCmdType getFunctionalType() {
+		if(def == null) return null;
+		return def.getFunctionalType();
+	}
 	
 	public List<NUSALSeqCommand> getReferees(){
 		if(referees == null) return null;
@@ -89,43 +151,14 @@ public abstract class NUSALSeqCommand {
 		return list;
 	}
 	
-	public void addReferee(NUSALSeqCommand ref){
-		if(referees == null){
-			referees = new LinkedList<NUSALSeqCommand>();
-		}
-		referees.add(ref);
-	}
-	
-	public boolean removeReferee(NUSALSeqCommand ref){
-		return referees.remove(ref);
-	}
-	
-	public void setSubsequentCommand(NUSALSeqCommand next){
-		next_cmd = next;
-		if(next_cmd != null) next_cmd.prev_cmd = this;
-	}
-	
-	public boolean seqUsed(){return seq_ctx;}
-	public void flagSeqUsed(){seq_ctx = true;}
-	
 	public boolean channelUsed(int ch){
 		int check = (ch << 4) | 0xf;
 		return ch_ctx.contains(check);
 	}
 	
-	public void flagChannelUsed(int ch){
-		int check = (ch << 4) | 0xf;
-		ch_ctx.add(check);
-	}
-	
 	public boolean layerUsed(int ch, int layer){
 		int check = (ch << 4) | (layer & 0xf);
 		return ch_ctx.contains(check);
-	}
-	
-	public void flagLayerUsed(int ch, int layer){
-		int check = (ch << 4) | (layer & 0xf);
-		ch_ctx.add(check);
 	}
 	
 	public int getParamCount(){
@@ -139,38 +172,6 @@ public abstract class NUSALSeqCommand {
 		}
 		return params[idx];
 	}
-	
-	public void setParam(int idx, int val){
-		if(params == null || idx < 0 || idx >= params.length){
-			throw new IndexOutOfBoundsException("Parameter at index " + idx + " does not exist");
-		}
-		params[idx] = val;
-	}
-	
-	public void setParam(int idx, byte val, boolean signExtend){
-		if(params == null || idx < 0 || idx >= params.length){
-			throw new IndexOutOfBoundsException("Parameter at index " + idx + " does not exist");
-		}
-		if(signExtend) params[idx] = (int)val;
-		else params[idx] = Byte.toUnsignedInt(val);
-	}
-	
-	public void setParam(int idx, short val, boolean signExtend){
-		if(params == null || idx < 0 || idx >= params.length){
-			throw new IndexOutOfBoundsException("Parameter at index " + idx + " does not exist");
-		}
-		if(signExtend) params[idx] = (int)val;
-		else params[idx] = Short.toUnsignedInt(val);
-	}
-	
-	public void setAddress(int addr){address = addr;}
-	public int getAddress(){return address;}
-	
-	public int getTickAddress(){return tick_addr;}
-	public void setTickAddress(int t){tick_addr = t;}
-	
-	public String getLabel(){return label;}
-	public void setLabel(String s){label = s;}
 	
 	public int getFirstChannelUsed(){
 		for(int i = 0; i < 16; i++){
@@ -197,17 +198,6 @@ public abstract class NUSALSeqCommand {
 		return out;
 	}
 	
-	public void addContextFlagsFrom(NUSALSeqCommand other){
-		if(other == null) return;
-		if(other.seq_ctx) this.seq_ctx = true;
-		for(int i = 0; i < 16; i++){
-			if(other.channelUsed(i)) this.flagChannelUsed(i);
-			for(int j = 0; j < 8; j++){
-				if(other.layerUsed(i, j)) this.flagLayerUsed(i, j);
-			}
-		}
-	}
-	
 	public boolean isSeqCommand(){
 		return this.seqUsed();
 	}
@@ -224,6 +214,92 @@ public abstract class NUSALSeqCommand {
 		}
 		return false;
 	}
+	
+	public int getSizeInBytes(){
+		int sz = def.getMinSize();
+		if(def.hasVariableLength()){
+			//Check if need one more byte.
+			int varg = params[def.getVLQIndex()];
+			if(varg > 0x7F) sz++;
+		}
+		return sz;
+	}
+	
+	/*----- Setters -----*/
+	
+	protected void setCommandByte(byte b){cmdbyte = b;}
+	public void flagSeqUsed(){seq_ctx = true;}
+	public void setReference(NUSALSeqCommand target){}
+	public void setAddress(int addr){address = addr;}
+	public void setTickAddress(int t){tick_addr = t;}
+	public void setLabel(String s){label = s;}
+	
+	protected void setCommandDef(NUSALSeqCommandDef cmdDef){
+		def = cmdDef;
+		if(def != null) cmdbyte = def.getMinCommand();
+	}
+		
+	public void addReferee(NUSALSeqCommand ref){
+		if(referees == null){
+			referees = new LinkedList<NUSALSeqCommand>();
+		}
+		referees.add(ref);
+	}
+	
+	public boolean removeReferee(NUSALSeqCommand ref){
+		return referees.remove(ref);
+	}
+	
+	public void setSubsequentCommand(NUSALSeqCommand next){
+		next_cmd = next;
+		if(next_cmd != null) next_cmd.prev_cmd = this;
+	}
+		
+	public void flagChannelUsed(int ch){
+		int check = (ch << 4) | 0xf;
+		ch_ctx.add(check);
+	}
+		
+	public void flagLayerUsed(int ch, int layer){
+		int check = (ch << 4) | (layer & 0xf);
+		ch_ctx.add(check);
+	}
+	
+	public void setParam(int idx, int val){
+		if(params == null || idx < 0 || idx >= params.length){
+			throw new IndexOutOfBoundsException("Parameter at index " + idx + " does not exist");
+		}
+		params[idx] = val;
+	}
+	
+	public void setParam(int idx, byte val, boolean signExtend){
+		if(params == null || idx < 0 || idx >= params.length){
+			throw new IndexOutOfBoundsException("Parameter at index " + idx + " does not exist");
+		}
+		if(signExtend) params[idx] = (int)val;
+		else params[idx] = Byte.toUnsignedInt(val);
+	}
+	
+	public void setParam(int idx, short val, boolean signExtend){
+		if(params == null || idx < 0 || idx >= params.length){
+			throw new IndexOutOfBoundsException("Parameter at index " + idx + " does not exist");
+		}
+		if(signExtend) params[idx] = (int)val;
+		else params[idx] = Short.toUnsignedInt(val);
+	}
+		
+	public void addContextFlagsFrom(NUSALSeqCommand other){
+		if(other == null) return;
+		if(other.seq_ctx) this.seq_ctx = true;
+		for(int i = 0; i < 16; i++){
+			if(other.channelUsed(i)) this.flagChannelUsed(i);
+			for(int j = 0; j < 8; j++){
+				if(other.layerUsed(i, j)) this.flagLayerUsed(i, j);
+			}
+		}
+	}
+	
+	/*----- Misc. -----*/
 	
 	public String genCtxLabelSuggestion(){
 		if(seq_ctx) return "seq_block";
@@ -255,28 +331,6 @@ public abstract class NUSALSeqCommand {
 			+ " not supported in layer context");
 	}
 	
-	public boolean isBranch(){return false;}
-	public boolean isRelativeBranch(){return false;}
-	public int getBranchAddress(){return -1;}
-	public NUSALSeqCommand getBranchTarget(){return null;}
-	
-	public boolean isChunk(){return false;}
-	public NUSALSeqCommand getChunkHead(){return this;}
-	public boolean isEndCommand(){return false;}
-	//public boolean isTimeExtendable(){return false;}
-	public int getSizeInTicks(){return 0;}
-	//public void setOptionalTime(int ticks){}
-	
-	public int getSizeInBytes(){
-		int sz = command.getMinimumSizeInBytes();
-		if(command.hasVariableLength()){
-			//Check if need one more byte.
-			int varg = params[command.getVLQIndex()];
-			if(varg > 0x7F) sz++;
-		}
-		return sz;
-	}
-	
 	public void mapByAddress(Map<Integer, NUSALSeqCommand> map){
 		if(map == null) return;
 		map.put(this.getAddress(), this);
@@ -297,9 +351,9 @@ public abstract class NUSALSeqCommand {
 		int mysize = getSizeInBytes();
 		if(offset >= mysize) return STSResult.OUTSIDE;
 		
-		int cmdi = Byte.toUnsignedInt(command.getBaseCommand());
+		int cmdi = Byte.toUnsignedInt(def.getMinCommand());
 		int vali = Byte.toUnsignedInt(value);
-		switch(command.getSerializationType()){
+		switch(def.getSerialType()){
 		case SERIALFMT_DUMMY: return STSResult.FAIL;
 		case SERIALFMT_: return STSResult.REPARSE;
 		case SERIALFMT_L:
@@ -547,6 +601,126 @@ public abstract class NUSALSeqCommand {
 		return STSResult.FAIL;
 	}
 	
+	public boolean equals(Object o){
+		return this == o;
+	}
+	
+	/*----- Debug -----*/
+	
+	/*----- Read -----*/
+	
+	public static int readBinArgs(int[] dst, BufferReference src, NUSALSeqCommandDef def, int cmdByte) {
+		if(def == null || dst == null || src == null) return 0;
+		switch(def.getSerialType()) {
+		case SERIALFMT_DUMMY:
+		case SERIALFMT_:
+			return 0;
+		case SERIALFMT_L:
+			dst[0] = cmdByte & 0xf;
+			return 0;
+		case SERIALFMT_1:
+			dst[0] = Byte.toUnsignedInt(src.nextByte());
+			return 1;
+		case SERIALFMT_L1:
+			dst[0] = cmdByte & 0xf;
+			dst[1] = Byte.toUnsignedInt(src.nextByte());
+			return 1;
+		case SERIALFMT_2:
+			dst[0] = Short.toUnsignedInt(src.nextShort());
+			return 2;
+		case SERIALFMT_L2:
+			dst[0] = cmdByte & 0xf;
+			dst[1] = Short.toUnsignedInt(src.nextShort());
+			return 2;
+		case SERIALFMT_11:
+			dst[0] = Byte.toUnsignedInt(src.nextByte());
+			dst[1] = Byte.toUnsignedInt(src.nextByte());
+			return 2;
+		case SERIALFMT_12:
+			dst[0] = Byte.toUnsignedInt(src.nextByte());
+			dst[1] = Short.toUnsignedInt(src.nextShort());
+			return 3;
+		case SERIALFMT_21:
+			dst[0] = Short.toUnsignedInt(src.nextShort());
+			dst[1] = Byte.toUnsignedInt(src.nextByte());
+			return 3;
+		case SERIALFMT_L11:
+			dst[0] = cmdByte & 0xf;
+			dst[1] = Byte.toUnsignedInt(src.nextByte());
+			dst[2] = Byte.toUnsignedInt(src.nextByte());
+			return 2;
+		case SERIALFMT_L12:
+			dst[0] = cmdByte & 0xf;
+			dst[1] = Byte.toUnsignedInt(src.nextByte());
+			dst[2] = Short.toUnsignedInt(src.nextShort());
+			return 3;
+		case SERIALFMT_111:
+			for(int i = 0; i < 3; i++) dst[i] = Byte.toUnsignedInt(src.nextByte());
+			return 3;
+		case SERIALFMT_V:
+			dst[0] = NUSALSeqReader.readVLQ(src);
+			return (dst[0] > 0x7f) ? 2:1;
+		case SERIALFMT_NOTE:
+			if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_DVG){
+				dst[0] = cmdByte;
+				dst[1] = NUSALSeqReader.readVLQ(src);
+				dst[2] = Byte.toUnsignedInt(src.nextByte());
+				dst[3] = Byte.toUnsignedInt(src.nextByte());
+				return (dst[1] > 0x7f) ? 4:3;
+			}
+			else if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_DV){
+				dst[0] = cmdByte - 0x40;
+				dst[1] = NUSALSeqReader.readVLQ(src);
+				dst[2] = Byte.toUnsignedInt(src.nextByte());
+				return (dst[1] > 0x7f) ? 3:2;
+			}
+			else if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_VG){
+				dst[0] = cmdByte - 0x80;
+				dst[1] = Byte.toUnsignedInt(src.nextByte());
+				dst[2] = Byte.toUnsignedInt(src.nextByte());
+				return 3;
+			}
+		case SERIALFMT_SNOTE:
+			if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_DVG_SHORT){
+				dst[0] = cmdByte;
+				dst[1] = NUSALSeqReader.readVLQ(src);
+				return (dst[1] > 0x7f) ? 2:1;
+			}
+			else if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_DV_SHORT){
+				dst[0] = cmdByte - 0x40;
+				return 0;
+			}
+			else if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_VG_SHORT){
+				dst[0] = cmdByte - 0x80;
+				return 0;
+			}
+			break;
+		case SERIALFMT_CPARAMS:
+			for(int i = 0; i < 8; i++) dst[i] = Byte.toUnsignedInt(src.nextByte());
+			return 8;
+		case SERIALFMT_COPYFILTER:
+			int bb = Byte.toUnsignedInt(src.nextByte());
+			dst[0] = (bb >>> 4) & 0xf;
+			dst[1] = bb & 0xf;
+			return 1;
+		case SERIALFMT_Lp8:
+			dst[0] = (cmdByte & 0xf) - 8;
+			return 0;
+		case SERIALFMT_Lp81:
+			dst[0] = (cmdByte & 0xf) - 8;
+			dst[1] = Byte.toUnsignedInt(src.nextByte());
+			return 1;
+		case SERIALFMT_Lp82:
+			dst[0] = (cmdByte & 0xf) - 8;
+			dst[1] = Short.toUnsignedInt(src.nextShort());
+			return 2;
+		}
+		
+		return 0;
+	}
+	
+	/*----- Write -----*/
+	
 	public String printContextFlags(){
 		StringBuilder sb = new StringBuilder(512);
 		if(this.seqUsed()) sb.append("[SEQ]");
@@ -588,16 +762,28 @@ public abstract class NUSALSeqCommand {
 	
 	public String toString(){
 		String cmdname = "<NULL>";
-		if(command != null) cmdname = command.name();
+		if(def != null) cmdname = def.getMnemonicZeqer();
 		String params = paramsToString();
 		if(params != null && !params.isEmpty()) return cmdname + " " + params;
 		return cmdname;
 	}
 	
-	protected StringBuilder toMMLCommand_child(){
+	protected StringBuilder toMMLCommand_child(int syntax){
 		StringBuilder sb = new StringBuilder(256);
 		String cmdname = "<NULL>";
-		if(command != null) cmdname = command.toString();
+		if(def != null) {
+			switch(syntax) {
+			case NUSALSeq.SYNTAX_SET_ZEQER:
+				cmdname = def.getMnemonicZeqer();
+				break;
+			case NUSALSeq.SYNTAX_SET_SEQ64:
+				cmdname = def.getMnemonicSeq64();
+				break;
+			case NUSALSeq.SYNTAX_SET_ZELDARET:
+				cmdname = def.getMnemonicZeldaRet();
+				break;
+			}
+		}
 		String params = paramsToString();
 		sb.append(cmdname);
 		if(params != null && !params.isEmpty()){
@@ -607,12 +793,12 @@ public abstract class NUSALSeqCommand {
 		return sb;
 	}
 	
-	public String toMMLCommand(){
-		return toMMLCommand(false);
+	public String toMMLCommand(int syntax){
+		return toMMLCommand(false, syntax);
 	}
 	
-	public String toMMLCommand(boolean comment_addr){
-		StringBuilder sb = toMMLCommand_child();
+	public String toMMLCommand(boolean comment_addr, int syntax){
+		StringBuilder sb = toMMLCommand_child(syntax);
 		if(comment_addr){
 			sb.append(" ; 0x");
 			sb.append(String.format("%04x", getAddress()));
@@ -627,56 +813,56 @@ public abstract class NUSALSeqCommand {
 	public byte[] serializeMe(){
 		byte[] bytes = null;
 		int i = 0;
-		switch(command.getSerializationType()){
+		switch(def.getSerialType()){
 		case SERIALFMT_DUMMY: return null;
-		case SERIALFMT_: bytes = new byte[]{command.getBaseCommand()}; break;
+		case SERIALFMT_: bytes = new byte[]{def.getMinCommand()}; break;
 		case SERIALFMT_L:
-			i = Byte.toUnsignedInt(command.getBaseCommand());
+			i = Byte.toUnsignedInt(def.getMinCommand());
 			i += params[0];
 			bytes = new byte[]{(byte)i};
 			break;
 		case SERIALFMT_1:
-			bytes = new byte[]{command.getBaseCommand(), (byte)params[0]};
+			bytes = new byte[]{def.getMinCommand(), (byte)params[0]};
 			break;
 		case SERIALFMT_L1:
-			i = Byte.toUnsignedInt(command.getBaseCommand());
+			i = Byte.toUnsignedInt(def.getMinCommand());
 			i += params[0];
 			bytes = new byte[]{(byte)i, (byte)params[1]};
 			break;
 		case SERIALFMT_2:
 			bytes = new byte[3];
-			bytes[0] = command.getBaseCommand();
+			bytes[0] = def.getMinCommand();
 			bytes[1] = (byte)((params[0] >>> 8) & 0xFF);
 			bytes[2] = (byte)(params[0] & 0xFF);
 			break;
 		case SERIALFMT_L2:
 			bytes = new byte[3];
-			i = Byte.toUnsignedInt(command.getBaseCommand());
+			i = Byte.toUnsignedInt(def.getMinCommand());
 			i += params[0];
 			bytes[0] = (byte)i;
 			bytes[1] = (byte)((params[1] >>> 8) & 0xFF);
 			bytes[2] = (byte)(params[1] & 0xFF);
 			break;
 		case SERIALFMT_11:
-			bytes = new byte[]{command.getBaseCommand(), (byte)params[0], (byte)params[1]};
+			bytes = new byte[]{def.getMinCommand(), (byte)params[0], (byte)params[1]};
 			break;
 		case SERIALFMT_12:
 			bytes = new byte[4];
-			bytes[0] = command.getBaseCommand();
+			bytes[0] = def.getMinCommand();
 			bytes[1] = (byte)params[0];
 			bytes[2] = (byte)((params[1] >>> 8) & 0xFF);
 			bytes[3] = (byte)(params[1] & 0xFF);
 			break;
 		case SERIALFMT_21:
 			bytes = new byte[4];
-			bytes[0] = command.getBaseCommand();
+			bytes[0] = def.getMinCommand();
 			bytes[1] = (byte)((params[0] >>> 8) & 0xFF);
 			bytes[2] = (byte)(params[0] & 0xFF);
 			bytes[3] = (byte)params[1];
 			break;
 		case SERIALFMT_L11:
 			bytes = new byte[3];
-			i = Byte.toUnsignedInt(command.getBaseCommand());
+			i = Byte.toUnsignedInt(def.getMinCommand());
 			i += params[0];
 			bytes[0] = (byte)i;
 			bytes[1] = (byte)params[1];
@@ -684,7 +870,7 @@ public abstract class NUSALSeqCommand {
 			break;
 		case SERIALFMT_L12:
 			bytes = new byte[4];
-			i = Byte.toUnsignedInt(command.getBaseCommand());
+			i = Byte.toUnsignedInt(def.getMinCommand());
 			i += params[0];
 			bytes[0] = (byte)i;
 			bytes[1] = (byte)params[1];
@@ -692,21 +878,21 @@ public abstract class NUSALSeqCommand {
 			bytes[3] = (byte)(params[2] & 0xFF);
 			break;
 		case SERIALFMT_111:
-			bytes = new byte[]{command.getBaseCommand(), (byte)params[0], (byte)params[1], (byte)params[2]};
+			bytes = new byte[]{def.getMinCommand(), (byte)params[0], (byte)params[1], (byte)params[2]};
 			break;
 		case SERIALFMT_V:
 			if(params[0] > 0x7f){
 				bytes = new byte[3];
-				bytes[0] = command.getBaseCommand();
+				bytes[0] = def.getMinCommand();
 				bytes[1] = (byte)((params[0] >>> 8) | 0x80);
 				bytes[2] = (byte)(params[0] & 0xFF);
 			}
 			else{
-				bytes = new byte[]{command.getBaseCommand(), (byte)params[0]};
+				bytes = new byte[]{def.getMinCommand(), (byte)params[0]};
 			}
 			break;
 		case SERIALFMT_NOTE:
-			if(command == NUSALSeqCmdType.PLAY_NOTE_NTVG){
+			if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_DVG){
 				if(params[1] > 0x7f){
 					bytes = new byte[5];
 					bytes[1] = (byte)((params[1] >>> 8) | 0x80);
@@ -722,7 +908,7 @@ public abstract class NUSALSeqCommand {
 				}
 				bytes[0] = (byte)params[0];
 			}
-			else if(command == NUSALSeqCmdType.PLAY_NOTE_NTV){
+			else if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_DV){
 				if(params[1] > 0x7f){
 					bytes = new byte[4];
 					bytes[1] = (byte)((params[1] >>> 8) | 0x80);
@@ -736,30 +922,68 @@ public abstract class NUSALSeqCommand {
 				}
 				bytes[0] = (byte)(params[0] + 0x40);
 			}
-			else if(command == NUSALSeqCmdType.PLAY_NOTE_NVG){
+			else if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_VG){
 				bytes = new byte[3];
 				bytes[0] = (byte)(params[0] + 0x80);
 				bytes[1] = (byte)params[1];
 				bytes[2] = (byte)params[2];
 			}
-			else if(command == NUSALSeqCmdType.L_SHORTNOTE){
+		case SERIALFMT_SNOTE:
+			if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_DVG_SHORT){
+				if(params[1] > 0x7f){
+					bytes = new byte[3];
+					bytes[1] = (byte)((params[1] >>> 8) | 0x80);
+					bytes[2] = (byte)(params[1] & 0xFF);
+				}
+				else{
+					bytes = new byte[2];
+					bytes[1] = (byte)params[1];
+				}
+				bytes[0] = (byte)params[0];
+			}
+			else if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_DV_SHORT){
 				bytes = new byte[1];
-				bytes[0] = (byte)(params[0]);
+				bytes[0] = (byte)(params[0] | 0x40);
+			}
+			else if(def.getNoteType() == NUSALSeqCommands.NOTETYPE_VG_SHORT){
+				bytes = new byte[1];
+				bytes[0] = (byte)(params[0] | 0x80);
 			}
 			break;
 		case SERIALFMT_CPARAMS:
 			bytes = new byte[9];
-			bytes[0] = command.getBaseCommand();
+			bytes[0] = def.getMinCommand();
 			for(int j = 0; j < 8; j++){
 				bytes[j+1] = (byte)params[j];
 			}
 			break;
 		case SERIALFMT_COPYFILTER:
 			bytes = new byte[2];
-			bytes[0] = command.getBaseCommand();
+			bytes[0] = def.getMinCommand();
 			i = (params[0] & 0xf) << 4;
 			i |= (params[1] & 0xf);
 			bytes[1] = (byte)i;
+			break;
+		case SERIALFMT_Lp8:
+			bytes = new byte[1];
+			i = Byte.toUnsignedInt(def.getMinCommand());
+			i += params[0];
+			bytes[0] = (byte)(i+8);
+			break;
+		case SERIALFMT_Lp81:
+			bytes = new byte[2];
+			i = Byte.toUnsignedInt(def.getMinCommand());
+			i += params[0];
+			bytes[0] = (byte)(i+8);
+			bytes[1] = (byte)params[1];
+			break;
+		case SERIALFMT_Lp82:
+			bytes = new byte[3];
+			i = Byte.toUnsignedInt(def.getMinCommand());
+			i += params[0];
+			bytes[0] = (byte)(i+8);
+			bytes[1] = (byte)((params[1] >>> 8) & 0xFF);
+			bytes[2] = (byte)(params[1] & 0xFF);
 			break;
 		}
 		return bytes;
@@ -778,9 +1002,5 @@ public abstract class NUSALSeqCommand {
 		for(int i = 0; i < bytes.length; i++) buffer.addToFile(bytes[i]);
 		return bytes.length;
 	}
-	
-	public boolean equals(Object o){
-		return this == o;
-	}
-	
+		
 }

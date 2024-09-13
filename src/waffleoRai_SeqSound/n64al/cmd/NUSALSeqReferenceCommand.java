@@ -2,6 +2,7 @@ package waffleoRai_SeqSound.n64al.cmd;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 
 public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 	
@@ -9,16 +10,33 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 	private boolean is_relative;
 	protected int p_idx_addr;
 
-	protected NUSALSeqReferenceCommand(NUSALSeqCmdType cmd, int value, boolean rel) {
-		super(cmd, cmd.getBaseCommand());
+	protected NUSALSeqReferenceCommand(NUSALSeqCommandDef def, int value, boolean rel) {
+		super(def, def.getMinCommand());
 		reference = null;
 		super.setParam(0, value);
 		p_idx_addr = 0;
 		is_relative = rel;
 	}
 	
-	protected NUSALSeqReferenceCommand(NUSALSeqCmdType cmd, int idx, int value, boolean rel) {
-		super(cmd, cmd.getBaseCommand());
+	protected NUSALSeqReferenceCommand(NUSALSeqCommandDef def, int idx, int value, boolean rel) {
+		super(def, def.getMinCommand());
+		reference = null;
+		super.setParam(0, idx);
+		super.setParam(1, value);
+		p_idx_addr = 1;
+		is_relative = rel;
+	}
+	
+	protected NUSALSeqReferenceCommand(NUSALSeqCmdType funcCmd, NUSALSeqCommandBook book, int value, boolean rel) {
+		super(funcCmd, book);
+		reference = null;
+		super.setParam(0, value);
+		p_idx_addr = 0;
+		is_relative = rel;
+	}
+	
+	protected NUSALSeqReferenceCommand(NUSALSeqCmdType funcCmd, NUSALSeqCommandBook book, int idx, int value, boolean rel) {
+		super(funcCmd, book);
 		reference = null;
 		super.setParam(0, idx);
 		super.setParam(1, value);
@@ -130,9 +148,14 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 		}
 	}
 	
-	protected StringBuilder toMMLCommand_child(){
+	protected StringBuilder toMMLCommand_child(int syntax){
+		NUSALSeqCommandDef def = getCommandDef();
+		
 		StringBuilder sb = new StringBuilder(256);
-		sb.append(super.getCommand().toString());
+		if(def != null) {
+			sb.append(def.getMnemonic(syntax));
+		}
+		else sb.append("<NULLCMD>");
 		sb.append(' ');
 		if(p_idx_addr > 0){
 			//Param 0

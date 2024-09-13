@@ -2,12 +2,14 @@ package waffleoRai_SoundSynth.soundformats.game;
 
 import java.io.IOException;
 
+import waffleoRai_Files.psx.IXAAudioDataSource;
 import waffleoRai_Files.psx.XADataStream;
 import waffleoRai_Files.psx.XAStreamFile;
 import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Sound.JavaSoundPlayer;
 import waffleoRai_Sound.JavaSoundPlayer_16LE;
 import waffleoRai_Sound.psx.PSXVAG;
+import waffleoRai_Sound.psx.PSXXAAudio;
 import waffleoRai_Sound.psx.PSXXAStream;
 import waffleoRai_SoundSynth.AudioSampleStream;
 import waffleoRai_Utils.FileBuffer;
@@ -33,10 +35,12 @@ public class XAAudioSampleStream implements AudioSampleStream{
 	private int[] s_2;
 	private int[] s_1; //For storing last two samples (for each channel)
 	
-	private XADataStream src;
+	private IXAAudioDataSource src;
+	private boolean dataOnly;
 	private boolean done;
 	
 	private int s_pos; //Position within sector
+	private int sec_end = SEC_END;
 	private FileBuffer sector; //current sector
 	
 	private int samp_pos; //Next sample index in sample buffer
@@ -47,34 +51,50 @@ public class XAAudioSampleStream implements AudioSampleStream{
 
 	/*----- Construction -----*/
 	
-	public XAAudioSampleStream(XADataStream source){
+	public XAAudioSampleStream(IXAAudioDataSource source){
 		src = source;
+		dataOnly = src.audioDataOnly();
 		fetchAudioData(); //Gets sample rate, playback info etc.
 	}
 	
 	private void fetchAudioData(){
-		//Only reads from first sector...
 		
-		sector = src.nextSectorBuffer(false); //Don't forget to dispose old ones!
-		int cibyte = (int)sector.getByte(0x13);
+		sector = src.nextSectorBuffer(); //Don't forget to dispose old ones!
 		
-		if((cibyte & 0x10) != 0) bit_mode = SAMPLES_8BIT_ADPCM;
-		else bit_mode = SAMPLES_4BIT_ADPCM;
-		
-		if((cibyte & 0x04) != 0) sample_rate = 18900;
-		else sample_rate = 37800;
-		
-		if((cibyte & 0x01) != 0) ch_count = 2;
-		else ch_count = 1;
+		if(!dataOnly) {
+			//Only reads from first sector...
+			int cibyte = (int)sector.getByte(0x13);
+			
+			if((cibyte & 0x10) != 0) bit_mode = SAMPLES_8BIT_ADPCM;
+			else bit_mode = SAMPLES_4BIT_ADPCM;
+			
+			if((cibyte & 0x04) != 0) sample_rate = 18900;
+			else sample_rate = 37800;
+			
+			if((cibyte & 0x01) != 0) ch_count = 2;
+			else ch_count = 1;
+			
+			//System.err.println("XAAudioSampleStream.fetchAudioData || Sample Rate: " + sample_rate);
+			//System.err.println("XAAudioSampleStream.fetchAudioData || Bit Mode Enum: " + bit_mode);
+			//System.err.println("XAAudioSampleStream.fetchAudioData || Channels: " + ch_count);
+			
+			s_pos = 0x18;
+			sec_end = SEC_END;
+		}
+		else {
+			//Can query directly
+			sample_rate = src.getSampleRate();
+			int bd = src.getBitDepth();
+			if(bd == 4) bit_mode = SAMPLES_4BIT_ADPCM;
+			else bit_mode = SAMPLES_8BIT_ADPCM;
+			ch_count = src.getChannelCount();
+			s_pos = 0x0;
+			sec_end = PSXXAAudio.BLOCKS_PER_SEC << 7;
+		}
 		
 		s_1 = new int[ch_count];
 		s_2 = new int[ch_count];
 		
-		//System.err.println("XAAudioSampleStream.fetchAudioData || Sample Rate: " + sample_rate);
-		//System.err.println("XAAudioSampleStream.fetchAudioData || Bit Mode Enum: " + bit_mode);
-		//System.err.println("XAAudioSampleStream.fetchAudioData || Channels: " + ch_count);
-		
-		s_pos = 0x18;
 		nextChunk();
 	}
 	
@@ -346,7 +366,7 @@ public class XAAudioSampleStream implements AudioSampleStream{
 	/*----- Data Retrieval -----*/
 	
 	private boolean nextChunk(){
-		if(s_pos >= SEC_END){
+		if(s_pos >= sec_end){
 			if(!nextSector()) return false;
 		}
 		
@@ -378,8 +398,8 @@ public class XAAudioSampleStream implements AudioSampleStream{
 			}
 		}
 		
-		s_pos = 0x18;
-		sector = src.nextSectorBuffer(false);
+		s_pos = dataOnly?0:0x18;
+		sector = src.nextSectorBuffer();
 		
 		if(sector == null) return false;
 		

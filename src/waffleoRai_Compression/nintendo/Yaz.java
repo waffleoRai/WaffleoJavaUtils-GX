@@ -50,10 +50,11 @@ public class Yaz {
 	private boolean allow_3byte_subs;
 	private boolean reverse_flags;
 	
+	private int stopWriteAt = -1;
+	
 	/*--- General ---*/
 	
-	public Yaz()
-	{
+	public Yaz(){
 		back_window = new ArrayWindow(BACK_WINDOW_SIZE);
 		tempfiles = new LinkedList<String>();
 		outbuffer = new LinkedList<Byte>();
@@ -139,19 +140,18 @@ public class Yaz {
 		this.reverse_flags = b;
 	}
 	
+	public void setWriteLimit(int value) {stopWriteAt = value;}
+	
 	/*--- Decode ---*/
 	
-	protected int decodeNextGroup(StreamWrapper in, int header)
-	{
+	protected int decodeNextGroup(StreamWrapper in, int header) {
 		//System.err.println("New Group! Header Byte: " + String.format("%02x", header));
 		int mask = 0x80;
 		int read = 0;
-		for(int i = 0; i < 8; i++)
-		{
+		for(int i = 0; i < 8; i++){
 			boolean flag = ((header & mask) != 0);
 			if(reverse_flags) flag = !flag;
-			if(flag)
-			{
+			if(flag){
 				//Copy next byte as is
 				byte b = in.get();
 				output.put(b);
@@ -161,8 +161,7 @@ public class Yaz {
 				read++;
 				//System.err.println("\tFlag set. Copy byte: " + String.format("%02x", b));
 			}
-			else
-			{
+			else{
 				//RLE nonsense
 				//System.err.println("\tFlag cleared. RLE time!");
 				int b0 = in.getFull(); if(in.isEmpty()) return read;
@@ -173,10 +172,8 @@ public class Yaz {
 				backpos |= b1;
 				//Get byte number
 				int bcount = (b0 & 0xF0) >>> 4;
-				if(allow_3byte_subs)
-				{
-					if(bcount == 0)
-					{
+				if(allow_3byte_subs){
+					if(bcount == 0){
 						if(in.isEmpty()) return read-2;
 						bcount = in.getFull() + 0x12;
 						read++;
@@ -186,8 +183,7 @@ public class Yaz {
 				else bcount += 3;
 				//System.err.println("\t\tCopying " + bcount + " bytes from " + backpos + " back...");
 				
-				for (int j = 0; j < bcount; j++)
-				{
+				for (int j = 0; j < bcount; j++){
 					//System.err.println("j = " + j);
 					byte b = back_window.getFromBack(backpos);
 					output.put(b);
@@ -211,9 +207,9 @@ public class Yaz {
 		return read;
 	}
 	
-	private void decode(StreamWrapper in)
-	{
-		while(!in.isEmpty()){
+	private void decode(StreamWrapper in){
+		decomp_size = 0;
+		while(!in.isEmpty() && (stopWriteAt < 0 || decomp_size < stopWriteAt)){
 			byte b = in.get();
 			decodeNextGroup(in, Byte.toUnsignedInt(b));
 		}

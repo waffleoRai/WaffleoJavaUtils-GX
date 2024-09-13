@@ -3,6 +3,7 @@ package waffleoRai_SeqSound.n64al.cmd;
 import waffleoRai_SeqSound.n64al.NUSALSeq;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_Utils.BufferReference;
 
 import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
@@ -10,7 +11,7 @@ import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
 public class SeqCommands {
 	
 	/*--- Parser ---*/
-	public static NUSALSeqCommand parseSequenceCommand(BufferReference dat){
+	public static NUSALSeqCommand parseSequenceCommandOld(BufferReference dat){
 		int cmdi = Byte.toUnsignedInt(dat.getByte());
 		int cmdhi = (cmdi & 0xf0) >>> 4;
 		int cmdlo = cmdi & 0xf;
@@ -49,18 +50,18 @@ public class SeqCommands {
 			case 0x4:
 				ptr.increment(); i = (int)ptr.getByte();
 				ptr.increment(); j = (int)ptr.getByte();
-				return new CMD_IgnoredCommand(NUSALSeqCmdType.S_UNK_C4){
+				return new CMD_IgnoredCommand(NUSALSeqCmdType.S_RUNSEQ){
 					protected void onInit(){
 						setParam(0, i); setParam(1,j);
 					}
 				};
 			case 0x5:
 				ptr.increment(); i = Short.toUnsignedInt(ptr.getShort());
-				return new CMD_IgnoredCommand(NUSALSeqCmdType.S_UNK_C5){
+				return new CMD_IgnoredCommand(NUSALSeqCmdType.S_SCRIPTCTR){
 					protected void onInit(){setParam(0, i);}
 				};
 			case 0x6:
-				return new CMD_IgnoredCommand(NUSALSeqCmdType.S_UNK_C6);
+				return new CMD_IgnoredCommand(NUSALSeqCmdType.S_STOP);
 			case 0x7:
 				ptr.increment(); i = (int)ptr.getByte();
 				ptr.increment(); j = Short.toUnsignedInt(ptr.getShort());
@@ -192,8 +193,8 @@ public class SeqCommands {
 		return null;
 	}
 	
-	public static NUSALSeqCommand parseSequenceCommand(String cmd, String[] args){
-		NUSALSeqCommand command = FCommands.parseFCommand(cmd, args);
+	public static NUSALSeqCommand parseSequenceCommandOld(String cmd, String[] args){
+		NUSALSeqCommand command = FCommands.parseFCommandOld(cmd, args);
 		if(command != null) return command;
 		
 		/*
@@ -340,10 +341,78 @@ public class SeqCommands {
 		return null;
 	}
 	
+	public static NUSALSeqCommand parseSequenceCommand(BufferReference dat, NUSALSeqCommandBook book){
+		int[] params = new int[4];
+		int bb = Byte.toUnsignedInt(dat.nextByte());
+		NUSALSeqCommandDef def = book.getSeqCommand((byte)bb);
+		NUSALSeqCommand.readBinArgs(params, dat, def, bb);
+		switch(def.getFunctionalType()) {
+		case TEST_CHANNEL: return new C_S_TestChannel(params[0], def);
+		case STOP_CHANNEL: return new C_S_StopChannel(params[0], def);
+		case SUBTRACT_IO_S: return new C_S_SubIO(params[0], def);
+		case LOAD_BANK: return new C_S_LoadBank(def, params[0], params[1], params[2]);
+		case STORE_IO_S: return new C_S_StoreIO(def, params[0]);
+		case LOAD_IO_S: return new C_S_LoadIO(def, params[0]);
+		case CHANNEL_OFFSET: return new C_S_StartChannel(def, params[0], params[1]);
+		case CHANNEL_OFFSET_REL: return new C_S_StartChannelRel(def, params[0], params[1]);
+		case LOAD_SEQ: return new C_S_LoadSeq(def, params[0], params[1], params[2]);
+		case S_RUNSEQ: return new CMD_IgnoredCommand(def); //TODO
+		case S_SCRIPTCTR: return new CMD_IgnoredCommand(def); //TODO
+		case S_STOP: return new CMD_IgnoredCommand(def); //TODO
+		case STORE_TO_SELF_S: return new C_S_StoreToSelf(def, params[0], params[1]);
+		case SUBTRACT_IMM_S: return new C_S_SubImm(def, params[0]);
+		case AND_IMM_S: return new C_S_AndImm(def, params[0]);
+		case LOAD_IMM_S: return new C_S_LoadImm(def, params[0]);
+		case CALL_TABLE: return new C_S_TblCall(def, params[0]);
+		case RAND_S: return new C_S_LoadRandom(def, params[0]);
+		case NOTEALLOC_POLICY_S: return new C_S_NoteAllocPolicy(def, params[0]);
+		case LOAD_SHORTTBL_GATE: return new C_S_SetGateTable(def, params[0]);
+		case LOAD_SHORTTBL_VEL: return new C_S_SetVelTable(def, params[0]);
+		case MUTE_BEHAVIOR_S: return new C_S_MuteBehavior(def, params[0]);
+		case MUTE_S: return new C_S_Mute(def);
+		case MUTE_SCALE_S: return new C_S_MuteScale(def, params[0]);
+		case DISABLE_CHANNELS: return new C_S_DisableChannels(def, params[0]);
+		case ENABLE_CHANNELS: return new C_S_InitChannels(def, params[0]);
+		case MASTER_EXP: return new C_S_SetMasterExpression(def, params[0]);
+		case MASTER_FADE: return new C_S_SetMasterFade(def, params[0], params[1]);
+		case MASTER_VOLUME: return new C_S_SetMasterVolume(def, params[0]);
+		case SET_TEMPO_VAR: return new C_S_SetTempoVar(def, params[0]);
+		case SET_TEMPO: return new C_S_SetTempo(def, params[0]);
+		case SEQ_TRANSPOSE_REL: return new C_S_SetDeltaTranspose(def, params[0]);
+		case SEQ_TRANSPOSE: return new C_S_SetTranspose(def, params[0]);
+		case PRINT: return new C_S_Print(def, params[0], params[1]);
+		case UNRESERVE_NOTES: return new C_UnreserveNotes(def);
+		case RESERVE_NOTES: return new C_ReserveNotes(def, params[0]);
+		case BRANCH_IF_LTZ_REL: return new C_rbltz(params[0], def);
+		case BRANCH_IF_EQZ_REL: return new C_rbeqz(params[0], def);
+		case BRANCH_ALWAYS_REL: return new C_rjump(params[0], def);
+		case BRANCH_IF_GTEZ: return new C_bgez(params[0], def);
+		case BREAK: return new C_Break(def);
+		case LOOP_END: return new C_LoopEnd(def);
+		case LOOP_START: return new C_LoopStart(params[0], def);
+		case BRANCH_IF_LTZ: return new C_bltz(params[0], def);
+		case BRANCH_IF_EQZ: return new C_beqz(params[0], def);
+		case BRANCH_ALWAYS: return new C_Jump(params[0], def);
+		case CALL: return new C_Call(params[0], def);
+		case WAIT: return new C_Wait(def, params[0]);
+		case YIELD: return new C_Yield(def);
+		case END_READ: return new C_EndRead(def);
+		 default: return null;
+		}
+	}
+	
 	/*--- 0x00:0x0f testchan ---*/
 	public static class C_S_TestChannel extends NUSALSeqGenericCommand{
 		public C_S_TestChannel(int channel) {
 			super(NUSALSeqCmdType.TEST_CHANNEL);
+			super.setParam(0, channel);
+		}
+		public C_S_TestChannel(int channel, NUSALSeqCommandBook book) {
+			super(NUSALSeqCmdType.TEST_CHANNEL, book);
+			super.setParam(0, channel);
+		}
+		public C_S_TestChannel(int channel, NUSALSeqCommandDef def) {
+			super(def);
 			super.setParam(0, channel);
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -361,6 +430,14 @@ public class SeqCommands {
 			super(NUSALSeqCmdType.STOP_CHANNEL);
 			super.setParam(0, channel);
 		}
+		public C_S_StopChannel(int channel, NUSALSeqCommandBook book) {
+			super(NUSALSeqCmdType.STOP_CHANNEL, book);
+			super.setParam(0, channel);
+		}
+		public C_S_StopChannel(int channel, NUSALSeqCommandDef def) {
+			super(def);
+			super.setParam(0, channel);
+		}
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
 			sequence.stopChannel(getParam(0));
@@ -371,7 +448,15 @@ public class SeqCommands {
 	/*--- 0x50:0x5f subio ---*/
 	public static class C_S_SubIO extends NUSALSeqGenericCommand{
 		public C_S_SubIO(int idx) {
-			super(NUSALSeqCmdType.SUBTRACT_IO);
+			super(NUSALSeqCmdType.SUBTRACT_IO_S);
+			super.setParam(0, idx);
+		}
+		public C_S_SubIO(int idx, NUSALSeqCommandBook book) {
+			super(NUSALSeqCmdType.SUBTRACT_IO_S, book);
+			super.setParam(0, idx);
+		}
+		public C_S_SubIO(int idx, NUSALSeqCommandDef def) {
+			super(def);
 			super.setParam(0, idx);
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -390,12 +475,32 @@ public class SeqCommands {
 			super.setParam(1, bank_idx);
 			super.setParam(2, bank_slot);
 		}
+		public C_S_LoadBank(NUSALSeqCommandBook book, int io_idx, int bank_idx, int bank_slot) {
+			super(NUSALSeqCmdType.LOAD_BANK, book);
+			super.setParam(0, io_idx);
+			super.setParam(1, bank_idx);
+			super.setParam(2, bank_slot);
+		}
+		public C_S_LoadBank(NUSALSeqCommandDef def, int io_idx, int bank_idx, int bank_slot) {
+			super(def);
+			super.setParam(0, io_idx);
+			super.setParam(1, bank_idx);
+			super.setParam(2, bank_slot);
+		}
 	}
 	
 	/*--- 0x70:0x7f stio ---*/
 	public static class C_S_StoreIO extends NUSALSeqGenericCommand{
 		public C_S_StoreIO(int idx) {
-			super(NUSALSeqCmdType.STORE_IO);
+			super(NUSALSeqCmdType.STORE_IO_S);
+			super.setParam(0, idx);
+		}
+		public C_S_StoreIO(NUSALSeqCommandDef def, int idx) {
+			super(def);
+			super.setParam(0, idx);
+		}
+		public C_S_StoreIO(NUSALSeqCommandBook book, int idx) {
+			super(NUSALSeqCmdType.STORE_IO_S, book);
 			super.setParam(0, idx);
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -411,6 +516,14 @@ public class SeqCommands {
 			super(NUSALSeqCmdType.LOAD_IO_S);
 			super.setParam(0, idx);
 		}
+		public C_S_LoadIO(NUSALSeqCommandBook book, int idx) {
+			super(NUSALSeqCmdType.LOAD_IO_S, book);
+			super.setParam(0, idx);
+		}
+		public C_S_LoadIO(NUSALSeqCommandDef def, int idx) {
+			super(def);
+			super.setParam(0, idx);
+		}
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
 			sequence.setVarQ(sequence.getSeqIOValue(getParam(0)));
@@ -421,7 +534,13 @@ public class SeqCommands {
 	/*--- 0x90:0x9f startchan ---*/
 	public static class C_S_StartChannel extends NUSALSeqReferenceCommand{
 		public C_S_StartChannel(int channel, int addr) {
-			super(NUSALSeqCmdType.CHANNEL_OFFSET, channel, addr, false);
+			super(NUSALSeqCmdType.CHANNEL_OFFSET, null, channel, addr, false);
+		}
+		public C_S_StartChannel(NUSALSeqCommandBook book, int channel, int addr) {
+			super(NUSALSeqCmdType.CHANNEL_OFFSET, book, channel, addr, false);
+		}
+		public C_S_StartChannel(NUSALSeqCommandDef def, int channel, int addr) {
+			super(def, channel, addr, false);
 		}
 		public NUSALSeqCmdType getRelativeCommand(){return NUSALSeqCmdType.CHANNEL_OFFSET_REL;}
 		public NUSALSeqCmdType getAbsoluteCommand(){return NUSALSeqCmdType.CHANNEL_OFFSET;}
@@ -435,7 +554,13 @@ public class SeqCommands {
 	/*--- 0xa0:0xaf rstartchan ---*/
 	public static class C_S_StartChannelRel extends NUSALSeqReferenceCommand{
 		public C_S_StartChannelRel(int channel, int offset) {
-			super(NUSALSeqCmdType.CHANNEL_OFFSET_REL, channel, offset, true);
+			super(NUSALSeqCmdType.CHANNEL_OFFSET_REL, null, channel, offset, true);
+		}
+		public C_S_StartChannelRel(NUSALSeqCommandBook book, int channel, int offset) {
+			super(NUSALSeqCmdType.CHANNEL_OFFSET_REL, book, channel, offset, true);
+		}
+		public C_S_StartChannelRel(NUSALSeqCommandDef def, int channel, int offset) {
+			super(def, channel, offset, true);
 		}
 		public NUSALSeqCmdType getRelativeCommand(){return NUSALSeqCmdType.CHANNEL_OFFSET_REL;}
 		public NUSALSeqCmdType getAbsoluteCommand(){return NUSALSeqCmdType.CHANNEL_OFFSET;}
@@ -451,7 +576,23 @@ public class SeqCommands {
 		//Don't bother overriding the callbacks until actually need to write player
 		//Because it's like a pain and stuff
 		public C_S_LoadSeq(int io_idx, int seq_idx, int addr) {
-			super(NUSALSeqCmdType.LOAD_SEQ, 0, 0);
+			super(NUSALSeqCmdType.LOAD_SEQ, null, 0, 0);
+			super.setParam(0, io_idx);
+			super.setParam(1, seq_idx);
+			super.setParam(2, addr);
+			p_idx_addr = 2;
+		}
+		
+		public C_S_LoadSeq(NUSALSeqCommandBook book, int io_idx, int seq_idx, int addr) {
+			super(NUSALSeqCmdType.LOAD_SEQ, book, 0, 0);
+			super.setParam(0, io_idx);
+			super.setParam(1, seq_idx);
+			super.setParam(2, addr);
+			p_idx_addr = 2;
+		}
+		
+		public C_S_LoadSeq(NUSALSeqCommandDef def, int io_idx, int seq_idx, int addr) {
+			super(def, 0, 0);
 			super.setParam(0, io_idx);
 			super.setParam(1, seq_idx);
 			super.setParam(2, addr);
@@ -493,7 +634,13 @@ public class SeqCommands {
 	/*--- 0xc7 sts ---*/
 	public static class C_S_StoreToSelf extends NUSALSeqDataRefCommand{
 		public C_S_StoreToSelf(int imm, int address) {
-			super(NUSALSeqCmdType.STORE_TO_SELF, imm, address, -1);
+			super(NUSALSeqCmdType.STORE_TO_SELF_S, null, imm, address, -1);
+		}
+		public C_S_StoreToSelf(NUSALSeqCommandBook book, int imm, int address) {
+			super(NUSALSeqCmdType.STORE_TO_SELF_S, book, imm, address, -1);
+		}
+		public C_S_StoreToSelf(NUSALSeqCommandDef def, int imm, int address) {
+			super(def, imm, address, -1);
 		}
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
@@ -508,7 +655,15 @@ public class SeqCommands {
 	/*--- 0xc8 sub ---*/
 	public static class C_S_SubImm extends NUSALSeqGenericCommand{
 		public C_S_SubImm(int imm) {
-			super(NUSALSeqCmdType.SUBTRACT_IMM);
+			super(NUSALSeqCmdType.SUBTRACT_IMM_S);
+			super.setParam(0, imm);
+		}
+		public C_S_SubImm(NUSALSeqCommandBook book, int imm) {
+			super(NUSALSeqCmdType.SUBTRACT_IMM_S, book);
+			super.setParam(0, imm);
+		}
+		public C_S_SubImm(NUSALSeqCommandDef def, int imm) {
+			super(def);
 			super.setParam(0, imm);
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -521,7 +676,15 @@ public class SeqCommands {
 	/*--- 0xc9 and ---*/
 	public static class C_S_AndImm extends NUSALSeqGenericCommand{
 		public C_S_AndImm(int imm) {
-			super(NUSALSeqCmdType.AND_IMM);
+			super(NUSALSeqCmdType.AND_IMM_S);
+			super.setParam(0, imm);
+		}
+		public C_S_AndImm(NUSALSeqCommandBook book, int imm) {
+			super(NUSALSeqCmdType.AND_IMM_S, book);
+			super.setParam(0, imm);
+		}
+		public C_S_AndImm(NUSALSeqCommandDef def, int imm) {
+			super(def);
 			super.setParam(0, imm);
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -547,7 +710,15 @@ public class SeqCommands {
 	/*--- 0xcc ldi ---*/
 	public static class C_S_LoadImm extends NUSALSeqGenericCommand{
 		public C_S_LoadImm(int imm) {
-			super(NUSALSeqCmdType.LOAD_IMM);
+			super(NUSALSeqCmdType.LOAD_IMM_S);
+			super.setParam(0, imm);
+		}
+		public C_S_LoadImm(NUSALSeqCommandBook book, int imm) {
+			super(NUSALSeqCmdType.LOAD_IMM_S, book);
+			super.setParam(0, imm);
+		}
+		public C_S_LoadImm(NUSALSeqCommandDef def, int imm) {
+			super(def);
 			super.setParam(0, imm);
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -560,7 +731,15 @@ public class SeqCommands {
 	/*--- 0xcd tblcall ---*/
 	public static class C_S_TblCall extends NUSALSeqDataRefCommand{
 		public C_S_TblCall(int address) {
-			super(NUSALSeqCmdType.CALL_TABLE, address, -1);
+			super(NUSALSeqCmdType.CALL_TABLE, null, address, -1);
+			super.setLabelPrefix("calltbl");
+		}
+		public C_S_TblCall(NUSALSeqCommandBook book, int address) {
+			super(NUSALSeqCmdType.CALL_TABLE, book, address, -1);
+			super.setLabelPrefix("calltbl");
+		}
+		public C_S_TblCall(NUSALSeqCommandDef def, int address) {
+			super(def, address, -1);
 			super.setLabelPrefix("calltbl");
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -581,6 +760,14 @@ public class SeqCommands {
 			super(NUSALSeqCmdType.RAND_S);
 			super.setParam(0, max);
 		}
+		public C_S_LoadRandom(NUSALSeqCommandBook book, int max) {
+			super(NUSALSeqCmdType.RAND_S, book);
+			super.setParam(0, max);
+		}
+		public C_S_LoadRandom(NUSALSeqCommandDef def, int max) {
+			super(def);
+			super.setParam(0, max);
+		}
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
 			int max = getParam(0);
@@ -596,12 +783,28 @@ public class SeqCommands {
 			super(NUSALSeqCmdType.NOTEALLOC_POLICY_S);
 			super.setParam(0, bitmask);
 		}
+		public C_S_NoteAllocPolicy(NUSALSeqCommandBook book, int bitmask) {
+			super(NUSALSeqCmdType.NOTEALLOC_POLICY_S, book);
+			super.setParam(0, bitmask);
+		}
+		public C_S_NoteAllocPolicy(NUSALSeqCommandDef def, int bitmask) {
+			super(def);
+			super.setParam(0, bitmask);
+		}
 	}
 	
 	/*--- 0xd1 ldshorttablegate ---*/
 	public static class C_S_SetGateTable extends NUSALSeqDataRefCommand{
 		public C_S_SetGateTable(int address) {
-			super(NUSALSeqCmdType.LOAD_SHORTTBL_GATE, address, 16);
+			super(NUSALSeqCmdType.LOAD_SHORTTBL_GATE, null, address, 16);
+			super.setLabelPrefix("gatetbl");
+		}
+		public C_S_SetGateTable(NUSALSeqCommandBook book, int address) {
+			super(NUSALSeqCmdType.LOAD_SHORTTBL_GATE, book, address, 16);
+			super.setLabelPrefix("gatetbl");
+		}
+		public C_S_SetGateTable(NUSALSeqCommandDef def, int address) {
+			super(def, address, 16);
 			super.setLabelPrefix("gatetbl");
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -614,7 +817,15 @@ public class SeqCommands {
 	/*--- 0xd2 ldshorttablevel ---*/
 	public static class C_S_SetVelTable extends NUSALSeqDataRefCommand{
 		public C_S_SetVelTable(int address) {
-			super(NUSALSeqCmdType.LOAD_SHORTTBL_VEL, address, 16);
+			super(NUSALSeqCmdType.LOAD_SHORTTBL_VEL, null, address, 16);
+			super.setLabelPrefix("veltbl");
+		}
+		public C_S_SetVelTable(NUSALSeqCommandBook book, int address) {
+			super(NUSALSeqCmdType.LOAD_SHORTTBL_VEL, book, address, 16);
+			super.setLabelPrefix("veltbl");
+		}
+		public C_S_SetVelTable(NUSALSeqCommandDef def, int address) {
+			super(def, address, 16);
 			super.setLabelPrefix("veltbl");
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -630,12 +841,26 @@ public class SeqCommands {
 			super(NUSALSeqCmdType.MUTE_BEHAVIOR_S);
 			super.setParam(0, bitmask);
 		}
+		public C_S_MuteBehavior(NUSALSeqCommandBook book, int bitmask) {
+			super(NUSALSeqCmdType.MUTE_BEHAVIOR_S, book);
+			super.setParam(0, bitmask);
+		}
+		public C_S_MuteBehavior(NUSALSeqCommandDef def, int bitmask) {
+			super(def);
+			super.setParam(0, bitmask);
+		}
 	}
 	
 	/*--- 0xd4 mute ---*/
 	public static class C_S_Mute extends CMD_IgnoredCommand{
 		public C_S_Mute() {
 			super(NUSALSeqCmdType.MUTE_S);
+		}
+		public C_S_Mute(NUSALSeqCommandBook book) {
+			super(NUSALSeqCmdType.MUTE_S, book);
+		}
+		public C_S_Mute(NUSALSeqCommandDef def) {
+			super(def);
 		}
 	}
 	
@@ -645,12 +870,28 @@ public class SeqCommands {
 			super(NUSALSeqCmdType.MUTE_SCALE_S);
 			super.setParam(0, scale);
 		}
+		public C_S_MuteScale(NUSALSeqCommandBook book, int scale) {
+			super(NUSALSeqCmdType.MUTE_SCALE_S, book);
+			super.setParam(0, scale);
+		}
+		public C_S_MuteScale(NUSALSeqCommandDef def, int scale) {
+			super(def);
+			super.setParam(0, scale);
+		}
 	}
 	
 	/*--- 0xd6 disablechan ---*/
 	public static class C_S_DisableChannels extends NUSALSeqGenericCommand{
 		public C_S_DisableChannels(int bitfield) {
 			super(NUSALSeqCmdType.DISABLE_CHANNELS);
+			super.setParam(0, bitfield);
+		}
+		public C_S_DisableChannels(NUSALSeqCommandBook book, int bitfield) {
+			super(NUSALSeqCmdType.DISABLE_CHANNELS, book);
+			super.setParam(0, bitfield);
+		}
+		public C_S_DisableChannels(NUSALSeqCommandDef def, int bitfield) {
+			super(def);
 			super.setParam(0, bitfield);
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -681,6 +922,14 @@ public class SeqCommands {
 	public static class C_S_InitChannels extends NUSALSeqGenericCommand{
 		public C_S_InitChannels(int bitfield) {
 			super(NUSALSeqCmdType.ENABLE_CHANNELS);
+			super.setParam(0, bitfield);
+		}
+		public C_S_InitChannels(NUSALSeqCommandBook book, int bitfield) {
+			super(NUSALSeqCmdType.ENABLE_CHANNELS, book);
+			super.setParam(0, bitfield);
+		}
+		public C_S_InitChannels(NUSALSeqCommandDef def, int bitfield) {
+			super(def);
 			super.setParam(0, bitfield);
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -714,6 +963,14 @@ public class SeqCommands {
 			super(NUSALSeqCmdType.MASTER_EXP);
 			super.setParam(0, value);
 		}
+		public C_S_SetMasterExpression(NUSALSeqCommandBook book, int value) {
+			super(NUSALSeqCmdType.MASTER_EXP, book);
+			super.setParam(0, value);
+		}
+		public C_S_SetMasterExpression(NUSALSeqCommandDef def, int value) {
+			super(def);
+			super.setParam(0, value);
+		}
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
 			sequence.setMasterExpression((byte)getParam(0));
@@ -725,6 +982,16 @@ public class SeqCommands {
 	public static class C_S_SetMasterFade extends NUSALSeqGenericCommand{
 		public C_S_SetMasterFade(int mode, int time) {
 			super(NUSALSeqCmdType.MASTER_FADE);
+			super.setParam(0, mode);
+			super.setParam(1, time);
+		}
+		public C_S_SetMasterFade(NUSALSeqCommandBook book, int mode, int time) {
+			super(NUSALSeqCmdType.MASTER_FADE, book);
+			super.setParam(0, mode);
+			super.setParam(1, time);
+		}
+		public C_S_SetMasterFade(NUSALSeqCommandDef def, int mode, int time) {
+			super(def);
 			super.setParam(0, mode);
 			super.setParam(1, time);
 		}
@@ -741,6 +1008,14 @@ public class SeqCommands {
 			super(NUSALSeqCmdType.MASTER_VOLUME);
 			super.setParam(0, value);
 		}
+		public C_S_SetMasterVolume(NUSALSeqCommandBook book, int value) {
+			super(NUSALSeqCmdType.MASTER_VOLUME, book);
+			super.setParam(0, value);
+		}
+		public C_S_SetMasterVolume(NUSALSeqCommandDef def, int value) {
+			super(def);
+			super.setParam(0, value);
+		}
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
 			sequence.setMasterVolume((byte)getParam(0));
@@ -752,6 +1027,14 @@ public class SeqCommands {
 	public static class C_S_SetTempoVar extends NUSALSeqGenericCommand{
 		public C_S_SetTempoVar(int value) {
 			super(NUSALSeqCmdType.SET_TEMPO_VAR);
+			super.setParam(0, value);
+		}
+		public C_S_SetTempoVar(NUSALSeqCommandBook book, int value) {
+			super(NUSALSeqCmdType.SET_TEMPO_VAR, book);
+			super.setParam(0, value);
+		}
+		public C_S_SetTempoVar(NUSALSeqCommandDef def, int value) {
+			super(def);
 			super.setParam(0, value);
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -767,6 +1050,14 @@ public class SeqCommands {
 			super(NUSALSeqCmdType.SET_TEMPO);
 			super.setParam(0, bpm);
 		}
+		public C_S_SetTempo(NUSALSeqCommandBook book, int bpm) {
+			super(NUSALSeqCmdType.SET_TEMPO, book);
+			super.setParam(0, bpm);
+		}
+		public C_S_SetTempo(NUSALSeqCommandDef def, int bpm) {
+			super(def);
+			super.setParam(0, bpm);
+		}
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
 			sequence.setTempo(getParam(0));
@@ -778,6 +1069,14 @@ public class SeqCommands {
 	public static class C_S_SetDeltaTranspose extends NUSALSeqGenericCommand{
 		public C_S_SetDeltaTranspose(int semis) {
 			super(NUSALSeqCmdType.SEQ_TRANSPOSE_REL);
+			super.setParam(0, semis);
+		}
+		public C_S_SetDeltaTranspose(NUSALSeqCommandBook book, int semis) {
+			super(NUSALSeqCmdType.SEQ_TRANSPOSE_REL, book);
+			super.setParam(0, semis);
+		}
+		public C_S_SetDeltaTranspose(NUSALSeqCommandDef def, int semis) {
+			super(def);
 			super.setParam(0, semis);
 		}
 		public boolean doCommand(NUSALSeq sequence){
@@ -793,6 +1092,14 @@ public class SeqCommands {
 			super(NUSALSeqCmdType.SEQ_TRANSPOSE);
 			super.setParam(0, semis);
 		}
+		public C_S_SetTranspose(NUSALSeqCommandBook book, int semis) {
+			super(NUSALSeqCmdType.SEQ_TRANSPOSE, book);
+			super.setParam(0, semis);
+		}
+		public C_S_SetTranspose(NUSALSeqCommandDef def, int semis) {
+			super(def);
+			super.setParam(0, semis);
+		}
 		public boolean doCommand(NUSALSeq sequence){
 			flagSeqUsed();
 			sequence.setTranspose(getParam(0));
@@ -804,6 +1111,16 @@ public class SeqCommands {
 	public static class C_S_Print extends CMD_IgnoredCommand{
 		public C_S_Print(int addr, int value) {
 			super(NUSALSeqCmdType.PRINT);
+			super.setParam(0, addr);
+			super.setParam(1, value);
+		}
+		public C_S_Print(NUSALSeqCommandBook book, int addr, int value) {
+			super(NUSALSeqCmdType.PRINT, book);
+			super.setParam(0, addr);
+			super.setParam(1, value);
+		}
+		public C_S_Print(NUSALSeqCommandDef def, int addr, int value) {
+			super(def);
 			super.setParam(0, addr);
 			super.setParam(1, value);
 		}

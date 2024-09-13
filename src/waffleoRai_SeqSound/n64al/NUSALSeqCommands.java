@@ -25,5 +25,20 @@ public class NUSALSeqCommands {
 	public static final int MML_DATAPARAM_TYPE__DECUNSIGNED = 1;
 	public static final int MML_DATAPARAM_TYPE__HEXUNSIGNED = 2;
 	public static final int MML_DATAPARAM_TYPE__BUFFER = 3;
-
+	
+	public static final int CMDCTX_UNK = -1;
+	public static final int CMDCTX_ANY = 0;
+	public static final int CMDCTX_SEQ = 1;
+	public static final int CMDCTX_CHANNEL = 2;
+	public static final int CMDCTX_LAYER = 3;
+	public static final int CMDCTX_SHORTNOTES = 4;
+	
+	public static final int NOTETYPE_NONE = 0;
+	public static final int NOTETYPE_DVG = 1;
+	public static final int NOTETYPE_DV = 2;
+	public static final int NOTETYPE_VG = 3;
+	public static final int NOTETYPE_DVG_SHORT = 4;
+	public static final int NOTETYPE_DV_SHORT = 5;
+	public static final int NOTETYPE_VG_SHORT = 6;
+	
 }

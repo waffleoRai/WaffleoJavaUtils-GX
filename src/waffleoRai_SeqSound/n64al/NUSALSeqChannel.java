@@ -523,7 +523,7 @@ public class NUSALSeqChannel {
 				err_addr = mypos;
 				//bad_cmd = cmd;
 				err_layer = -1;
-				System.err.println("NUSALSeqChannel.nextTick || Channel Command @ 0x" + Integer.toHexString(err_addr) + " -- " + cmd.toMMLCommand() + " returned error.");
+				System.err.println("NUSALSeqChannel.nextTick || Channel Command @ 0x" + Integer.toHexString(err_addr) + " -- " + cmd.toMMLCommand(NUSALSeq.SYNTAX_SET_ZEQER) + " returned error.");
 				return false;
 			}
 			if(pos == mypos){

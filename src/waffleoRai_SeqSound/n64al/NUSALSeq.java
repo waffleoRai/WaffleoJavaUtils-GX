@@ -72,6 +72,10 @@ public class NUSALSeq implements WriterPrintable{
 	
 	public static final int MAX_NONLOOP_TICKS = 57600; //10 min at 120bpm
 	
+	public static final int SYNTAX_SET_ZEQER = 0;
+	public static final int SYNTAX_SET_SEQ64 = 1;
+	public static final int SYNTAX_SET_ZELDARET = 2;
+	
 	/*----- Static Variables -----*/
 	
 	protected static boolean dbg_w_mode;
@@ -794,6 +798,15 @@ public class NUSALSeq implements WriterPrintable{
 		private static final long serialVersionUID = 4940386212055346600L;
 		
 		public TooManyVoicesException(String msg){
+			super(msg);
+		}
+	}
+	
+	public static class InvalidCommandBookException extends RuntimeException{
+
+		private static final long serialVersionUID = -84557296192371631L;
+		
+		public InvalidCommandBookException(String msg){
 			super(msg);
 		}
 	}

@@ -228,8 +228,9 @@ public class NinLZ {
 				for(int i = 0; i < 4; i++) dshead.addToFile(input.get());
 				
 				DSCompHeader chead = DSCompHeader.read(dshead, 0);
-				allocAmount = chead.getDecompressedSize();
+				if(allocAmount <= 0) allocAmount = chead.getDecompressedSize();
 			}
+			yazzy.setWriteLimit(allocAmount);
 			FileBuffer buff = new FileBuffer(allocAmount, false);
 			yazzy.decodeTo(input, new FileBufferStreamer(buff));
 			
@@ -252,8 +253,9 @@ public class NinLZ {
 				}
 				
 				DSCompHeader chead = DSCompHeader.read(dshead, 0);
-				allocAmount = chead.getDecompressedSize();
+				if(allocAmount <= 0) allocAmount = chead.getDecompressedSize();
 			}
+			yazzy.setWriteLimit(allocAmount);
 			FileBuffer buff = new FileBuffer(allocAmount, false);
 			yazzy.decodeTo(new FileInputStreamer(input), new FileBufferStreamer(buff));
 			
@@ -270,8 +272,9 @@ public class NinLZ {
 				for(int i = 0; i < 4; i++) dshead.addToFile(Byte.toUnsignedInt(input.nextByte()));
 				
 				DSCompHeader chead = DSCompHeader.read(dshead, 0);
-				allocAmount = chead.getDecompressedSize();
+				if(allocAmount <= 0) allocAmount = chead.getDecompressedSize();
 			}
+			yazzy.setWriteLimit(allocAmount);
 			FileBuffer buff = new FileBuffer(allocAmount, false);
 			FileBuffer inbuff = input.getBuffer();
 			inbuff.setCurrentPosition(input.getBufferPosition());

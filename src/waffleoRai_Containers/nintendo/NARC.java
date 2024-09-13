@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import waffleoRai_Compression.definitions.CompDefNode;
+import waffleoRai_Compression.nintendo.DSCompHeader;
+import waffleoRai_Compression.nintendo.NinLZ;
 import waffleoRai_Containers.ArchiveDef;
 import waffleoRai_Files.Converter;
 import waffleoRai_Files.tree.DirectoryNode;
@@ -156,14 +159,48 @@ public class NARC extends NDKDSFile{
 		long gmif_len = gmif.getFileSize();
 		for(int i = 0; i < fat.length; i++)
 		{
+			int comptype = 0;
 			long off = fat[i][0] + gmif_off + 8;
 			long len = fat[i][1] - fat[i][0];
+			if(len <= 0) continue;
 			
 			FileNode fn = nmap.get(i);
 			if(fn == null)
 			{
+				//Try a type detection from magic number? There's common DS types...
+				String ext = "bin";
+				if(len >= 4) {
+					long magicloc = off - gmif_off;
+					//Compressed maybe?
+					int b0 = Byte.toUnsignedInt(gmif.getByte(magicloc));
+					if(b0 == 0x10) {
+						comptype = DSCompHeader.TYPE_LZ77;
+						magicloc += 5L;
+					}
+					
+					String mm = gmif.getASCII_string(magicloc, 4);
+					if(mm.equals("RLCN")) ext = "nclr";
+					else if(mm.equals("RGCN")) ext = "ncgr";
+					else if(mm.equals("RGBN")) ext = "nbgr";
+					else if(mm.equals("RCSN")) ext = "nscr";
+					else if(mm.equals("RECN")) ext = "ncer";
+					else if(mm.equals("RNAN")) ext = "nanr";
+					else if(mm.equals("RTFN")) ext = "nftr";
+					else if(mm.equals("BMD0")) ext = "nsbmd";
+					else if(mm.equals("BTX0")) ext = "nsbtx";
+					else if(mm.equals("BCA0")) ext = "nsbca";
+					else if(mm.equals("BTP0")) ext = "nsbtp";
+					else if(mm.equals("BTA0")) ext = "nsbta";
+					else if(mm.equals("BMA0")) ext = "nsbma";
+					else if(mm.equals("BVA0")) ext = "nsbva";
+					
+					if (comptype == DSCompHeader.TYPE_LZ77) {
+						ext += ".lz";
+					}
+				}
+				
 				//Save raw
-				String rawname = "NARC_RAWFILE_" + String.format("%04x", i) + ".bin";
+				String rawname = "NARC_RAWFILE_" + String.format("%04x", i) + "." + ext;
 				fn = new FileNode(null, rawname);
 				arc.raw.add(fn);
 			}
@@ -179,6 +216,10 @@ public class NARC extends NDKDSFile{
 			
 			fn.setOffset(off);
 			fn.setLength(len);
+			
+			if(comptype == DSCompHeader.TYPE_LZ77) {
+				fn.addTypeChainNode(new CompDefNode(NinLZ.getDefinition()));
+			}
 		}
 		
 		return arc;

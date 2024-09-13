@@ -3,6 +3,7 @@ package waffleoRai_SeqSound.n64al.cmd;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 
 public abstract class NUSALSeqDataRefCommand extends NUSALSeqReferenceCommand{
 
@@ -10,13 +11,23 @@ public abstract class NUSALSeqDataRefCommand extends NUSALSeqReferenceCommand{
 	private int data_size;
 	private int offset; //Offset of reference from start of linked command (if overlap)
 	
-	protected NUSALSeqDataRefCommand(NUSALSeqCmdType cmd, int addr, int exp_datsz) {
-		super(cmd, addr, false);
+	protected NUSALSeqDataRefCommand(NUSALSeqCmdType funcCmd, NUSALSeqCommandBook book, int addr, int exp_datsz) {
+		super(funcCmd, book, addr, false);
 		data_size = exp_datsz;
 	}
 	
-	protected NUSALSeqDataRefCommand(NUSALSeqCmdType cmd, int value, int addr, int exp_datsz) {
-		super(cmd, value, addr, false);
+	protected NUSALSeqDataRefCommand(NUSALSeqCmdType funcCmd, NUSALSeqCommandBook book, int value, int addr, int exp_datsz) {
+		super(funcCmd, book, value, addr, false);
+		data_size = exp_datsz;
+	}
+	
+	protected NUSALSeqDataRefCommand(NUSALSeqCommandDef def, int addr, int exp_datsz) {
+		super(def, addr, false);
+		data_size = exp_datsz;
+	}
+	
+	protected NUSALSeqDataRefCommand(NUSALSeqCommandDef def, int value, int addr, int exp_datsz) {
+		super(def, value, addr, false);
 		data_size = exp_datsz;
 	}
 	
@@ -28,7 +39,7 @@ public abstract class NUSALSeqDataRefCommand extends NUSALSeqReferenceCommand{
 
 	public boolean isBranch(){return false;}
 	public NUSALSeqCmdType getRelativeCommand() {return null;}
-	public NUSALSeqCmdType getAbsoluteCommand() {return super.getCommand();}
+	public NUSALSeqCmdType getAbsoluteCommand() {return super.getFunctionalType();}
 	
 	public int getDataOffset(){return offset;}
 	public void setDataOffset(int value){offset = value;}
@@ -54,8 +65,8 @@ public abstract class NUSALSeqDataRefCommand extends NUSALSeqReferenceCommand{
 		return pstr;
 	}
 	
-	protected StringBuilder toMMLCommand_child(){
-		StringBuilder sb = super.toMMLCommand_child();
+	protected StringBuilder toMMLCommand_child(int syntax){
+		StringBuilder sb = super.toMMLCommand_child(syntax);
 		if(offset != 0){
 			sb.append('[');
 			sb.append(offset);

@@ -248,7 +248,12 @@ public class NUSALSeqLayer {
 		}
 	}
 	
-	public boolean playNote(byte note, byte vel, byte gate, int time){
+	public boolean playNote(byte note, int vel, int gate, int time){
+		//Negative param means use short note
+		if(vel < 0) vel = sn_vel;
+		if(gate < 0) gate = sn_gate;
+		if(time < 0) time = sn_delay;
+		
 		//Adjust note to MIDI standard
 		int notei = Byte.toUnsignedInt(note);
 		notei += channel.getTranspose();
@@ -259,8 +264,8 @@ public class NUSALSeqLayer {
 		if(noteon) noteOff();
 		
 		this.note = (byte)notei;
-		velocity = vel;
-		last_gate = gate;
+		velocity = (byte)vel;
+		last_gate = (byte)gate;
 		last_time = time;
 		time_remain = NUSALSeq.scaleTicks(time);
 		noteon = true;
@@ -272,17 +277,17 @@ public class NUSALSeqLayer {
 		if(NUSALSeq.dbg_w_mode){
 			String notestr = note + "->" + notei;
 			channel.getParent().dbgtt_writeln(channel.getIndex(), 
-					"noteon " + notestr + " " + time + " " + vel + " " + Byte.toUnsignedInt(gate) + " ly" + my_idx);
+					"noteon " + notestr + " " + time + " " + vel + " " + gate + " ly" + my_idx);
 		}
 		
 		return true;
 	}
 	
-	public boolean playNote(byte note, byte vel, int time){
+	public boolean playNoteNDV(byte note, int vel, int time){
 		return playNote(note, vel, last_gate, time);
 	}
 	
-	public boolean playNote(byte note, byte vel, byte gate){
+	public boolean playNoteNVG(byte note, int vel, int gate){
 		return playNote(note, vel, gate, last_time);
 	}
 	
@@ -331,7 +336,7 @@ public class NUSALSeqLayer {
 			if(!cmd.doCommand(this)){
 				err_addr = mypos;
 				//bad_cmd = cmd;
-				System.err.println("NUSALSeqLayer.nextTick || Command @ 0x" + Integer.toHexString(err_addr) + " -- " + cmd.toMMLCommand() + " returned error.");
+				System.err.println("NUSALSeqLayer.nextTick || Command @ 0x" + Integer.toHexString(err_addr) + " -- " + cmd.toMMLCommand(NUSALSeq.SYNTAX_SET_ZEQER) + " returned error.");
 				return false;
 			}
 			if(nowpos == mypos){

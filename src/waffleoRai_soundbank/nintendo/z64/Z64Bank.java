@@ -3,6 +3,7 @@ package waffleoRai_soundbank.nintendo.z64;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -11,11 +12,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import javax.sound.midi.InvalidMidiDataException;
+
+import waffleoRai_Files.ConverterAdapter;
 import waffleoRai_Files.WriterPrintable;
+import waffleoRai_Files.tree.FileNode;
+import waffleoRai_SeqSound.MIDI;
+import waffleoRai_SeqSound.n64al.NUSALSeq;
 import waffleoRai_Sound.nintendo.Z64Sound;
 import waffleoRai_Sound.nintendo.Z64WaveInfo;
+import waffleoRai_SoundSynth.SynthBank;
 import waffleoRai_Utils.FileBuffer;
 import waffleoRai_Utils.MultiFileBuffer;
+import waffleoRai_Utils.FileBuffer.UnsupportedFileTypeException;
+import waffleoRai_soundbank.SoundbankDef;
 import waffleoRai_soundbank.nintendo.z64.Z64BankBlocks.*;
 import waffleoRai_soundbank.nintendo.z64.Z64DrumPool.DrumRegionInfo;
 
@@ -24,8 +34,8 @@ import waffleoRai_soundbank.nintendo.z64.Z64DrumPool.DrumRegionInfo;
  * game. Also used to read and write the raw binary form of the soundfont
  * format.
  * @author Blythe Hospelhorn
- * @version 3.2.0
- * @since January 1, 2024
+ * @version 3.3.0
+ * @since March 6, 2024
  */
 public class Z64Bank implements WriterPrintable{
 	
@@ -850,7 +860,76 @@ public class Z64Bank implements WriterPrintable{
 	
 	/*----- Conversion -----*/
 	
+	private static Z64Bank2SF2Converter stat_conv;
+	
+	public static Z64Bank2SF2Converter getSF2Converter(){
+		if(stat_conv == null) stat_conv = new Z64Bank2SF2Converter();
+		return stat_conv;
+	}
+	
+	public static class Z64Bank2SF2Converter extends ConverterAdapter{
+		
+		private static final String DEFO_FROMSTR_ENG = "Nintendo 64 Audio Library Soundfont";
+		private static final String DEFO_TOSTR_ENG = "Soundfont 2 (.sf2)";
+		
+		public Z64Bank2SF2Converter(){
+			super("bubnk", DEFO_FROMSTR_ENG, "sf2", DEFO_TOSTR_ENG);
+		}
+
+		public void writeAsTargetFormat(String inpath, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			writeAsTargetFormat(FileBuffer.createBuffer(inpath, true), outpath);
+		}
+
+		public void writeAsTargetFormat(FileBuffer input, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			if (input == null) throw new UnsupportedFileTypeException("Input is null");
+			input.setEndian(true);
+			//TODO
+		}
+
+		public void writeAsTargetFormat(FileNode node, String outpath)
+				throws IOException, UnsupportedFileTypeException {
+			writeAsTargetFormat(node.loadData(), outpath);
+		}
+	}
+	
 	/*----- Definition -----*/
+	
+	private static Z64BankDef bnk_def;
+	
+	public static Z64BankDef getDefinition(){
+		if(bnk_def == null) bnk_def = new Z64BankDef();
+		return bnk_def;
+	}
+	
+	public static class Z64BankDef extends SoundbankDef{
+
+		private static String DEFO_ENG_DESC = "Nintendo 64 Audio Library Soundfont";
+		public static int TYPE_ID = 0x6458a04e;
+
+		private String desc = DEFO_ENG_DESC;
+		
+		public Collection<String> getExtensions() {
+			//I'll just make one up to match later consoles since there isn't one
+			List<String> list = new ArrayList<String>(1);
+			list.add("bubnk");
+			return list;
+		}
+
+		public String getDescription() {return desc;}
+		public int getTypeID() {return TYPE_ID;}
+		public void setDescriptionString(String s) {desc = s;}
+		public String getDefaultExtension() {return "bubnk";}
+
+		public SynthBank getPlayableBank(FileNode file) {
+			// TODO Auto-generated method stub
+			return null;
+		}
+
+		public String getBankIDKey(FileNode file) {return FNMETAKEY_BNKIDKEY;}
+
+	}
 	
 	/*----- Debug -----*/
 	
