@@ -124,6 +124,8 @@ public class QXImage {
 		public int unk_06;
 		public int unk_07;
 		
+		public byte[] matchGarbage;
+		
 		public Bitmap(){}
 		
 		public Bitmap(int[][] dat, int pidx){
@@ -259,6 +261,7 @@ public class QXImage {
 			int y = 0;
 			int x = 0;
 			int pix_ct = (w * h) >>> 1;
+			if((w & 0x1) != 0) pix_ct = ((w+1) * h) >>> 1;
 			
 			for(int p = 0; p < pix_ct; p++)
 			{
@@ -268,9 +271,14 @@ public class QXImage {
 				int v1 = (b >>> 4) & 0xF;
 				
 				bitmap[x][y] = v0; x++;
+				if(x < w) {
+					bitmap[x][y] = v1; x++;
+				}
 				if(x >= w){y++; x = 0;}
+				
+				/*if(x >= w){y++; x = 0;}
 				bitmap[x][y] = v1; x++;
-				if(x >= w){y++; x = 0;}
+				if(x >= w){y++; x = 0;}*/
 			}
 		}
 		
@@ -513,6 +521,18 @@ public class QXImage {
 	public int getClutIndexForFrame(int frame_index){
 		Bitmap frame = this.bitmaps.get(frame_index);
 		return frame.palette_idx;
+	}
+	
+	public int getFrameWidth(int frame_index) {
+		if(frame_index < 0 || frame_index >= bitmaps.size()) return 0;
+		Bitmap frame = this.bitmaps.get(frame_index);
+		return frame.data.length;
+	}
+	
+	public int getFrameHeight(int frame_index) {
+		if(frame_index < 0 || frame_index >= bitmaps.size()) return 0;
+		Bitmap frame = this.bitmaps.get(frame_index);
+		return frame.data[0].length;
 	}
 	
 	/*----- Setters -----*/
@@ -1045,6 +1065,12 @@ public class QXImage {
 		return importFrame_RGB(argb, target, clutIndex, clutImportOption, true);
 	}
 	
+	public void setFrameMatchGarbage(int frameIndex, byte[] val) {
+		if(frameIndex < 0 || frameIndex >= bitmaps.size()) return;
+		Bitmap bmp = bitmaps.get(frameIndex);
+		bmp.matchGarbage = val;
+	}
+	
 	/*----- View -----*/
 	
 	public static short argb32_to_abgr16(int val32){
@@ -1390,8 +1416,8 @@ public class QXImage {
 			return out;
 		}
 		else{
-			int alloc = ((w*h) >>> 1) + 4;
-			FileBuffer out = new FileBuffer(alloc, false);
+			int bmpsize = (((w + 1) & ~0x1) * h) >>> 1;
+			FileBuffer out = new FileBuffer(bmpsize + 8, false);
 			
 			for(int y = 0; y < h; y++){
 				for(int x = 0; x < w; x+=2){
@@ -1401,6 +1427,12 @@ public class QXImage {
 						b |= (bmp.data[x+1][y] & 0xf) << 4;
 					}
 					out.addToFile((byte)b);
+				}
+			}
+			
+			if(bmp.matchGarbage != null) {
+				for(int j = 0; j < bmp.matchGarbage.length; j++) {
+					out.addToFile(bmp.matchGarbage[j]);
 				}
 			}
 			
@@ -1443,13 +1475,19 @@ public class QXImage {
 			return out;
 		}
 		else{
-			int alloc = w*h + 4;
+			int alloc = w*h + 8;
 			FileBuffer out = new FileBuffer(alloc, false);
 			
 			for(int y = 0; y < h; y++){
 				for(int x = 0; x < w; x++){
 					int b = bmp.data[x][y];
 					out.addToFile((byte)b);
+				}
+			}
+			
+			if(bmp.matchGarbage != null) {
+				for(int j = 0; j < bmp.matchGarbage.length; j++) {
+					out.addToFile(bmp.matchGarbage[j]);
 				}
 			}
 			
