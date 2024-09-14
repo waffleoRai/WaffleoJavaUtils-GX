@@ -23,7 +23,7 @@ public class PSXXAAudio {
 		
 		XAAudioDataOnlyStream str = new XAAudioDataOnlyStream();
 		str.setChannelCount(aiff.getChannelCount());
-		str.setBitDepth(aiff.getBitDepth());
+		str.setBitDepth(aiff.getRawBitDepth());
 		str.setSampleRate((int)Math.round(aiff.getSampleRate()));
 		
 		str.setAudioData(aiff.getAifcRawSndData());
@@ -31,9 +31,39 @@ public class PSXXAAudio {
 		return str;
 	}
 	
+	public static boolean writeAifc(byte[] rawAudioData, String outputPath, int sampleRate, int bitDepth, int chCount) throws IOException {
+		if(rawAudioData == null) return false;
+		
+		AiffFile aiff = AiffFile.emptyAiffFile(chCount);
+		aiff.setSampleRate(sampleRate);
+		aiff.setBitDepth((short)bitDepth);
+		aiff.setCompressionId(AIFC_ID_XAAUD);
+		aiff.setCompressionName(AIFC_IDSTR_XAAUD);
+		
+		//Calculate frames from data size and other parameters
+		int frameCount = rawAudioData.length >> 7; //Number of 128 byte blocks
+		frameCount *= (28 << 2); //Samples per block.
+		if(bitDepth == 4) frameCount <<= 1;
+		frameCount /= chCount;
+		
+		aiff.setFrameCountDirect(frameCount);
+		
+		aiff.setAifcRawSndData(rawAudioData);
+		FileBuffer ser = aiff.serializeAiff();
+		ser.writeFile(outputPath);
+		ser.dispose();
+		
+		return true;
+	}
+	
 	public static boolean writeAifc(XAAudioStream stream, int start, int secCount, String outputPath) throws IOException {
 		if(stream == null) return false;
 		XADataStream datStr = stream.openDataStream(0);
+		
+		//Forward datStr to start
+		if(start > 0) {
+			datStr.skipSectors(start);
+		}
 		
 		int chCount = stream.totalChannels();
 		int bd = stream.getSourceBitDepth();
