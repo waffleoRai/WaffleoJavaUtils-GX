@@ -74,7 +74,8 @@ public class PSXXAAudio {
 		aiff.setCompressionId(AIFC_ID_XAAUD);
 		aiff.setCompressionName(AIFC_IDSTR_XAAUD);
 		
-		int frames = secCount / (28 << 3); //Mono 4-bit
+		int blocks = secCount * BLOCKS_PER_SEC;
+		int frames = blocks * (28 << 3); //Mono 4-bit
 		if(bd == 8) frames >>>= 1;
 		if(chCount > 1) frames /= chCount;
 		aiff.setFrameCountDirect(frames);

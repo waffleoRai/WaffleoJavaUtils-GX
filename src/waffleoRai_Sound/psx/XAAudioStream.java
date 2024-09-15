@@ -104,7 +104,7 @@ public class XAAudioStream implements Sound{
 		
 		//Get length.
 		while(str.skipSector()) total_frames += frames_per_sec;
-		str.dispose();
+		//str.dispose();
 		
 		//Do other tracks (if applicable)
 		while(!chlist.isEmpty()){
@@ -115,7 +115,7 @@ public class XAAudioStream implements Sound{
 			sec0 = str.peekSector(false);
 			flags = Byte.toUnsignedInt(sec0.getByte(0x13));
 			sec0.dispose();
-			str.dispose();
+			//str.dispose();
 			
 			//Examine format to determine whether to keep.
 			boolean srflag_ = (flags & 0x4) != 0;

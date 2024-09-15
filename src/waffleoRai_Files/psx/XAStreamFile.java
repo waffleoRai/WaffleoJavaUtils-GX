@@ -9,7 +9,7 @@ import waffleoRai_Utils.FileBuffer;
 public class XAStreamFile {
 
 	private int st_sec;
-	private int ed_sec;
+	private int ed_sec; //INCLUSIVE
 	
 	private int[] v_channels; //Start sector for each channel
 	private int[] a_channels; //Start sector for each channel
@@ -17,6 +17,7 @@ public class XAStreamFile {
 	
 	//private FileBuffer src;
 	private FileNode src;
+	private FileBuffer cache;
 	
 	public XAStreamFile(int stsec, int edsec){
 		st_sec = stsec;
@@ -35,8 +36,9 @@ public class XAStreamFile {
 	
 	public void scanStartPoints(FileNode xasrc) throws IOException{
 		src = xasrc;
-		FileBuffer xastr = xasrc.loadData();
-		scanStartPoints(xastr);
+		//FileBuffer xastr = xasrc.loadData();
+		cacheSource();
+		scanStartPoints(cache);
 	}
 	
 	public void scanStartPoints(FileBuffer xastr){
@@ -72,7 +74,7 @@ public class XAStreamFile {
 	
 	public FileNode getAsFileNode(String name){
 		long stoff = (long)st_sec * (long)XADataStream.SEC_SIZE;
-		long edoff = (long)ed_sec * (long)XADataStream.SEC_SIZE;
+		long edoff = (long)(ed_sec + 1) * (long)XADataStream.SEC_SIZE;
 		
 		FileNode fn = src.getSubFile(stoff, edoff-stoff);
 		fn.setFileName(name);
@@ -145,8 +147,23 @@ public class XAStreamFile {
 	
 	public void setSource(FileNode node){src = node;}
 	
+	public void cacheSource() throws IOException {
+		clearCache();
+		cache = src.loadData();
+	}
+	
+	public void clearCache() {
+		if(cache != null) {
+			try {cache.dispose();} 
+			catch (IOException e) {e.printStackTrace();}	
+		}
+		cache = null;
+	}
+	
 	public XADataStream openStream(int type, int channel) throws IOException{
 		if(channel < 0 || channel >= PSXXAStream.MAX_CHANNELS) return null;
+		
+		if(cache == null) cacheSource();
 		
 		int sec = 0;
 		long start = 0;
@@ -155,18 +172,18 @@ public class XAStreamFile {
 			sec = v_channels[channel];
 			if(sec < 0) return null;
 			start = (long)sec * (long)PSXXAStream.SEC_SIZE;
-			return new XADataStream(src.loadData(), start, type, channel);
+			return new XADataStream(cache, start, type, channel);
 		case PSXXAStream.STYPE_AUDIO: 
 			sec = a_channels[channel];
 			if(sec < 0) return null;
 			//System.err.println("XAStreamFile.openStream || Start Sector: " + sec);
 			start = (long)sec * (long)PSXXAStream.SEC_SIZE;
-			return new XADataStream(src.loadData(), start, type, channel);
+			return new XADataStream(cache, start, type, channel);
 		case PSXXAStream.STYPE_DATA: 
 			sec = d_channels[channel];
 			if(sec < 0) return null;
 			start = (long)sec * (long)PSXXAStream.SEC_SIZE;
-			return new XADataStream(src.loadData(), start, type, channel);
+			return new XADataStream(cache, start, type, channel);
 		}
 		
 		return null;

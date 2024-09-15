@@ -76,6 +76,13 @@ public class PSXXAStream {
 			cpos += SEC_SIZE;
 		}while(++s < scount);
 		
+		//If last one wasn't added, add.
+		if(last_st < (scount - 1)) {
+			XAStreamFile f = new XAStreamFile(last_st, s);
+			flist.add(f);
+			last_st = s;
+		}
+		
 		//Load into PSXXAStream object
 		PSXXAStream str = new PSXXAStream(flist.size());
 		for(XAStreamFile f : flist){

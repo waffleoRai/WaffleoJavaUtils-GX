@@ -4,6 +4,7 @@ import java.io.IOException;
 
 import waffleoRai_Sound.psx.PSXXAStream;
 import waffleoRai_Utils.FileBuffer;
+import waffleoRai_Utils.ROSubFileBuffer;
 
 public class XADataStream implements IXAAudioDataSource{
 
@@ -25,6 +26,7 @@ public class XADataStream implements IXAAudioDataSource{
 	private int chn;
 	
 	private boolean done;
+	private boolean eofFound = false;
 	//private int sec; //Current sector (so know where to jump to)
 	//private int spos; //Position within sector (so know when to jump)
 	private long cpos; //Current file position
@@ -53,11 +55,14 @@ public class XADataStream implements IXAAudioDataSource{
 		// -1 - EOF
 		//System.err.println("Channel: " + ch_type + " - " + chn);
 		if(soff >= flen) return -1;
+		if(eofFound) return -1;
 		
 		int chno = (int)src.getByte(soff + 0x11);
 		int flags = Byte.toUnsignedInt(src.getByte(soff + 0x12));
 		
-		if((flags & 0x80) != 0) return -1;
+		if((flags & 0x80) != 0) {
+			eofFound = true;
+		}
 		if(chno != chn) return 0;
 		int t = flags & 0x0e;
 		
@@ -172,6 +177,7 @@ public class XADataStream implements IXAAudioDataSource{
 	public void reset(){
 		cpos = stpos;
 		done = false;
+		eofFound = false;
 	}
 	
 	public int skipSectors(int secCount){
@@ -195,11 +201,14 @@ public class XADataStream implements IXAAudioDataSource{
 	}
 	
 	public void dispose(){
-		try {
-			src.dispose();
-		} 
-		catch (IOException e) {
-			e.printStackTrace();
+		if(src == null) return;
+		if(src instanceof ROSubFileBuffer) {
+			try {
+				src.dispose();
+			} 
+			catch (IOException e) {
+				e.printStackTrace();
+			}	
 		}
 		src = null;
 	}
