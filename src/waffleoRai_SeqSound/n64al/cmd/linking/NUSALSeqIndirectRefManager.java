@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.cmd.DataCommands;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqPtrTableData;
@@ -36,6 +37,13 @@ public class NUSALSeqIndirectRefManager {
 		if(readerState != null) {
 			if(readerState.data != null) maxAddress = (int)readerState.data.getFileSize();
 		}
+	}
+	
+	/*--- Setters ---*/
+	
+	public void clear() {
+		indirLinks.clear();
+		pTables.clear();
 	}
 	
 	/*--- Queues ---*/
@@ -99,6 +107,15 @@ public class NUSALSeqIndirectRefManager {
 			NUSALSeqCommand target = getCommandOver(refAddr);
 			if(target != null) {
 				cmd.setReference(target);
+				if(target.getLabel() == null){
+					int[] ctxt = target.getFirstUsed();
+					boolean isSub = (cmd.getFunctionalType()== NUSALSeqCmdType.CALL);
+					if(ctxt[0] < 0) reflink_LabelSeqBlock(target, isSub);
+					else{
+						if(ctxt[1] < 0) reflink_LabelChanBlock(target, ctxt[0], isSub);
+						else reflink_LabelLyrBlock(target, ctxt[0], ctxt[1], isSub);
+					}
+				}
 				readerState.rchecked.add(cmd.getAddress());
 			}
 			else {
@@ -235,7 +252,6 @@ public class NUSALSeqIndirectRefManager {
 	}
 	
 	private void resolvePTable(PTableLink table) {
-		//TODO
 		ParseContext pctx = new ParseContext();
 		NUSALSeqPtrTableData ptbl = table.getPTable();
 		int addr = ptbl.getAddress();
@@ -425,6 +441,42 @@ public class NUSALSeqIndirectRefManager {
 	}
 	
 	/*--- Utility ---*/
+	
+	private void reflink_LabelSeqBlock(NUSALSeqCommand target, boolean isSub){
+ 		if(target == null) return;
+ 		String lbl = null;
+ 		if(isSub){
+ 			lbl = String.format("sub_seq_%03d", readerState.seq_lbls.subs++);
+ 		}
+ 		else{
+ 			lbl = String.format("seq_block_%03d", readerState.seq_lbls.blocks++);
+ 		}
+ 		target.setLabel(lbl);
+ 	}
+ 	
+ 	private void reflink_LabelChanBlock(NUSALSeqCommand target, int ch, boolean isSub){
+ 		if(target == null) return;
+ 		String lbl = null;
+ 		if(isSub){
+ 			lbl = String.format("sub_ch%X_%03d", ch, readerState.ch_lbls[ch].subs++);
+ 		}
+ 		else{
+ 			lbl = String.format("ch%X_block_%03d", ch, readerState.ch_lbls[ch].blocks++);
+ 		}
+ 		target.setLabel(lbl);
+ 	}
+ 	
+ 	private void reflink_LabelLyrBlock(NUSALSeqCommand target, int ch, int lyr, boolean isSub){
+ 		if(target == null) return;
+ 		String lbl = null;
+ 		if(isSub){
+ 			lbl = String.format("sub_ch%X-ly%d_%03d", ch, lyr, readerState.ly_lbls[ch][lyr].subs++);
+ 		}
+ 		else{
+ 			lbl = String.format("ch%X-ly%d_block_%03d", ch, lyr, readerState.ly_lbls[ch][lyr].blocks++);
+ 		}
+ 		target.setLabel(lbl);
+ 	}
 	
 	public NUSALSeqCommand getCommandOver(int address){
 		int checkAddr = address;
