@@ -29,8 +29,8 @@ public class NUSALSeqGenericCommand extends NUSALSeqCommand{
 	
 	public void setDisplayStringHex(boolean b){str_hex = b;}
 	
-	protected String paramsToString(){
-		if(!str_hex) return super.paramsToString();
+	protected String paramsToString(int syntax){
+		if(!str_hex) return super.paramsToString(syntax);
 		int pcount = super.getParamCount();
 		if(pcount < 1) return null;
 		StringBuilder sb = new StringBuilder(512);

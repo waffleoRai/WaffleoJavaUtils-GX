@@ -276,7 +276,7 @@ public class NUSALSequenceCompressor {
 		}
 		else{
 			//Everything else
-			if(cmd1.getCommand() != cmd2.getCommand()) return false;
+			if(cmd1.getFunctionalType() != cmd2.getFunctionalType()) return false;
 			
 			if(cmd1.isBranch()){
 				//Reference must match (be same ptr)
@@ -636,7 +636,7 @@ public class NUSALSequenceCompressor {
 					tick += cmd.getSizeInTicks(); //Duh
 					og_locs[k][0] = b;
 					og_locs[k++][1] = c;
-					if(cmd.getCommand() == NUSALSeqCmdType.END_READ){
+					if(cmd.getFunctionalType() == NUSALSeqCmdType.END_READ){
 						breakidxs.add(j);
 					}
 				}

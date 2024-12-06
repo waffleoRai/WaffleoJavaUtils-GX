@@ -88,7 +88,9 @@ public class PSXXAAudio {
 		final int dataOffset = 0x18;
 		for(int s = 0; s < secCount; s++) {
 			byte[] secdat = datStr.nextSectorBytes();
-			if(secdat == null) return false;
+			if(secdat == null) {
+				return false;
+			}
 			for(int j = 0; j < bytesPerSec; j++) {
 				soundData[i++] = secdat[dataOffset + j];
 			}

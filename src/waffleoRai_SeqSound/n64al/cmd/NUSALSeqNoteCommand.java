@@ -4,6 +4,7 @@ import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_SeqSound.n64al.NUSALSeqLayer;
+import waffleoRai_Utils.StringUtils;
 
 public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 	private byte tru_midi;
@@ -54,10 +55,14 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		p_shamt = pitch_shift;
 	}
 	
-	public static NUSALSeqNoteCommand fromMidiNote(byte midi_note, int pitch_shift, int time, byte velocity, byte gate){
+	public static NUSALSeqNoteCommand fromMidiNote(NUSALSeqCommandBook cmdBook, byte midi_note, int pitch_shift, int time, byte velocity, byte gate){
 		int nusal_note = (int)midi_note - pitch_shift;
 		nusal_note -= 0x15;
-		NUSALSeqNoteCommand cmd = new NUSALSeqNoteCommand(NUSALSeqCmdType.PLAY_NOTE_NTVG, (byte)nusal_note);
+		NUSALSeqNoteCommand cmd = null;
+		if(cmdBook != null) {
+			cmd = new NUSALSeqNoteCommand(cmdBook.getLayerCommand(NUSALSeqCmdType.PLAY_NOTE_NTVG));
+		}
+		else cmd = new NUSALSeqNoteCommand(NUSALSeqCmdType.PLAY_NOTE_NTVG, (byte)nusal_note);
 		cmd.setParam(0, nusal_note);
 		cmd.setParam(1, time); cmd.idx_time = 1;
 		cmd.setParam(2, velocity); cmd.idx_vel = 2;
@@ -168,6 +173,24 @@ public class NUSALSeqNoteCommand extends NUSALSeqCommand{
 		}
 
 		return cmd;
+	}
+	
+	public static NUSALSeqNoteCommand fromMMLRead(NUSALSeqCommandDef def, int[][] preParsedArgs) {
+		int acount = preParsedArgs.length;
+		int[] args = new int[acount];
+		for(int i = 0; i < acount; i++) {
+			args[i] = preParsedArgs[i][0];
+		}
+		return fromBinRead(def, args);
+	}
+	
+	public static NUSALSeqNoteCommand fromMMLRead(NUSALSeqCommandDef def, String[] args) {
+		int acount = args.length;
+		int[] iargs = new int[acount];
+		for(int i = 0; i < acount; i++) {
+			iargs[i] = StringUtils.parseSignedInt(args[i]);
+		}
+		return fromBinRead(def, iargs);
 	}
 	
 	public byte getMidiNote(){return tru_midi;}

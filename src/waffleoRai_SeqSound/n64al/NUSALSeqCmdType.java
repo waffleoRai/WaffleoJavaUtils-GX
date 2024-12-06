@@ -121,9 +121,9 @@ public enum NUSALSeqCmdType {
 	CLEAR_CH_FILTER(0xb1, 0, 1, 0x302, NUSALSeqCommand.SERIALFMT_, "freefilter"),
 	LOAD_P_TABLE(0xb2, 1, 3, 0x50002, NUSALSeqCommand.SERIALFMT_2, "ldptbl"),
 	COPY_CH_FILTER(0xb3, 2, 2, 0x42, NUSALSeqCommand.SERIALFMT_COPYFILTER, "filter"),
-	DYNTABLE_WRITE(0xb4, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "ptodyntbl"),
-	DYNTABLE_READ(0xb5, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "dyntbltop"),
-	DYNTABLE_LOAD(0xb6, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "lddyn"),
+	DYNTABLE_WRITE(0xb4, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "ptodyntbl"), //Sets the dyntbl address to p
+	DYNTABLE_READ(0xb5, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "dyntbltop"), //Sets p to dyntbl[q] (reading dyntbl as a u16 array)
+	DYNTABLE_LOAD(0xb6, 0, 1, 0x10002, NUSALSeqCommand.SERIALFMT_, "lddyn"), //q = dyntbl[q] (dyntbl read as u8)
 	RANDP(0xb7, 1, 2, 0x10002, NUSALSeqCommand.SERIALFMT_1, "randp"),
 	RAND_C(0xb8, 1, 2, 0x10002, NUSALSeqCommand.SERIALFMT_1, "rand"),
 	VELRAND(0xb9, 1, 2, 0x302, NUSALSeqCommand.SERIALFMT_1, "velrand"),

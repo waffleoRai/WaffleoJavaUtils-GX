@@ -54,6 +54,10 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 		if(target != null) target.addReferee(this);
 	}
 	
+	public void removeReference(NUSALSeqCommand target) {
+		if(reference == target) reference = null;
+	}
+	
 	public abstract NUSALSeqCmdType getRelativeCommand();
 	public abstract NUSALSeqCmdType getAbsoluteCommand();
 	
@@ -139,7 +143,7 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 		return pstr;
 	}
 	
-	protected String paramsToString(){
+	protected String paramsToString(int syntax){
 		if(is_relative){
 			return super.getParam(p_idx_addr) + " [-> " + String.format("0x%04x", getBranchAddress()) + "]";
 		}
@@ -160,15 +164,15 @@ public abstract class NUSALSeqReferenceCommand extends NUSALSeqCommand{
 		if(p_idx_addr > 0){
 			//Param 0
 			sb.append(getParam(0));
-			sb.append(' ');
+			sb.append(", ");
 		}
 		if(reference != null){
 			if(reference.getLabel() != null){
 				sb.append(reference.getLabel());
 			}
-			else sb.append(paramsToString());
+			else sb.append(paramsToString(syntax));
 		}
-		else sb.append(paramsToString());
+		else sb.append(paramsToString(syntax));
 		return sb;
 	}
 		

@@ -9,14 +9,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import waffleoRai_SeqSound.n64al.NUSALSeq;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandMap;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqCommandChunk;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqCopyCommand;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqNoteCommand;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqWaitCommand;
+import waffleoRai_SeqSound.n64al.cmd.SysCommandBook;
 import waffleoRai_SeqSound.n64al.cmd.LayerCommands.*;
 import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
 
@@ -30,12 +33,14 @@ public class NUSALSeqBuilderLayer {
 	
 	private int index;
 	private NUSALSeqBuilderChannel parent;
+	private NUSALSeqCommandBook cmdBook;
 	
 	private NUSALSeqCommandMap layermap;
 	
 	private int[] on_note; //Note, vel, gate, start tick, channel transpose
 	private NUSALSeqNoteCommand last_note; //Held here in case it needs to be shortened.
 	private boolean portamento = false;
+	private boolean legato = false;
 	
 	/*--- Init ---*/
 
@@ -44,6 +49,10 @@ public class NUSALSeqBuilderLayer {
 		parent = parent_channel;
 		//subroutines = new LinkedList<NUSALSeqCommandMap>();
 		layermap = new NUSALSeqCommandMap();
+		if(parent != null) {
+			cmdBook = parent.getCommandBook();
+		}
+		if(cmdBook == null) cmdBook = SysCommandBook.getDefaultBook();
 	}
 	
 	public void reset(){
@@ -62,6 +71,7 @@ public class NUSALSeqBuilderLayer {
 	}
 	
 	public NUSALSeqNoteCommand getLastNote(){return last_note;}
+	public int getCurrentNoteStart() {return on_note[3];}
 	
 	protected NUSALSeqCommandMap getTickMap(){return layermap;}
 	
@@ -82,7 +92,7 @@ public class NUSALSeqBuilderLayer {
 		return (byte)on_note[0];
 	}
 	
-	public void noteOn(int tick, byte midinote, byte vel, byte gate, int ch_transpose){
+	public void noteOn(int tick, byte midinote, byte vel, int gate, int ch_transpose){
 		if(on_note == null) on_note = new int[5];
 		on_note[0] = midinote;
 		on_note[1] = vel;
@@ -91,24 +101,45 @@ public class NUSALSeqBuilderLayer {
 		on_note[4] = ch_transpose;
 	}
 	
-	public void noteOff(int tick){
+	public void noteOff(double tick){
+		//Set gate here.
 		if(on_note == null || on_note[0] < 0) return; //Nothing to turn off!
-		int notedur = tick - on_note[3];
-		last_note = NUSALSeqNoteCommand.fromMidiNote((byte)on_note[0], on_note[4], 
+		double dur = tick - (double)on_note[3];
+		if(on_note[2] < 0) {
+			//Calculate gate
+			on_note[2] = NUSALSeq.calculateGate(dur);
+			dur = Math.ceil(dur);
+		}
+		else dur = Math.round(dur);
+
+		int notedur = (int)dur;
+		last_note = NUSALSeqNoteCommand.fromMidiNote(cmdBook, (byte)on_note[0], on_note[4], 
 				notedur, (byte)on_note[1], (byte)on_note[2]);
 		layermap.addValue(on_note[3], last_note);
 		on_note[0] = -1;
 	}
 	
 	public void portamentoOn(int tick, int mode, int target, int time){
-		layermap.addCommand(tick, new C_L_Portamento(mode, target, time));
+		layermap.addCommand(tick, new C_L_Portamento(cmdBook, mode, target, time));
 		portamento = true;
 	}
 	
 	public void portamentoOff(int tick){
 		if(!portamento) return;
-		layermap.addCommand(tick, new C_L_PortamentoOff());
+		layermap.addCommand(tick, new C_L_PortamentoOff(cmdBook));
 		portamento = false;
+	}
+	
+	public void legatoOn(int tick) {
+		if(legato) return;
+		layermap.addCommand(tick, new C_L_LegatoOn(cmdBook));
+		legato = true;
+	}
+	
+	public void legatoOff(int tick) {
+		if(!legato) return;
+		layermap.addCommand(tick, new C_L_LegatoOff(cmdBook));
+		legato = false;
 	}
 	
 	/*--- Inner Classes ---*/
@@ -131,6 +162,8 @@ public class NUSALSeqBuilderLayer {
 		
 		public Set<NUSALSeqCommandChunk> allsubs;
 		public TimeBlock current_block;
+		
+		public NUSALSeqCommandBook cmdBook;
 		
 		/*public void reset(){
 			chunk = null; usedcmds = null;
@@ -163,7 +196,7 @@ public class NUSALSeqBuilderLayer {
 		}
 		
 		public void addEndRead(){
-			cur = new C_EndRead();
+			cur = new C_EndRead(cmdBook);
 			if(last != null) last.setSubsequentCommand(cur);
 			chunk.addCommand(cur);
 			last = null;
@@ -210,7 +243,7 @@ public class NUSALSeqBuilderLayer {
 		//Chucks "end" commands too, as it will re-add its own
 		for(NUSALSeqCommand cmd : tickcmds){
 			//System.err.println("NUSALSeqBuilderLayer.scanTickCommands || Scanning -- " + cmd.toMMLCommand());
-			NUSALSeqCmdType ctype = cmd.getCommand();
+			NUSALSeqCmdType ctype = cmd.getFunctionalType();
 			if(!ctype.flagSet(NUSALSeqCommands.FLAG_LYRVALID)) continue; //Invalid. Skip.
 			if(ctype.flagSet(NUSALSeqCommands.FLAG_ONCEPERTICK) && ctxt.usedcmds.contains(ctype)) continue;
 			if(ctype.flagSet(NUSALSeqCommands.FLAG_ISWAIT)) continue; //Skip
@@ -234,7 +267,7 @@ public class NUSALSeqBuilderLayer {
 						if(tchunk.getChildCount() < 3){
 							//I'll keep it simple for now?
 							NUSALSeqCommand cmdone = tchunk.getChunkHead();
-							NUSALSeqCmdType ctype2 = cmdone.getCommand();
+							NUSALSeqCmdType ctype2 = cmdone.getFunctionalType();
 							if(!ctype2.flagSet(NUSALSeqCommands.FLAG_ISWAIT)) ctxt.keepcmds.add(cmd);
 						}
 						else{
@@ -289,38 +322,39 @@ public class NUSALSeqBuilderLayer {
 			ctxt.last_tick += ctxt.tlen;
 			if(ctxt.note instanceof NUSALSeqNoteCommand){
 				NUSALSeqNoteCommand nnote = (NUSALSeqNoteCommand)ctxt.note;
-				if(nnote.getCommand() == NUSALSeqCmdType.PLAY_NOTE_NTVG){
+				if(nnote.getFunctionalType() == NUSALSeqCmdType.PLAY_NOTE_NTVG){
 					//See if can collapse. Save time and gate.
 					if(nnote.getTime() == ctxt.ntime){
-						nnote.ntvg2nvg();
-						ctxt.ngate = nnote.getGate();
+						nnote.ntvg2nvg(ctxt.cmdBook);
+						ctxt.ngate = (byte)nnote.getGate();
 					}
 					else if(nnote.getGate() == ctxt.ngate){
-						nnote.ntvg2ntv();
+						nnote.ntvg2ntv(ctxt.cmdBook);
 						ctxt.ntime = nnote.getTime();
 					}
 					else{
 						ctxt.ntime = nnote.getTime();
-						ctxt.ngate = nnote.getGate();
+						ctxt.ngate = (byte)nnote.getGate();
 					}
 				}
-				else if(nnote.getCommand() == NUSALSeqCmdType.PLAY_NOTE_NTV){
+				else if(nnote.getFunctionalType() == NUSALSeqCmdType.PLAY_NOTE_NTV){
 					//Save time
 					ctxt.ntime = nnote.getTime();
 				}
-				else if(nnote.getCommand() == NUSALSeqCmdType.PLAY_NOTE_NVG){
+				else if(nnote.getFunctionalType() == NUSALSeqCmdType.PLAY_NOTE_NVG){
 					//Save gate
-					ctxt.ngate = nnote.getGate();
+					ctxt.ngate = (byte)nnote.getGate();
 				}
 			}
 		}
 	}
 
-	public static NUSALSeqCommandChunk buildLayerSubroutine(NUSALSeqCommandMap tickmap){
+	public static NUSALSeqCommandChunk buildLayerSubroutine(NUSALSeqCommandMap tickmap, NUSALSeqCommandBook cmdBook){
 		if(tickmap == null) return null;
 		LayerBuildContext ctxt = new LayerBuildContext();
 		ctxt.chunk = new NUSALSeqCommandChunk();
 		ctxt.usedcmds = new HashSet<NUSALSeqCmdType>(); //Marks which commands have been used for this tick. For cleanup.
+		ctxt.cmdBook = cmdBook;
 		//ctxt.param_state = new HashMap<NUSALSeqCmdType, NUSALSeqCommand>();
 		
 		List<Integer> ticklist = tickmap.getOrderedKeys();
@@ -337,7 +371,7 @@ public class NUSALSeqBuilderLayer {
 			//Add delay from last tick
 			int tdiff = k - ctxt.last_tick;
 			if(tdiff > 0){
-				ctxt.cur = new C_L_Rest(tdiff);
+				ctxt.cur = new C_L_Rest(cmdBook, tdiff);
 				ctxt.addCur();
 			}
 			
@@ -358,6 +392,7 @@ public class NUSALSeqBuilderLayer {
 	}
 	
 	public List<TimeBlock> buildLayer(int max_rest, Set<Integer> entry_points, NUSALSequenceCompressor compressor){
+		
 		//Links commands together, but returns map with blocks for each startlayer to reference
 		/*
 		 * The following assumptions are made:
@@ -382,6 +417,7 @@ public class NUSALSeqBuilderLayer {
 		LayerBuildContext ctxt = new LayerBuildContext();
 		ctxt.usedcmds = new HashSet<NUSALSeqCmdType>();
 		ctxt.param_state = new HashMap<NUSALSeqCmdType, NUSALSeqCommand>();
+		ctxt.cmdBook = cmdBook;
 		
 		List<Integer> ticklist = layermap.getOrderedKeys();
 		//boolean newchunk = false;
@@ -414,9 +450,9 @@ public class NUSALSeqBuilderLayer {
 							int diff = endtick - splitpt;
 							if(ccmd instanceof NUSALSeqNoteCommand){
 								NUSALSeqNoteCommand ncmd = (NUSALSeqNoteCommand)ccmd;
-								if(ccmd.getCommand() == NUSALSeqCmdType.PLAY_NOTE_NVG){
+								if(ccmd.getFunctionalType() == NUSALSeqCmdType.PLAY_NOTE_NVG){
 									//Reset to NTVG
-									ncmd.nvg2ntvg();
+									ncmd.nvg2ntvg(cmdBook);
 									ncmd.setTime(tsz - diff);
 								}
 								else{
@@ -493,7 +529,8 @@ public class NUSALSeqBuilderLayer {
 		ctxt.addEndRead();
 		
 		//Clean up indiv blocks before returning to delete empty chunks.
-		for(TimeBlock tb : blocks) tb.cleanEmptyChunks();
+		//for(TimeBlock tb : blocks) tb.cleanEmptyChunks();
+		for(TimeBlock tb : blocks) tb.cleanNotelessChunks();
 		
 		//Compress
 		if(compressor != null){

@@ -2,7 +2,6 @@ package waffleoRai_SeqSound.n64al;
 
 import java.io.OutputStreamWriter;
 
-import waffleoRai_SeqSound.SeqVoiceCounter;
 import waffleoRai_Utils.FileBuffer;
 
 public class Test_SeqDiagnostics {
@@ -36,7 +35,7 @@ public class Test_SeqDiagnostics {
 			//Try to output MML
 			System.out.println();
 			OutputStreamWriter writer = new OutputStreamWriter(System.out);
-			nseq.exportMMLScript(writer, true);
+			nseq.exportMMLScript(writer, true, NUSALSeq.SYNTAX_SET_ZEQER);
 			writer.flush();
 			
 		}catch(Exception ex){

@@ -49,5 +49,9 @@ public enum SysCommandBook {
 		}
 		return book;
 	}
+	
+	public static NUSALSeqCommandBook getDefaultBook() {
+		return ZELDA64.getBook();
+	}
 
 }

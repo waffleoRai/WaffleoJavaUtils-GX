@@ -5,7 +5,7 @@ import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_Utils.BufferReference;
-
+import waffleoRai_Utils.StringUtils;
 import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
 
 public class SeqCommands {
@@ -377,7 +377,7 @@ public class SeqCommands {
 		case MASTER_FADE: return new C_S_SetMasterFade(def, params[0], params[1]);
 		case MASTER_VOLUME: return new C_S_SetMasterVolume(def, params[0]);
 		case SET_TEMPO_VAR: return new C_S_SetTempoVar(def, params[0]);
-		case SET_TEMPO: return new C_S_SetTempo(def, params[0]);
+		case SET_TEMPO: return new C_S_SetTempo(def, (params[0] & 0xff));
 		case SEQ_TRANSPOSE_REL: return new C_S_SetDeltaTranspose(def, params[0]);
 		case SEQ_TRANSPOSE: return new C_S_SetTranspose(def, params[0]);
 		case PRINT: return new C_S_Print(def, params[0], params[1]);
@@ -398,6 +398,103 @@ public class SeqCommands {
 		case YIELD: return new C_Yield(def);
 		case END_READ: return new C_EndRead(def);
 		 default: return null;
+		}
+	}
+	
+	public static NUSALSeqCommand parseSequenceCommand(NUSALSeqCommandBook book, String cmd, String[] args) {
+		if(book == null || cmd == null) return null;
+		NUSALSeqCommandDef def = book.getSeqCommand(cmd.toLowerCase());
+		if(def == null) return null;
+		
+		int[][] iargs = def.parseMMLArgs(args);
+		int arg0 = 0;
+		if(iargs != null) arg0 = iargs[0][0];
+		else arg0 = StringUtils.parseSignedInt(args[0]);
+		int arg1 = 0;
+		
+		NUSALSeqCmdType ctype = def.getFunctionalType();
+		switch(ctype) {
+		case TEST_CHANNEL: return new C_S_TestChannel(arg0, def);
+		case STOP_CHANNEL: return new C_S_StopChannel(arg0, def);
+		case SUBTRACT_IO_S: return new C_S_SubIO(arg0, def);
+		case LOAD_BANK: return new C_S_LoadBank(def, arg0, StringUtils.parseSignedInt(args[1]), StringUtils.parseSignedInt(args[2]));
+		case STORE_IO_S: return new C_S_StoreIO(def, arg0);
+		case LOAD_IO_S: return new C_S_LoadIO(def, arg0);
+		case CHANNEL_OFFSET: return new C_S_StartChannel(def, arg0, -1);
+		case CHANNEL_OFFSET_REL: return new C_S_StartChannelRel(def, arg0, -1);
+		case LOAD_SEQ: return new C_S_LoadSeq(def, arg0, StringUtils.parseSignedInt(args[1]), -1);
+		case S_RUNSEQ: return new CMD_IgnoredCommand(def); //TODO
+		case S_SCRIPTCTR: return new CMD_IgnoredCommand(def); //TODO
+		case S_STOP: return new CMD_IgnoredCommand(def); //TODO
+		case STORE_TO_SELF_S: return new C_S_StoreToSelf(def, arg0, -1);
+		case SUBTRACT_IMM_S: return new C_S_SubImm(def, arg0);
+		case AND_IMM_S: return new C_S_AndImm(def, arg0);
+		case LOAD_IMM_S: return new C_S_LoadImm(def, arg0);
+		case CALL_TABLE: return new C_S_TblCall(def, -1);
+		case RAND_S: return new C_S_LoadRandom(def, arg0);
+		case NOTEALLOC_POLICY_S: return new C_S_NoteAllocPolicy(def, arg0);
+		case LOAD_SHORTTBL_GATE: return new C_S_SetGateTable(def, -1);
+		case LOAD_SHORTTBL_VEL: return new C_S_SetVelTable(def, -1);
+		case MUTE_BEHAVIOR_S: return new C_S_MuteBehavior(def, arg0);
+		case MUTE_S: return new C_S_Mute(def);
+		case MUTE_SCALE_S: return new C_S_MuteScale(def, arg0);
+		case DISABLE_CHANNELS: 
+			if(iargs != null && iargs[0].length > 1) {
+				int[] chlist = iargs[0];
+				int bitfield = 0;
+				for(int j = 0; j < chlist.length; j++) {
+					bitfield |= 1 << chlist[j];
+				}
+				return new C_S_DisableChannels(def, bitfield);
+			}
+			else {
+				return new C_S_DisableChannels(def, arg0);
+			}
+		case ENABLE_CHANNELS: 
+			if(iargs != null && iargs[0].length > 1) {
+				int[] chlist = iargs[0];
+				int bitfield = 0;
+				for(int j = 0; j < chlist.length; j++) {
+					bitfield |= 1 << chlist[j];
+				}
+				return new C_S_InitChannels(def, bitfield);
+			}
+			else {
+				return new C_S_InitChannels(def, arg0);
+			}
+		case MASTER_EXP: return new C_S_SetMasterExpression(def, arg0);
+		case MASTER_FADE: 
+			if(iargs != null) arg1 = iargs[1][0];
+			else arg1 = StringUtils.parseSignedInt(args[1]);
+			return new C_S_SetMasterFade(def, arg0, arg1);
+		case MASTER_VOLUME: return new C_S_SetMasterVolume(def, arg0);
+		case SET_TEMPO_VAR: return new C_S_SetTempoVar(def, arg0);
+		case SET_TEMPO: return new C_S_SetTempo(def, (arg0 & 0xff));
+		case SEQ_TRANSPOSE_REL: return new C_S_SetDeltaTranspose(def,arg0);
+		case SEQ_TRANSPOSE: return new C_S_SetTranspose(def, arg0);
+		case PRINT: 
+			if(iargs != null) arg1 = iargs[1][0];
+			else arg1 = StringUtils.parseSignedInt(args[1]);
+			return new C_S_Print(def, -1, arg1);
+		
+		case UNRESERVE_NOTES: return new C_UnreserveNotes(def);
+		case RESERVE_NOTES: return new C_ReserveNotes(def, arg0);
+		case BRANCH_IF_LTZ_REL: return new C_rbltz(-1, def);
+		case BRANCH_IF_EQZ_REL: return new C_rbeqz(-1, def);
+		case BRANCH_ALWAYS_REL: return new C_rjump(-1, def);
+		case BRANCH_IF_GTEZ: return new C_bgez(-1, def);
+		case BREAK: return new C_Break(def);
+		case LOOP_END: return new C_LoopEnd(def);
+		case LOOP_START: return new C_LoopStart(arg0, def);
+		case BRANCH_IF_LTZ: return new C_bltz(-1, def);
+		case BRANCH_IF_EQZ: return new C_beqz(-1, def);
+		case BRANCH_ALWAYS: return new C_Jump(-1, def);
+		case CALL: return new C_Call(-1, def);
+		case WAIT: return new C_Wait(def, arg0);
+		case YIELD: return new C_Yield(def);
+		case END_READ: return new C_EndRead(def);
+		
+		default: return null;
 		}
 	}
 	
@@ -693,17 +790,8 @@ public class SeqCommands {
 			return true;
 		}
 		
-		public String[][] getParamStrings(){
-			String[][] pstr = new String[1][2];
-			pstr[0][0] = String.format("0x%02x", super.getParam(0) & 0xff);
-			return pstr;
-		}
-		
-		protected StringBuilder toMMLCommand_child(){
-			StringBuilder sb = new StringBuilder(256);
-			sb.append("and 0x");
-			sb.append(Integer.toHexString(getParam(0) & 0xff));
-			return sb;
+		protected String paramsToString(int syntax){
+			return String.format("0x%02x", super.getParam(0));
 		}
 	}
 	
@@ -913,8 +1001,22 @@ public class SeqCommands {
 			return pstr;
 		}
 		
-		protected String paramsToString(){
-			return String.format("0x%04x", super.getParam(0));
+		protected String paramsToString(int syntax){
+			int val = super.getParam(0);
+			if((val != 0) && (syntax == NUSALSeq.SYNTAX_SET_ZEQER)) {
+				String str = "{";
+				boolean first = true;
+				for(int i = 0; i < 16; i++) {
+					if((val & (1 << i)) != 0) {
+						if(!first) str += ", ";
+						else first = false;
+						str += Integer.toString(i);
+					}
+				}
+				str += "}";
+				return str;
+			}
+			return String.format("0x%04x", val);
 		};
 	}
 	
@@ -952,8 +1054,22 @@ public class SeqCommands {
 			return pstr;
 		}
 
-		protected String paramsToString(){
-			return String.format("0x%04x", super.getParam(0));
+		protected String paramsToString(int syntax){
+			int val = super.getParam(0);
+			if((val != 0) && (syntax == NUSALSeq.SYNTAX_SET_ZEQER)) {
+				String str = "{";
+				boolean first = true;
+				for(int i = 0; i < 16; i++) {
+					if((val & (1 << i)) != 0) {
+						if(!first) str += ", ";
+						else first = false;
+						str += Integer.toString(i);
+					}
+				}
+				str += "}";
+				return str;
+			}
+			return String.format("0x%04x", val);
 		};
 	}
 	

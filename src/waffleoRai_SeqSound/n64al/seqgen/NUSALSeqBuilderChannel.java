@@ -14,12 +14,14 @@ import java.util.Set;
 import waffleoRai_SeqSound.n64al.NUSALSeq;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandMap;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqCommandChunk;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqCopyCommand;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqNoteCommand;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqWaitCommand;
+import waffleoRai_SeqSound.n64al.cmd.SysCommandBook;
 import waffleoRai_SeqSound.n64al.cmd.ChannelCommands.*;
 import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
 import waffleoRai_SeqSound.n64al.seqgen.TimeBlock.TimeBlockList;
@@ -29,6 +31,9 @@ public class NUSALSeqBuilderChannel {
 	//TODO adjust channel transpose to most extreme val in all layers before compression to aid in pattern recognition?
 	
 	/*--- Constants ---*/
+	
+	public static final int GATE_COPYLAST = -2;
+	public static final int GATE_SETONNOFF = -1;
 	
 	private static final int TPEVENT_IDX_AMT = 0;
 	private static final int TPEVENT_IDX_TICK = 1;
@@ -41,8 +46,11 @@ public class NUSALSeqBuilderChannel {
 	
 	private NUSALSeqCommandMap channelmap;
 	private Map<NUSALSeqCmdType, NUSALSeqCommand> default_params;
+	private NUSALSeqCommandBook cmdBook;
 	
 	private NUSALSeqBuilder parent;
+	
+	private int maxLayers = 4;
 	private NUSALSeqBuilderLayer[] layers;
 	private int[] last_gates;
 	
@@ -55,12 +63,16 @@ public class NUSALSeqBuilderChannel {
 	public NUSALSeqBuilderChannel(int ch_idx, NUSALSeqBuilder parent){
 		index = ch_idx;
 		this.parent = parent;
-		layers = new NUSALSeqBuilderLayer[4]; //Allocates them when they are used.
+		layers = new NUSALSeqBuilderLayer[8]; //Allocates them when they are used.
 		channelmap = new NUSALSeqCommandMap();
 		default_params = new HashMap<NUSALSeqCmdType, NUSALSeqCommand>();
 		last_gates = new int[4]; Arrays.fill(last_gates, 100);
 		transpose_events = new LinkedList<int[]>();
 		extraNotes = new LinkedList<UnassignedNote>();
+		if(parent != null) {
+			cmdBook = parent.getCommandBook();
+		}
+		if(cmdBook == null) cmdBook = SysCommandBook.getDefaultBook();
 	}
 	
 	public void reset(){
@@ -72,10 +84,39 @@ public class NUSALSeqBuilderChannel {
 	
 	public int getIndex(){return index;}
 	public NUSALSeqBuilder getParent(){return parent;}
+	public NUSALSeqCommandBook getCommandBook() {return cmdBook;}
+	public int getMaxLayers() {return maxLayers;}
+	public boolean hasPendingNotes() {return !extraNotes.isEmpty();}
+	
+	public int getOldestNoteStart() {
+		int val = Integer.MAX_VALUE;
+		boolean isset = false;
+		for(int i = 0; i < maxLayers; i++){
+			if(layers[i] == null) continue;
+			int st = layers[i].getCurrentNoteStart();
+			if(st >= 0) {
+				val = st;
+				isset = true;
+			}
+		}
+		if(!isset) return -1;
+		return val;
+	}
+	
+	public int getLayerPlayingNote(byte midiNote) {
+		for(int i = 0; i < maxLayers; i++){
+			if(layers[i] != null){
+				if(layers[i].currentOnNote() == midiNote){
+					return i;
+				}
+			}
+		}
+		return -1;
+	}
 	
 	public int voicesOn(){
 		int c = 0;
-		for(int i = 0; i < 4; i++){
+		for(int i = 0; i < maxLayers; i++){
 			if(layers[i] == null) continue;
 			if(layers[i].noteActive()) c++;
 		}
@@ -114,7 +155,13 @@ public class NUSALSeqBuilderChannel {
 	
 	public void addDefaultParam(NUSALSeqCommand cmd){
 		if(cmd == null) return;
-		default_params.put(cmd.getCommand(), cmd);
+		default_params.put(cmd.getFunctionalType(), cmd);
+	}
+	
+	public void setMaxLayers(int val) {
+		if(val < 1) val = 1;
+		if(val > 8) val = 8;
+		maxLayers = val;
 	}
 	
 	/*--- Control ---*/
@@ -187,7 +234,7 @@ public class NUSALSeqBuilderChannel {
 	
 	private int nextOpenVoice(){
 		//Returns -1 if none available
-		for(int i = 0; i < 4; i++){
+		for(int i = 0; i < maxLayers; i++){
 			if(layers[i] != null){
 				if(!layers[i].noteActive()) return i;
 			}
@@ -205,15 +252,15 @@ public class NUSALSeqBuilderChannel {
 		if(ly >= 0){
 			//Okay! We can assign it.
 			//Check gate, if needed.
-			if(gate < 0) gate = last_gates[ly];
+			if(gate == GATE_COPYLAST) gate = last_gates[ly];
 			//Add to layer
-			layers[ly].noteOn(tick, midinote, velocity, (byte)gate, tp);
+			layers[ly].noteOn(tick, midinote, velocity, gate, tp);
 			//Save gate.
 			last_gates[ly] = gate;
 		}
 		else{
 			System.err.println("NUSALSeqBuilderChannel.sendNoteOn || WARNING -- "
-					+ "Channel " + index + " >4 simultaneous voices @ tick " + tick);
+					+ "Channel " + index + " more than max of " + maxLayers + " simultaneous voices @ tick " + tick);
 			System.err.println("\tNext note to end will be shortened to accommodate extra note.");
 			//Put in unassigned queue
 			UnassignedNote un = new UnassignedNote();
@@ -237,18 +284,10 @@ public class NUSALSeqBuilderChannel {
 		sendNoteOn_internal(tick, midinote, velocity, gate, transpose);
 	}
 	
-	public void sendNoteOff(int tick, byte midinote){
+	public void sendNoteOff(double tick, byte midinote){
 		//Don't forget to check unassigned queue
 		//1. Find layer that is playing this note.
-		int ly = -1;
-		for(int i = 0; i < 4; i++){
-			if(layers[i] != null){
-				if(layers[i].currentOnNote() == midinote){
-					ly = i;
-					break;
-				}
-			}
-		}
+		int ly = getLayerPlayingNote(midinote);
 		
 		if(ly >= 0){
 			//2-1. Note off if existing layer.
@@ -258,7 +297,8 @@ public class NUSALSeqBuilderChannel {
 			if(extraNotes != null && !extraNotes.isEmpty()){
 				NUSALSeqNoteCommand lastnote = layers[ly].getLastNote();
 				UnassignedNote un = extraNotes.pop();
-				int shortamt = tick - un.start_tick;
+				int ceiltick = (int)Math.ceil(tick);
+				int shortamt = ceiltick - un.start_tick;
 				lastnote.shortenTimeBy(shortamt);
 				sendNoteOn_internal(un.start_tick, un.midinote, un.velocity, un.gate, un.transpose);
 				if(un.end_tick >= 0) sendNoteOff(un.end_tick, un.midinote);
@@ -276,6 +316,47 @@ public class NUSALSeqBuilderChannel {
 		}
 		
 	}
+
+	public void setPortamentoTime(int tick, short value) {
+		// TODO Auto-generated method stub
+	}
+
+	public void setPortamentoAmount(int tick, byte value) {
+		// TODO Auto-generated method stub
+	}
+
+	public void setPortamentoOn(int tick, boolean on) {
+		// TODO Auto-generated method stub
+	}
+	
+	public void setLegatoOn(int tick, boolean on) {
+		for(int i = 0; i < maxLayers; i++) {
+			if(layers[i] != null) {
+				if(on) layers[i].legatoOn(tick);
+				else layers[i].legatoOff(tick);
+			}
+		}
+	}
+	
+	public void killOldestNote(int tick) {
+		int ly = -1;
+		int mintick = Integer.MAX_VALUE;
+		for(int i = 0; i < maxLayers; i++){
+			if(layers[i] != null){
+				if(layers[i].noteActive()) {
+					int sttick = layers[i].getCurrentNoteStart();
+					if(sttick < mintick) {
+						mintick = sttick;
+						ly = i;
+					}
+				}
+			}
+		}
+		
+		if(ly < 0) return;
+		
+		layers[ly].noteOff(tick);
+	}
 	
 	/*--- Inner Classes ---*/
 	
@@ -283,9 +364,9 @@ public class NUSALSeqBuilderChannel {
 		public byte midinote;
 		public int transpose;
 		public byte velocity;
-		public int gate; //-1 means take previous gate value when it is assigned
+		public int gate;
 		public int start_tick;
-		public int end_tick = -1; //Only used if note ends before it is assigned.
+		public double end_tick = -1.0; //Only used if note ends before it is assigned.
 	}
 	
 	private static class ChannelBuildContext{
@@ -313,6 +394,8 @@ public class NUSALSeqBuilderChannel {
 		
 		public Set<NUSALSeqCommandChunk> allsubs;
 		public TimeBlock current_block;
+		
+		public NUSALSeqCommandBook cmdBook;
 		
 		public void loadParamStateToChunk(){
 			if(param_state != null && !param_state.isEmpty()){
@@ -357,7 +440,7 @@ public class NUSALSeqBuilderChannel {
 		}
 		
 		public void addEndRead(){
-			cur = new C_EndRead();
+			cur = new C_EndRead(cmdBook);
 			if(last != null) last.setSubsequentCommand(cur);
 			chunk.addCommand(cur);
 			last = null;
@@ -378,14 +461,14 @@ public class NUSALSeqBuilderChannel {
 	
 	private void applyTransposition(){
 		//We'll just edit the notes from the maps directly.
-		NUSALSeqCommandMap[] lmaps = new NUSALSeqCommandMap[4];
-		for(int i = 0; i < 4; i++){
+		NUSALSeqCommandMap[] lmaps = new NUSALSeqCommandMap[maxLayers];
+		for(int i = 0; i < maxLayers; i++){
 			if(layers[i] != null) lmaps[i] = layers[i].getTickMap(); 
 		}
 				
 		//Extract the tick lists to poppable queues...
-		ArrayList<LinkedList<Integer>> lticks = new ArrayList<LinkedList<Integer>>(4);
-		for(int i = 0; i < 4; i++){
+		ArrayList<LinkedList<Integer>> lticks = new ArrayList<LinkedList<Integer>>(maxLayers);
+		for(int i = 0; i < maxLayers; i++){
 			LinkedList<Integer> llist = new LinkedList<Integer>();
 			lticks.add(llist);
 			if(lmaps[i] != null){
@@ -395,7 +478,7 @@ public class NUSALSeqBuilderChannel {
 		
 		if(transpose_events == null || transpose_events.isEmpty()){
 			//Just scan all.
-			for(int i = 0; i < 4; i++){
+			for(int i = 0; i < maxLayers; i++){
 				if(lmaps[i] != null){
 					LinkedList<Integer> llist = lticks.get(i);
 					for(Integer t : llist){
@@ -422,7 +505,7 @@ public class NUSALSeqBuilderChannel {
 			
 			channelmap.addCommand(tevent[TPEVENT_IDX_TICK], new C_C_Transpose(tevent[TPEVENT_IDX_AMT]));
 			
-			for(int i = 0; i < 4; i++){
+			for(int i = 0; i < maxLayers; i++){
 				if(lmaps[i] != null){
 					LinkedList<Integer> llist = lticks.get(i);
 					while(!llist.isEmpty() && ((next_tick < -1)||(llist.peek() < next_tick))){
@@ -446,7 +529,7 @@ public class NUSALSeqBuilderChannel {
 		ctxt.rwaitflag = false;
 		
 		for(NUSALSeqCommand cmd : tickcmds){
-			NUSALSeqCmdType ctype = cmd.getCommand();
+			NUSALSeqCmdType ctype = cmd.getFunctionalType();
 			if(!ctype.flagSet(NUSALSeqCommands.FLAG_CHVALID)) continue; //Invalid. Skip.
 			if(ctype.flagSet(NUSALSeqCommands.FLAG_ONCEPERTICK) && ctxt.usedcmds.contains(ctype)) continue;
 			
@@ -476,7 +559,7 @@ public class NUSALSeqBuilderChannel {
 						if(tchunk.getChildCount() < 3){
 							//I'll keep it simple for now?
 							NUSALSeqCommand cmdone = tchunk.getChunkHead();
-							NUSALSeqCmdType ctype2 = cmdone.getCommand();
+							NUSALSeqCmdType ctype2 = cmdone.getFunctionalType();
 							if(!ctype2.flagSet(NUSALSeqCommands.FLAG_ISWAIT)) ctxt.keepcmds.add(cmd);
 						}
 						else{
@@ -523,7 +606,7 @@ public class NUSALSeqBuilderChannel {
 		}
 	}
 	
-	public static NUSALSeqCommandChunk buildChannelSubroutine(NUSALSeqCommandMap tickmap){
+	public static NUSALSeqCommandChunk buildChannelSubroutine(NUSALSeqCommandMap tickmap, NUSALSeqCommandBook cmdBook){
 		/*
 		 * The following assumptions are made:
 		 * 	-> All events for this channel have already been assigned as-is. That is,
@@ -537,6 +620,7 @@ public class NUSALSeqBuilderChannel {
 		
 		if(tickmap == null) return null;
 		ChannelBuildContext ctxt = new ChannelBuildContext();
+		ctxt.cmdBook = cmdBook;
 		ctxt.chunk = new NUSALSeqCommandChunk();
 		ctxt.usedcmds = new HashSet<NUSALSeqCmdType>();
 		ctxt.channelmap_out = new NUSALSeqCommandMap();
@@ -550,7 +634,7 @@ public class NUSALSeqBuilderChannel {
 				if(tdiff > 0){
 					if(ctxt.elapser instanceof NUSALSeqWaitCommand){
 						NUSALSeqWaitCommand wcmd = (NUSALSeqWaitCommand)ctxt.elapser;
-						if(tdiff < 16) wcmd.toChannelDelta();
+						if(tdiff < 16) wcmd.toChannelDelta(cmdBook);
 						wcmd.setParam(0, tdiff);
 						ctxt.last_tick = k;
 					}
@@ -568,8 +652,8 @@ public class NUSALSeqBuilderChannel {
 			//Add delay from last tick
 			int tdiff = k - ctxt.last_tick;
 			if(tdiff > 0){
-				if(tdiff < 16) ctxt.cur = new C_C_DeltaTime(tdiff);
-				else ctxt.cur = new C_Wait(tdiff);
+				if(tdiff < 16) ctxt.cur = new C_C_DeltaTime(cmdBook, tdiff);
+				else ctxt.cur = new C_Wait(cmdBook, tdiff);
 				ctxt.addCur();
 			}
 			
@@ -594,7 +678,7 @@ public class NUSALSeqBuilderChannel {
 	}
 
 	private void addLayerStartCommands(ChannelBuildContext ctxt, TimeBlockList[] lblocks){
-		for(int i = 0; i < 4; i++){
+		for(int i = 0; i < maxLayers; i++){
 			if(lblocks[i] != null){
 				List<TimeBlock> blist = lblocks[i].getBackingList();
 				int tsec = 0;
@@ -613,7 +697,7 @@ public class NUSALSeqBuilderChannel {
 						ctime = ltb.tick_coords.get(j);
 						lchunk = ltb.main_track.get(j);
 						lchunk.getChunkHead().setLabel(String.format("lyr%02d-%01d_tsec%02d_%03d", index, i, tsec, j));
-						lstart = new C_C_StartLayer(i, -1);
+						lstart = new C_C_StartLayer(cmdBook, i, -1);
 						lstart.setReference(lchunk);
 						
 						if(j == 0){
@@ -637,7 +721,7 @@ public class NUSALSeqBuilderChannel {
 		
 		//Layer addresses. (Also save blocks to time block)
 		//Grab all chunks for this timeblock and map to channel map
-		for(int i = 0; i < 4; i++){
+		for(int i = 0; i < maxLayers; i++){
 			if(lblocks[i] != null){
 				TimeBlock ctb = lblocks[i].getCurrent();
 				if(ctb == null) continue;
@@ -667,11 +751,11 @@ public class NUSALSeqBuilderChannel {
 		List<NUSALSeqCommand> cmdlist = chunk.getCommands();
 		for(NUSALSeqCommand cmd : cmdlist){
 			if(!cmd.isChunk()){
-				NUSALSeqCmdType ctype = cmd.getCommand();
+				NUSALSeqCmdType ctype = cmd.getFunctionalType();
 				if(ctype.flagSet(NUSALSeqCommands.FLAG_JUMP)){
 					NUSALSeqCommand ref = cmd.getBranchTarget();
 					if(ref != null){
-						ctype = ref.getCommand();
+						ctype = ref.getFunctionalType();
 						if(!ctype.flagSet(NUSALSeqCommands.FLAG_CHVALID)){
 							//Try to find alternative.
 							int tick = ref.getTickAddress();
@@ -741,7 +825,7 @@ public class NUSALSeqBuilderChannel {
 		
 			//Add layer blocks
 			TimeBlock ltb = null;
-			for(int v = 0; v < 4; v++){
+			for(int v = 0; v < maxLayers; v++){
 				//System.err.println("ch " + index + " ly " + v);
 				if(lblocks[v] != null){
 					if(lblocks[v].pop()){
@@ -773,8 +857,8 @@ public class NUSALSeqBuilderChannel {
 		applyTransposition();
 		
 		//build layers...
-		TimeBlockList[] lblocks = new TimeBlockList[4];
-		for(int i = 0; i < 4; i++){
+		TimeBlockList[] lblocks = new TimeBlockList[maxLayers];
+		for(int i = 0; i < maxLayers; i++){
 			if(layers[i] != null){
 				lblocks[i] = new TimeBlockList();
 				lblocks[i].setList(layers[i].buildLayer(max_layer_rest, entry_points, compressor));
@@ -804,7 +888,7 @@ public class NUSALSeqBuilderChannel {
 		blocks.add(ctxt.current_block);
 		ctxt.chunk = new NUSALSeqCommandChunk();
 		ctxt.current_block.addChunk(0, ctxt.chunk);
-		for(int v = 0; v < 4; v++){
+		for(int v = 0; v < maxLayers; v++){
 			if(lblocks[v] != null){
 				//Don't need to pop first one - popped when list is added
 				if(lblocks[v].getCurrent() != null){
@@ -821,7 +905,7 @@ public class NUSALSeqBuilderChannel {
 				if(tdiff > 0){
 					if(ctxt.elapser instanceof NUSALSeqWaitCommand){
 						NUSALSeqWaitCommand wcmd = (NUSALSeqWaitCommand)ctxt.elapser;
-						if(tdiff < 16) wcmd.toChannelDelta();
+						if(tdiff < 16) wcmd.toChannelDelta(cmdBook);
 						wcmd.setParam(0, tdiff);
 						ctxt.last_tick = k;
 					}

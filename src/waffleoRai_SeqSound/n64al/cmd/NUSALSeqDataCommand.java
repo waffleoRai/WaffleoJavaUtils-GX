@@ -41,7 +41,7 @@ public class NUSALSeqDataCommand extends NUSALSeqCommand{
 	
 	public NUSALSeqDataType getDataType(){return dtype;}
 	
-	public void setAddress(int addr){
+	/*public void setAddress(int addr){
 		int align = dtype.getAlignment();
 		if(align > 1){
 			addr += (align-1);
@@ -49,7 +49,7 @@ public class NUSALSeqDataCommand extends NUSALSeqCommand{
 			addr *= align;
 		}
 		super.setAddress(addr);
-	}
+	}*/ //NO! alignment is for losers!
 	
 	public boolean doCommand(NUSALSeq sequence){
 		throw new UnsupportedOperationException("Target does not contain executable data.");
@@ -168,9 +168,9 @@ public class NUSALSeqDataCommand extends NUSALSeqCommand{
 		}
 	}
 	
-	protected StringBuilder toMMLCommand_child(){
+	protected String paramsToString(int syntax){
+		//TODO Eventually update to account for other syntaxes
 		StringBuilder sb = new StringBuilder(128 + (data.length << 1));
-		sb.append("data ");
 		sb.append(dtype.getMMLString());
 		int ptype = dtype.getParamPrintType();
 		if(ptype == NUSALSeqCommands.MML_DATAPARAM_TYPE__BUFFER){
@@ -201,6 +201,13 @@ public class NUSALSeqDataCommand extends NUSALSeqCommand{
 			}
 			sb.append("}");
 		}
+		return sb.toString();
+	};
+	
+	protected StringBuilder toMMLCommand_child(int syntax){
+		StringBuilder sb = new StringBuilder(128 + (data.length << 1));
+		sb.append("data ");
+		sb.append(paramsToString(syntax));
 		return sb;
 	}
 	

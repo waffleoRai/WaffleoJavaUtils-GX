@@ -30,6 +30,9 @@ public class NUSALSeqCommandBook {
 		seqStrCmds = new HashMap<String, NUSALSeqCommandDef>();
 		chStrCmds = new HashMap<String, NUSALSeqCommandDef>();
 		lyrStrCmds = new HashMap<String, NUSALSeqCommandDef>();
+		seqEnumCmds = new HashMap<NUSALSeqCmdType, NUSALSeqCommandDef>();
+		chEnumCmds = new HashMap<NUSALSeqCmdType, NUSALSeqCommandDef>();
+		lyrEnumCmds = new HashMap<NUSALSeqCmdType, NUSALSeqCommandDef>();
 	}
 	
 	/*----- Getters -----*/
@@ -52,42 +55,56 @@ public class NUSALSeqCommandBook {
 	}
 	
 	public NUSALSeqCommandDef getSeqCommand(String cmd) {
-		if(cmd != null) return null;
+		if(cmd == null) return null;
 		return seqStrCmds.get(cmd);
 	}
 	
 	public NUSALSeqCommandDef getChannelCommand(String cmd) {
-		if(cmd != null) return null;
+		if(cmd == null) return null;
 		return chStrCmds.get(cmd);
 	}
 	
 	public NUSALSeqCommandDef getLayerCommand(String cmd) {
-		if(cmd != null) return null;
+		if(cmd == null) return null;
 		return lyrStrCmds.get(cmd);
 	}
 	
 	public NUSALSeqCommandDef getSeqCommand(NUSALSeqCmdType cmd) {
-		if(cmd != null) return null;
+		if(cmd == null) return null;
 		return seqEnumCmds.get(cmd);
 	}
 	
 	public NUSALSeqCommandDef getChannelCommand(NUSALSeqCmdType cmd) {
-		if(cmd != null) return null;
+		if(cmd == null) return null;
 		return chEnumCmds.get(cmd);
 	}
 	
 	public NUSALSeqCommandDef getLayerCommand(NUSALSeqCmdType cmd) {
-		if(cmd != null) return null;
+		if(cmd == null) return null;
 		return lyrEnumCmds.get(cmd);
 	}
 	
 	public NUSALSeqCommandDef getCommand(NUSALSeqCmdType cmd) {
-		if(cmd != null) return null;
-		//TODO
-		return null;
+		if(cmd == null) return null;
+		NUSALSeqCommandDef def = seqEnumCmds.get(cmd);
+		if(def != null) return def;
+		def = lyrEnumCmds.get(cmd);
+		if(def != null) return def;
+		return chEnumCmds.get(cmd);
 	}
 	
 	/*----- Setters -----*/
+	
+	private void addDataCommand() {
+		NUSALSeqCommandDef dataCmd = NUSALSeqCommandDef.getDataDummyDef();
+		seqStrCmds.put(dataCmd.getMnemonicZeqer(), dataCmd);
+		chStrCmds.put(dataCmd.getMnemonicZeqer(), dataCmd);
+		lyrStrCmds.put(dataCmd.getMnemonicZeqer(), dataCmd);
+		
+		seqEnumCmds.put(NUSALSeqCmdType.DATA_ONLY, dataCmd);
+		chEnumCmds.put(NUSALSeqCmdType.DATA_ONLY, dataCmd);
+		lyrEnumCmds.put(NUSALSeqCmdType.DATA_ONLY, dataCmd);
+	}
 	
 	public void addCommandDef(NUSALSeqCommandDef def) {
 		if(def == null) return;
@@ -258,6 +275,12 @@ public class NUSALSeqCommandBook {
 			}
 			else okay = false;
 			
+			val = cols.get("CMDFMT");
+			if(val != null) {
+				//Optional
+				def.setMMLArgFormat(fields[val]);
+			}
+			
 			val = cols.get("ENUM");
 			if(val != null) {
 				//This links the functionality
@@ -389,6 +412,7 @@ public class NUSALSeqCommandBook {
 			if(okay) book.addCommandDef(def);
 		}
 		
+		book.addDataCommand();
 		return book;
 	}
 

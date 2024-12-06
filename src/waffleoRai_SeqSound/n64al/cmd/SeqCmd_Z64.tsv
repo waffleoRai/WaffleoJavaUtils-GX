@@ -39,8 +39,8 @@ S	0xd2	0xd2	ldshvtbl	ldshorttablevel	ldshortvelarr	3	1	2	%r	0x50004	LOAD_SHORTTB
 S	0xd3	0xd3	mutebhv	mutebhv	mutebhv	2	1	1	%02x	0x10004	MUTE_BEHAVIOR_S
 S	0xd4	0xd4	mute	mute	mute	1	0	X	;	0x00104	MUTE_S
 S	0xd5	0xd5	mutescl	mutescale	mutescale	2	1	1	%d	0x00104	MUTE_SCALE_S
-S	0xd6	0xd6	chfree	disablechan	freechan	3	1	2	%{FIDX}	0x10004	DISABLE_CHANNELS
-S	0xd7	0xd7	chinit	initchan	initchan	3	1	2	%{FIDX}	0x10004	ENABLE_CHANNELS
+S	0xd6	0xd6	chfree	disablechan	freechan	3	1	2	%{d}|%04x|0x%04x	0x10004	DISABLE_CHANNELS
+S	0xd7	0xd7	chinit	initchan	initchan	3	1	2	%{d}|%04x|0x%04x	0x10004	ENABLE_CHANNELS
 S	0xd9	0xd9	sexp	sexp	volexp	2	1	1	%d	0x00304	MASTER_EXP
 S	0xda	0xda	sfade	sfade	volmode	4	2	12	%d;%d	0x00304	MASTER_FADE
 S	0xdb	0xdb	svol	svol	vol	2	1	1	%d	0x00304	MASTER_VOLUME
@@ -66,7 +66,7 @@ C	0x98	0x9f	dynldlayer	dynstartlayer	dynldlayer	1	1	LP8	%d	0x20002	VOICE_OFFSET_
 C	0xb0	0xb0	setfil	setfilter	ldfilter	3	1	2	%r	0x40302	SET_CH_FILTER
 C	0xb1	0xb1	filfree	clearfilter	freefilter	1	0	X	;	0x00302	CLEAR_CH_FILTER
 C	0xb2	0xb2	ldptbl	ldptbl	ldseqtoptr	3	1	2	%r	0x50002	LOAD_P_TABLE
-C	0xb3	0xb3	ldfil	copyfilter	filter	2	1	CPF	%d;%d	0x00042	COPY_CH_FILTER
+C	0xb3	0xb3	ldfil	copyfilter	filter	2	2	CPF	%d;%d	0x00042	COPY_CH_FILTER
 C	0xb4	0xb4	ptodyn	p2dyntable	ptrtodyntbl	1	0	X	;	0x10002	DYNTABLE_WRITE
 C	0xb5	0xb5	dyntop	dyntable2p	dyntbltoptr	1	0	X	;	0x10002	DYNTABLE_READ
 C	0xb6	0xb6	lddyn	lddyn	dyntblv	1	0	X	;	0x10002	DYNTABLE_LOAD
@@ -94,12 +94,12 @@ C	0xce	0xce	ldpi	ldpi	ldptr	3	1	2	%r	0x50002	LOAD_IMM_P
 C	0xcf	0xcf	stps	stps	stptrtoseq	3	1	2	%r	0x50042	STORE_TO_SELF_P
 C	0xd0	0xd0	effects	stereoheadseteffects	effects	2	1	1	%d	0x00302	CH_STEREO_EFF
 C	0xd1	0xd1	cnamode	noteallocpolicy	notealloc	2	1	1	%02x	0x10002	CH_NOTEALLOC_POLICY
-C	0xd2	0xd2	sustain	relsustain	sustain	2	1	1	%d	0x00302	CH_SUSTAIN
+C	0xd2	0xd2	csus	relsustain	sustain	2	1	1	%d	0x00302	CH_SUSTAIN
 C	0xd3	0xd3	cbend	pitchbend	bend	2	1	1	%d	0x00302	CH_PITCHBEND
 C	0xd4	0xd4	reverb	reverb	reverb	2	1	1	%d	0x00302	CH_REVERB
 C	0xd7	0xd7	vibfreq	vibfreq	vibfreq	2	1	1	%d	0x00302	CH_VIBRATO_FREQ
 C	0xd8	0xd8	vibdepth	vibdepth	vibdepth	2	1	1	%d	0x00302	CH_VIBRATO_DEPTH
-C	0xd9	0xd9	crelease	release	releaserate	2	1	1	%d	0x00302	CH_RELEASE
+C	0xd9	0xd9	crel	release	releaserate	2	1	1	%d	0x00302	CH_RELEASE
 C	0xda	0xda	cenv	cenvelope	envelope	3	1	2	%r	0x40302	CH_ENVELOPE
 C	0xdb	0xdb	ctp	ctp	transpose	2	1	1	%d	0x00302	CH_TRANSPOSE
 C	0xdc	0xdc	panmix	panmix	panweight	2	1	1	%d	0x00302	CH_PANMIX
@@ -142,6 +142,6 @@ L	0xcb	0xcb	lenv	lenvelope	envelope	4	2	21	%r	0x40301	L_ENVELOPE
 L	0xcc	0xcc	dpoff	drumpanoff	nodrumpan	1	0	X	;	0x00301	DRUMPAN_OFF
 L	0xcd	0xcd	rvbph	reverbphase	stereo	2	1	1	%d	0x00301	L_REVERB_PHASE
 L	0xce	0xce	lbendf	lbend2	bendfine	2	1	1	%d	0x00301	L_PITCHBEND_ALT
-L	0xcf	0xcf	lrelease	lrelease	releaserate	2	1	1	%d	0x00301	L_RELEASE
+L	0xcf	0xcf	lrel	lrelease	releaserate	2	1	1	%d	0x00301	L_RELEASE
 L	0xd0	0xdf	ldshv	shorttablevel	ldshortvel	1	1	L	%d	0x00301	SHORTTBL_VEL
 L	0xe0	0xef	ldshg	shorttablegate	ldshortgate	1	1	L	%d	0x00301	SHORTTBL_GATE

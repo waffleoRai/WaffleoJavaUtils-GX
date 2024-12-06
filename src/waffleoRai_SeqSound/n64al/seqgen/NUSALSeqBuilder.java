@@ -13,17 +13,31 @@ import java.util.Set;
 import waffleoRai_SeqSound.n64al.NUSALSeq;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandMap;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqCommandChunk;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqCopyCommand;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqNoteCommand;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqWaitCommand;
+import waffleoRai_SeqSound.n64al.cmd.SysCommandBook;
 import waffleoRai_SeqSound.n64al.cmd.SeqCommands.*;
 import waffleoRai_SeqSound.n64al.cmd.ChannelCommands.*;
 import waffleoRai_SeqSound.n64al.cmd.BasicCommandMap;
 import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
 import waffleoRai_SeqSound.n64al.seqgen.TimeBlock.TimeBlockList;
+
+/*
+ * TODO
+ * - Fix gate determination (can maybe keep optional randomizer, but also make so can use for timing)
+ * - Option to allow for short notes
+ * - Option to toggle loop type (infinite jump vs. loop counts)
+ * - Allow to set max voices per channel and overall
+ * - (Probably generator level) option to block notes that are too fast
+ * - Toggle tempo cap option - either halve tempo (and event times) or cap at 225
+ * - Recognize time sig? (For metadata and easier bookmarking from user side)
+ * - Set NRPN for MIDI loop marker.
+ */
 
 public class NUSALSeqBuilder {
 
@@ -49,19 +63,30 @@ public class NUSALSeqBuilder {
 	
 	private int loop_st = -1;
 	private int loop_ed = -1;
+	private int timesig_beats = 4;
+	private int timesig_div = 4;
 	
-	private boolean use_gate = false; //If off, gate is always 0
+	private boolean random_gate = false;
 	private Random gate_randomizer;
-	private int gate_min = 20;
-	private int gate_max = 240;
+	private int gate_min = 0;
+	private int gate_max = 25;
+	private double max_tick_trim = 8.0; //Max number of ticks that can be trimmed off by random gate
 	private double samegate_chance = 0.1; 
 	
 	private NUSALSeqCommandMap seqmap;
 	private NUSALSeqBuilderChannel[] channels;
 	
+	private NUSALSeqCommandBook cmdBook;
+	
 	/*--- Init ---*/
 	
 	public NUSALSeqBuilder(){
+		this(SysCommandBook.getDefaultBook());
+	}
+	
+	public NUSALSeqBuilder(NUSALSeqCommandBook commandBook){
+		cmdBook = commandBook;
+		if(cmdBook == null) cmdBook = SysCommandBook.getDefaultBook();
 		init_val = new NUSALSeqInitValues();
 		channels = new NUSALSeqBuilderChannel[16];
 		seqmap = new NUSALSeqCommandMap();
@@ -70,6 +95,7 @@ public class NUSALSeqBuilder {
 		default_params = new HashMap<NUSALSeqCmdType, NUSALSeqCommand>();
 		defo_pri = new int[16];
 		for(int i = 0; i < 16; i++) defo_pri[i] = DEFO_CH_PRI[i];
+		//playing_channels = new LinkedList<Integer>();
 	}
 	
 	public void reset(){
@@ -81,6 +107,7 @@ public class NUSALSeqBuilder {
 			}
 		}
 		time_breaks.clear();
+		//playing_channels.clear();
 	}
 	
 	private void openChannel(int i){
@@ -103,15 +130,48 @@ public class NUSALSeqBuilder {
 		return c;
 	}
 	
+	public int voicesOn(int channel) {
+		if(channel < 0) return 0;
+		if(channel >= 16) return 0;
+		return channels[channel].voicesOn();
+	}
+	
 	public NUSALSequenceCompressor getCompressor(){return compressor;}
 	public int getMaximumLayerDelay(){return ldelay_max;}
 	public int getMinRandomGateBoundary(){return gate_min;}
 	public int getMaxRandomGateBoundary(){return gate_max;}
+	public double getMaxGateTrimTicks() {return max_tick_trim;}
 	public double getSamegateChance(){return samegate_chance;}
+	
+	public NUSALSeqCommandBook getCommandBook() {return cmdBook;}
+	
+	public boolean anyChannelVoxOverflows() {
+		for(int i = 0; i < 16; i++) {
+			if(channels[i] != null) {
+				if(channels[i].hasPendingNotes()) return true;
+			}
+		}
+		return false;
+	}
 	
 	public int getDefaultChannelPriority(int ch){
 		if(ch < 0 || ch >= 16) return -1;
 		return defo_pri[ch];
+	}
+	
+	public double getTicksPerBeat() {
+		double factor = 4.0 / (double)timesig_div;
+		return factor * (double)NUSALSeq.NUS_TPQN;
+	}
+	
+	public double getTickCoordinate(int measure, int beat, int tick) {
+		double tpb = getTicksPerBeat();
+		double tpm = tpb * ((double)timesig_beats);
+		double tt = tpm * (double)measure;
+		tt += tpb * (double)beat;
+		tt += (double)tick;
+		
+		return tt;
 	}
 	
 	/*--- Setters ---*/
@@ -120,10 +180,16 @@ public class NUSALSeqBuilder {
 	public void setInitVol(int val){init_val.volume = val;}
 	public void clearTimeBreaks(){time_breaks.clear();}
 	public void addTimeBreak(int tick){time_breaks.add(tick);}
+	public void setMaxGateTrimTicks(double val) {max_tick_trim = val;}
 	public void setMaxLayerDelay(int ticks){ldelay_max = ticks;}
 	
-	public void setGateGen(boolean on){
-		use_gate = on;
+	public void setTimeSignature(int beats, int div) {
+		timesig_beats = beats;
+		timesig_div = div;
+	}
+	
+	public void setUseRandomGate(boolean on){
+		random_gate = on;
 	}
 	
 	public void setMinRandomGateBoundary(int value){
@@ -163,6 +229,26 @@ public class NUSALSeqBuilder {
 		loop_ed = loop_end;
 		if(loop_st > 0) addTimeBreak(loop_st);
 		if(loop_ed > 0) addTimeBreak(loop_ed);
+	}
+	
+	public void setLoopStart(int tick) {
+		loop_st = tick;
+		if(loop_st > 0) addTimeBreak(loop_st);
+	}
+	
+	public void setLoopStart(int measure, int beat, int tick) {
+		int totalTicks = (int)Math.round(getTickCoordinate(measure, beat, tick));
+		setLoopStart(totalTicks);
+	}
+	
+	public void setLoopEnd(int tick) {
+		loop_ed = tick;
+		if(loop_ed > 0) addTimeBreak(loop_ed);
+	}
+	
+	public void setLoopEnd(int measure, int beat, int tick) {
+		int totalTicks = (int)Math.round(getTickCoordinate(measure, beat, tick));
+		setLoopEnd(totalTicks);
 	}
 	
 	public void addSeqCommandAtTick(int tick, NUSALSeqCommand cmd){
@@ -214,50 +300,84 @@ public class NUSALSeqBuilder {
 	public NUSALSeqNoteCommand generateLayerNote(byte midinote, byte vel, int len, int transpose) {
 		//What to do with gate? No idea.
 		byte gate = 0;
-		if(use_gate){
-			int random_gate = this.gate_randomizer.nextInt(gate_max - gate_min) + gate_min;
-			gate = (byte)random_gate;
+		if(random_gate){
+			int randomGate = this.gate_randomizer.nextInt(gate_max - gate_min) + gate_min;
+			gate = (byte)randomGate;
 		}
-		NUSALSeqNoteCommand cmd = NUSALSeqNoteCommand.fromMidiNote(midinote, transpose, len, vel, gate);
+		NUSALSeqNoteCommand cmd = NUSALSeqNoteCommand.fromMidiNote(cmdBook, midinote, transpose, len, vel, gate);
 		return cmd;
 	}
 	
 	public NUSALSeqCommandChunk genSequenceSubroutine(NUSALSeqCommandMap tickmap){
 		if(tickmap == null) return null;
-		return buildSequenceSubroutine(tickmap);
+		return buildSequenceSubroutine(tickmap, cmdBook);
 	}
 	
 	public NUSALSeqCommandChunk genChannelSubroutine(NUSALSeqCommandMap tickmap){
 		if(tickmap == null) return null;
-		return NUSALSeqBuilderChannel.buildChannelSubroutine(tickmap);
+		return NUSALSeqBuilderChannel.buildChannelSubroutine(tickmap, cmdBook);
 	}
 	
 	public NUSALSeqCommandChunk genLayerSubroutine(NUSALSeqCommandMap tickmap){
 		if(tickmap == null) return null;
-		return NUSALSeqBuilderLayer.buildLayerSubroutine(tickmap);
+		return NUSALSeqBuilderLayer.buildLayerSubroutine(tickmap, cmdBook);
 	}
 	
 	/*--- Control (Generator) ---*/
 	
 	public void sendNoteOn(int tick, int ch, byte midinote, byte velocity){
 		//Generate random gate.
-		int gate = -1;
+		int gate = -1; //Default to note-off time
 		//1. Do we put in a new gate, or tell channel to use last/default?
-		if(use_gate){
+		if(random_gate){
 			double r = gate_randomizer.nextDouble();
 			if(r >= samegate_chance){
 				gate = gate_min + gate_randomizer.nextInt(gate_max - gate_min);
 			}	
+			else gate = -2;
 		}
-		else gate = 0;
+		//else gate = 0;
 		
 		if(channels[ch] == null) openChannel(ch);
 		channels[ch].sendNoteOn(tick, midinote, velocity, gate);
 	}
 	
-	public void sendNoteOff(int tick, int ch, byte midinote){
+	public void sendNoteOff(double tick, int ch, byte midinote){
 		if(channels[ch] == null) openChannel(ch); //THIS SHOULD NOT HAPPEN, but just in case.
 		channels[ch].sendNoteOff(tick, midinote);
+	}
+	
+	public void setPortamentoTime(int tick, int ch, short value) {
+		// TODO Auto-generated method stub
+	}
+
+	public void setPortamentoAmount(int tick, int ch, byte value) {
+		// TODO Auto-generated method stub
+	}
+
+	public void setPortamentoOn(int tick, int ch, boolean on) {
+		// TODO Auto-generated method stub
+	}
+	
+	public void setLegatoOn(int tick, int ch, boolean on) {
+		if(channels[ch] == null) openChannel(ch); 
+		channels[ch].setLegatoOn(tick, on);
+	}
+	
+	public void killOldestNote(int tick) {
+		int ch = -1;
+		int val = Integer.MAX_VALUE;
+		for(int i = 0; i < 16; i++) {
+			if(channels[i] != null) {
+				int st = channels[i].getOldestNoteStart();
+				if((st >= 0) && (st < val)) {
+					ch = i;
+					val = st;
+				}
+			}
+		}
+		
+		if(ch >= 0) channels[ch].killOldestNote(tick);
 	}
 	
 	/*--- Serialize ---*/
@@ -287,6 +407,8 @@ public class NUSALSeqBuilder {
 		
 		public Set<NUSALSeqCommandChunk> allsubs;
 		public TimeBlock current_block;
+		
+		public NUSALSeqCommandBook cmdBook;
 		
 		public void loadParamStateToChunk(){
 			if(param_state != null && !param_state.isEmpty()){
@@ -329,7 +451,7 @@ public class NUSALSeqBuilder {
 		}
 		
 		public void addEndRead(){
-			cur = new C_EndRead();
+			cur = new C_EndRead(cmdBook);
 			if(last != null) last.setSubsequentCommand(cur);
 			chunk.addCommand(cur);
 			last = null;
@@ -354,7 +476,7 @@ public class NUSALSeqBuilder {
 		ctxt.rwaitflag = false;
 		
 		for(NUSALSeqCommand cmd : tickcmds){
-			NUSALSeqCmdType ctype = cmd.getCommand();
+			NUSALSeqCmdType ctype = cmd.getFunctionalType();
 			if(!ctype.flagSet(NUSALSeqCommands.FLAG_SEQVALID)) continue; //Invalid. Skip.
 			if(ctype.flagSet(NUSALSeqCommands.FLAG_ONCEPERTICK) && ctxt.usedcmds.contains(ctype)) continue;
 			
@@ -442,7 +564,7 @@ public class NUSALSeqBuilder {
 						cchunk = ctb.main_track.get(j);
 						if(j == 0) cchunk.getChunkHead().setLabel(String.format("ch%02d_tsec%02d", i, tsec));
 						else cchunk.getChunkHead().setLabel(String.format("ch%02d_tsec%02d_%03d", i, tsec,j));
-						cstart = new C_S_StartChannel(i, -1);
+						cstart = new C_S_StartChannel(cmdBook, i, -1);
 						cstart.setReference(cchunk);
 						
 						if(j == 0){
@@ -466,7 +588,7 @@ public class NUSALSeqBuilder {
 		
 		if(ctxt.current_block.base_tick == loop_ed){
 			if(ctxt.loopchunk != null){
-				ctxt.cur = new C_Jump(-1);
+				ctxt.cur = new C_Jump(-1, cmdBook);
 				ctxt.cur.setReference(ctxt.loopchunk);
 				ctxt.addCur();
 			}
@@ -482,7 +604,7 @@ public class NUSALSeqBuilder {
 				int ctime = ctb.tick_coords.get(0);
 				NUSALSeqCommand cchunk = ctb.main_track.get(0);
 				if(ctime == ctb.base_tick){
-					ctxt.cur = new C_S_StartChannel(c, -1);
+					ctxt.cur = new C_S_StartChannel(cmdBook, c, -1);
 					ctxt.cur.setReference(cchunk);
 					ctxt.addCur();
 					continue;
@@ -494,11 +616,12 @@ public class NUSALSeqBuilder {
 		ctxt.init_mode = false;
 	}
 	
-	protected NUSALSeqCommandChunk buildSequenceSubroutine(NUSALSeqCommandMap tickmap){
+	protected NUSALSeqCommandChunk buildSequenceSubroutine(NUSALSeqCommandMap tickmap, NUSALSeqCommandBook cmdBook){
 		if(tickmap == null) return null;
 		SequenceBuildContext ctxt = new SequenceBuildContext();
 		ctxt.chunk = new NUSALSeqCommandChunk();
 		ctxt.usedcmds = new HashSet<NUSALSeqCmdType>();
+		ctxt.cmdBook = cmdBook;
 		List<Integer> ticklist = tickmap.getOrderedKeys();
 		
 		ctxt.keepcmds = new LinkedList<NUSALSeqCommand>();
@@ -569,9 +692,10 @@ public class NUSALSeqBuilder {
 		
 		int tdiff = send - ctxt.last_tick;
 		if(tdiff > 0){
-			ctxt.cur = new C_Wait(tdiff);
+			ctxt.cur = new C_Wait(cmdBook, tdiff);
 			ctxt.addCur();
 		}
+		
 	}
 	
 	private void nextTimeblock(SequenceBuildContext ctxt, TimeBlockList[] cblocks, List<TimeBlock> blocks, int k_tick){
@@ -623,6 +747,7 @@ public class NUSALSeqBuilder {
 		List<TimeBlock> blocks = new LinkedList<TimeBlock>();
 		SequenceBuildContext ctxt = new SequenceBuildContext();
 		ctxt.sorted_entries = new LinkedList<Integer>();
+		ctxt.cmdBook = cmdBook;
 		if(time_breaks != null){
 			time_breaks.remove(0);
 			ctxt.sorted_entries.addAll(time_breaks);
@@ -732,6 +857,12 @@ public class NUSALSeqBuilder {
 		nextTimeblock(ctxt, cblocks, blocks, -1);
 		
 		//Add end command to last chunk.
+		//If loop start is set and loop end is -1, auto set to end of sequence.
+		if((loop_ed < 0) && (ctxt.loopchunk != null)) {
+			ctxt.cur = new C_Jump(-1, cmdBook);
+			ctxt.cur.setReference(ctxt.loopchunk);
+			ctxt.addCur();
+		}
 		ctxt.addEndRead();
 		
 		//System.err.println("NUSALSeqBuilderLayer.buildTimeblocks || DEBUG -- Printing build output for seq.");
@@ -750,9 +881,9 @@ public class NUSALSeqBuilder {
 		//TODO At some point we need the timeblock jump logic. But eh, I'll put it in eventually.
 		SequenceBuildContext ctxt = new SequenceBuildContext();
 		ctxt.chunk = new NUSALSeqCommandChunk();
-		ctxt.cur = new C_S_MuteBehavior(init_val.mutebhv); ctxt.addCur();
+		ctxt.cur = new C_S_MuteBehavior(cmdBook, init_val.mutebhv); ctxt.addCur();
 		ctxt.cur.setLabel("seqstart");
-		ctxt.cur = new C_S_MuteScale(init_val.mutescale); ctxt.addCur();
+		ctxt.cur = new C_S_MuteScale(cmdBook, init_val.mutescale); ctxt.addCur();
 		ctxt.cur = new C_S_InitChannels(0xffff); ctxt.addCur();
 		int usedch = 0;
 		for(int i = 0; i < 16; i++){
@@ -763,8 +894,8 @@ public class NUSALSeqBuilder {
 		ctxt.cur = new C_S_InitChannels(usedch); ctxt.addCur();
 		
 		//Copy init values to default params
-		default_params.put(NUSALSeqCmdType.MASTER_VOLUME, new C_S_SetMasterVolume(init_val.volume));
-		default_params.put(NUSALSeqCmdType.SET_TEMPO, new C_S_SetTempo(init_val.tempo));
+		default_params.put(NUSALSeqCmdType.MASTER_VOLUME, new C_S_SetMasterVolume(cmdBook, init_val.volume));
+		default_params.put(NUSALSeqCmdType.SET_TEMPO, new C_S_SetTempo(cmdBook, init_val.tempo));
 		
 		//Create chunks for putting blocks in.
 		NUSALSeqCommandChunk seq_block = new NUSALSeqCommandChunk();
@@ -825,11 +956,13 @@ public class NUSALSeqBuilder {
 		ctxt.chunk.slideReferencesToChunkHeads();
 		
 		//Generate a BasicCommandMap and add main chunk
-		BasicCommandMap cmdsrc = new BasicCommandMap();
+		BasicCommandMap cmdsrc = new BasicCommandMap(cmdBook);
 		cmdsrc.loadIntoMap(ctxt.chunk);
 		
 		//Wrap in a NUSALSeq
 		NUSALSeq outseq = NUSALSeq.newNUSALSeq(cmdsrc);
+		outseq.setBeatsPerMeasure(timesig_beats);
+		outseq.setBeatDiv(timesig_div);
 		
 		return outseq;
 	}

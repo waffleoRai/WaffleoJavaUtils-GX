@@ -28,7 +28,7 @@ public class Test_NUSALBin2MML {
 			else{
 				bw = new BufferedWriter(new OutputStreamWriter(System.out));
 			}
-			nseq.exportMMLScript(bw, true);
+			nseq.exportMMLScript(bw, true, NUSALSeq.SYNTAX_SET_ZEQER);
 			bw.close();
 		}
 		catch(Exception ex){

@@ -1,6 +1,7 @@
 package waffleoRai_SeqSound.n64al.cmd;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
 import waffleoRai_SeqSound.n64al.NUSALSeqDataType;
 
 public class NUSALSeqPtrTableData extends NUSALSeqDataCommand{
@@ -37,6 +38,16 @@ public class NUSALSeqPtrTableData extends NUSALSeqDataCommand{
 			offsets[tbl_idx] = this.getDataValue(tbl_idx, false) - cmd.getAddress();
 		}
 		else offsets[tbl_idx] = 0;
+	}
+	
+	public void removeReference(NUSALSeqCommand target) {
+		if(references == null) return;
+		for(int i = 0; i < references.length; i++) {
+			if(references[i] == target) {
+				references[i] = null;
+				offsets[i] = 0;
+			}
+		}
 	}
 	
 	public boolean isLayerContext(){return lyr_target >= 0;}
@@ -109,28 +120,48 @@ public class NUSALSeqPtrTableData extends NUSALSeqDataCommand{
 		return data;
 	}
 	
-	protected StringBuilder toMMLCommand_child(){
+	protected String paramsToString(int syntax){
+		//TODO Eventually update to account for other syntaxes
 		StringBuilder sb = new StringBuilder(128 + (data.length << 1));
-		sb.append("data ptable {");
-		String mylbl = super.getLabel();
-		if(mylbl == null){
-			mylbl = String.format(".ptbl-%04x", getAddress());
-			setLabel(mylbl);
+		sb.append(dtype.getMMLString());
+		int ptype = dtype.getParamPrintType();
+		if(ptype == NUSALSeqCommands.MML_DATAPARAM_TYPE__BUFFER){
+			sb.append(" ");
+			sb.append(data.length);
 		}
-		for(int i = 0; i < references.length; i++){
-			if(i != 0) sb.append(", ");
-			if(references[i] != null){
-				String lbl = references[i].getLabel();
-				if(lbl == null){
-					lbl = String.format("ref_%s_%03d", mylbl, i);
-					references[i].setLabel(lbl);
+		else{
+			sb.append(" {");
+			int count = dtype.getUnitCount();
+			int usize = dtype.getUnitSize();
+			String fmtstr = "%0" + (usize << 1) + "x";
+			if(count < 0) count = data.length/usize;
+			for(int i = 0; i < count; i++){
+				if(i > 0) sb.append(", ");
+				if((references != null) && (i < references.length) && (references[i] != null)) {
+					sb.append(references[i].getLabel());
+					if(offsets[i] > 0) {
+						sb.append("[" + offsets[i] + "]");
+					}
+					continue;
 				}
-				sb.append(lbl);
+				
+				switch(ptype){
+				case NUSALSeqCommands.MML_DATAPARAM_TYPE__DECSIGNED:
+					sb.append(getDataValue(i, true));
+					break;
+				case NUSALSeqCommands.MML_DATAPARAM_TYPE__DECUNSIGNED:
+					sb.append(getDataValue(i, false));
+					break;
+				case NUSALSeqCommands.MML_DATAPARAM_TYPE__HEXUNSIGNED:
+				default:
+					int val = getDataValue(i, false);
+					sb.append(String.format(fmtstr, val));
+					break;
+				}
 			}
-			else sb.append("NULL");
+			sb.append("}");
 		}
-		sb.append("}");
-		return sb;
-	}
+		return sb.toString();
+	};
 	
 }

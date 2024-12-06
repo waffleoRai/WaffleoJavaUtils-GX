@@ -91,9 +91,43 @@ class TimeBlock {
 			//Is it just an end command?
 			if(chunk.isEmpty()) continue;
 			NUSALSeqCommand chead = chunk.getChunkHead();
-			if(chead.getCommand() == NUSALSeqCmdType.END_READ) continue;
+			if(chead.getFunctionalType() == NUSALSeqCmdType.END_READ) continue;
 			main_track.add(chunk); tick_coords.add(old_ticks.get(i));
 		}
+		
+		if(sublevels != null) {
+			for(TimeBlock tb : sublevels) {
+				tb.cleanEmptyChunks();
+			}
+		}
+		
+		return main_track.size();
+	}
+	
+	public int cleanNotelessChunks() {
+		//Also removes empty notes
+		if(main_track.isEmpty()) return 0;
+		ArrayList<NUSALSeqCommandChunk> old_chunks = main_track;
+		ArrayList<Integer> old_ticks = tick_coords;
+		
+		int count = main_track.size();
+		main_track = new ArrayList<NUSALSeqCommandChunk>(count+1);
+		tick_coords = new ArrayList<Integer>(count + 1);
+		for(int i = 0; i < count; i++){
+			NUSALSeqCommandChunk chunk = old_chunks.get(i);
+			if(chunk.isEmpty()) continue;
+			if(chunk.isNoteless()) continue;
+			NUSALSeqCommand chead = chunk.getChunkHead();
+			if(chead.getFunctionalType() == NUSALSeqCmdType.END_READ) continue;
+			main_track.add(chunk); tick_coords.add(old_ticks.get(i));
+		}
+		
+		if(sublevels != null) {
+			for(TimeBlock tb : sublevels) {
+				tb.cleanNotelessChunks();
+			}
+		}
+		
 		return main_track.size();
 	}
 	

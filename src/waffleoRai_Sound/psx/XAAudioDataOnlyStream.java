@@ -51,6 +51,8 @@ public class XAAudioDataOnlyStream implements IXAAudioDataSource{
 	}
 
 	public byte[] nextSectorBytes() {
+		if(cpos >= audioData.length) return null;
+		
 		byte[] bb = new byte[BYTES_PER_SEC];
 		for(int i = 0; i < BYTES_PER_SEC; i++) {
 			bb[i] = audioData[cpos++];

@@ -7,15 +7,27 @@ import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
 import waffleoRai_SeqSound.n64al.NUSALSeqDataType;
+import waffleoRai_SeqSound.n64al.cmd.linking.NUSALSeqLinking;
 import waffleoRai_Sound.nintendo.Z64Sound;
 import waffleoRai_Utils.BufferReference;
+import waffleoRai_Utils.Ref;
 
 public class DataCommands {
+	
+	public static final int TARGET_TYPE_DATA = 0;
+	public static final int TARGET_TYPE_CODE = 1;
+	public static final int TARGET_TYPE_LITERAL = 2;
+	public static final int TARGET_TYPE_UNK = -1;
 
 	/*--- Command Reader ---*/
 	
 	public static NUSALSeqDataCommand parseData(NUSALSeqCmdType parent_cmd, BufferReference dat, int upper_addr){
 		if(parent_cmd == null || dat == null) return null;
+		
+		/*if(dat.getBufferPosition() == 0x5ee5) {
+			System.err.println("DataCommands.parseData || Debug Triggered");
+		}*/
+		
 		//System.err.println("upper_addr = 0x" + Integer.toHexString(upper_addr));
 		NUSALSeqDataType dtype = cmdDataType(parent_cmd);
 		if(dtype == NUSALSeqDataType.ENVELOPE){
@@ -101,9 +113,9 @@ public class DataCommands {
 		if(!cmd.equalsIgnoreCase("data")) return null;
 		if(args == null || args.length < 2) return null;
 		
-		for(int i = 0; i < args.length; i++){
+		/*for(int i = 0; i < args.length; i++){
 			args[i] = args[i].replace("{", "").replace("}", "");
-		}
+		}*/
 		String dtype_str = args[0];
 		NUSALSeqDataType dtype = NUSALSeqDataType.readMML(dtype_str);
 		if(dtype == null) return null;
@@ -124,17 +136,21 @@ public class DataCommands {
 		else{
 			//Read as array.
 			try{
-				int size = args.length-1;
+				String[] dataArgs = args;
+				if(args.length == 2) {
+					dataArgs = args[1].split(",");
+				}
+				int size = dataArgs.length-1;
 				dcmd = new NUSALSeqDataCommand(dtype, size);
 				for(int i = 0; i < size; i++){
 					int val = -1;
 					switch(dtype.getParamPrintType()){
 					case NUSALSeqCommands.MML_DATAPARAM_TYPE__DECSIGNED:
 					case NUSALSeqCommands.MML_DATAPARAM_TYPE__DECUNSIGNED:
-						val = Integer.parseInt(args[i+1]);
+						val = Integer.parseInt(dataArgs[i+1]);
 						break;
 					case NUSALSeqCommands.MML_DATAPARAM_TYPE__HEXUNSIGNED:
-						val = Integer.parseInt(args[i+1],16);
+						val = Integer.parseInt(dataArgs[i+1],16);
 						break;
 					}
 					dcmd.setDataValue(val, i);
@@ -151,6 +167,17 @@ public class DataCommands {
 	
 	/*--- Parsing Helpers ---*/
 	
+	public static int validPointersFrom(BufferReference scanStart, int totalDataSize) {
+		if(scanStart == null) return 0;
+		int ct = 0;
+		while(scanStart.hasRemaining()) {
+			int val = Short.toUnsignedInt(scanStart.nextShort());
+			if(val < 0 || val >= totalDataSize) break;
+			else ct++;
+		}
+		return ct;
+	}
+	
 	public static NUSALSeqDataType cmdDataType(NUSALSeqCmdType cmdtype){
 		if(cmdtype == NUSALSeqCmdType.CALL_TABLE){
 			return NUSALSeqDataType.CALLTABLE;
@@ -165,10 +192,14 @@ public class DataCommands {
 			return NUSALSeqDataType.VEL_TABLE;
 		}
 		else if(cmdtype == NUSALSeqCmdType.STORE_TO_SELF_S){
-			return NUSALSeqDataType.BUFFER;
+			//Not necessarily - could be self-modifying table
+			//return NUSALSeqDataType.BUFFER;
+			return NUSALSeqDataType.BINARY;
 		}
 		else if(cmdtype == NUSALSeqCmdType.STORE_TO_SELF_C){
-			return NUSALSeqDataType.BUFFER;
+			//\Not necessarily - could be self-modifying table
+			//return NUSALSeqDataType.BUFFER;
+			return NUSALSeqDataType.BINARY;
 		}
 		else if(cmdtype == NUSALSeqCmdType.SET_CH_FILTER){
 			return NUSALSeqDataType.FILTER;
@@ -182,11 +213,17 @@ public class DataCommands {
 		else if(cmdtype == NUSALSeqCmdType.LOAD_FROM_SELF){
 			return NUSALSeqDataType.Q_TABLE;
 		}
+		else if(cmdtype == NUSALSeqCmdType.DYNTABLE_LOAD){
+			return NUSALSeqDataType.Q_TABLE;
+		}
 		else if(cmdtype == NUSALSeqCmdType.LOAD_IMM_P){
-			return NUSALSeqDataType.BUFFER;
+			//return NUSALSeqDataType.BUFFER;
+			return NUSALSeqDataType.BINARY;
 		}
 		else if(cmdtype == NUSALSeqCmdType.STORE_TO_SELF_P){
-			return NUSALSeqDataType.BUFFER;
+			//Not necessarily - could be self-modifying table
+			//return NUSALSeqDataType.BUFFER;
+			return NUSALSeqDataType.BINARY;
 		}
 		else if(cmdtype == NUSALSeqCmdType.CH_ENVELOPE){
 			return NUSALSeqDataType.ENVELOPE;
@@ -243,7 +280,7 @@ public class DataCommands {
 	
 	/*--- Context Prediction - PTBL ---*/
 	
-	private static NUSALSeqCommand guessPUsage(NUSALSeqCommand cmd){
+	public static NUSALSeqCommand guessPUsage(NUSALSeqCommand cmd){
 		//Scan forward to see what a loaded p is used for after cmd sets it
 		NUSALSeqCommand next = cmd.getSubsequentCommand();
 		NUSALSeqCommand ref = null;
@@ -255,11 +292,22 @@ public class DataCommands {
 				//Might be data
 				ref = next.getBranchTarget();
 				if(ref != null) return ref;
-				break;
+				return null;
 			case LOAD_SAMPLE_P:
 				return next;
 			case DYNTABLE_WRITE: //p2dyntable
+				//Sets dyntbl address to the value in p
 				return guessDyntableUsage(next);
+			case BRANCH_ALWAYS:
+			case BRANCH_ALWAYS_REL:
+				next = next.getBranchTarget();
+				continue;
+			case BRANCH_IF_LTZ_REL:
+			case BRANCH_IF_EQZ_REL:
+			case BRANCH_IF_GTEZ:
+			case BRANCH_IF_LTZ:
+			case BRANCH_IF_EQZ:
+				return cmd;
 			default: break;
 			}
 			next = next.getSubsequentCommand();
@@ -284,9 +332,9 @@ public class DataCommands {
 				break;
 			case DYNTABLE_LOAD:
 				//The dyntable is a Q table.
-				ret = guessQUsage(next);
-				if (ret != null) return ret;
-				break;
+				//ret = guessQUsage(next);
+				//if (ret != null) return ret;
+				return next;
 			case SHIFT_DYNTABLE:
 				//I am not exactly sure what to do with this...
 				//Keep going maybe? I'll leave the case here just in case.
@@ -294,11 +342,21 @@ public class DataCommands {
 			case CALL_DYNTABLE:
 				//dyntable is table of pointers to channel code
 				return next;
+			case BRANCH_ALWAYS:
+			case BRANCH_ALWAYS_REL:
+				next = next.getBranchTarget();
+				continue;
+			case BRANCH_IF_LTZ_REL:
+			case BRANCH_IF_EQZ_REL:
+			case BRANCH_IF_GTEZ:
+			case BRANCH_IF_LTZ:
+			case BRANCH_IF_EQZ:
+				return cmd;
 			default: break;
 			}
 			next = next.getSubsequentCommand();
 		}
-		return null;
+		return cmd;
 	}
 	
 	public static NUSALSeqCommand guessPTableUsage(NUSALSeqCommand ptbl){
@@ -320,8 +378,23 @@ public class DataCommands {
  				//Scan forward to see where p is next applied.
  				// stps, loadsplp, p2dyntable, addp, 
  				ret = guessPUsage(referee);
- 				if(ret != null) return ret;
- 				break;
+ 				if(ret != null) {
+ 					switch(ret.getFunctionalType()) {
+ 					case STORE_TO_SELF_C:
+ 					case STORE_TO_SELF_S:
+ 						//P is giving address of command to modify :)
+ 						//If target is non-null return that to get idea of what kind of commands.
+ 						NUSALSeqCommand stsTarg = ret.getBranchTarget();
+ 						if(stsTarg != null) {
+ 							return stsTarg;
+ 						}
+ 						break;
+ 					default:
+ 						break;
+ 					}
+ 					return ret;
+ 				}
+ 				return referee;
  			case SET_DYNTABLE: 
  				ret = guessDyntableUsage(referee);
  				if(ret != null) return ret;
@@ -331,6 +404,170 @@ public class DataCommands {
  		}
 		
 		return null;
+	}
+	
+	public static int guessLDPITargetType(NUSALSeqCommand cmd) {
+		//TODO
+		if(cmd == null) return TARGET_TYPE_UNK;
+		
+		NUSALSeqCommand trg = guessPUsage(cmd);
+		if(trg == null) return TARGET_TYPE_UNK;
+		switch(trg.getFunctionalType()) {
+		case LOAD_FROM_SELF:
+		case DYNTABLE_LOAD:
+			return TARGET_TYPE_DATA;
+		default:
+			return TARGET_TYPE_UNK;
+		}
+	}
+	
+	/*--- Context Prediction - PTBL Update ---*/
+	
+	public static int guessStoreTargetUsage(NUSALSeqCommand modTarget, Ref<NUSALSeqCommand> tracedCmd) {
+		//Returns a type based on the command that is BEING MODIFIED
+		//Uses a NUSALSeqLinking pseudo-enum instead.
+		if(modTarget == null) return NUSALSeqLinking.P_TYPE_UNK;
+		switch(modTarget.getFunctionalType()) {
+		case CHANNEL_OFFSET:
+		case CHANNEL_OFFSET_REL:
+		case CHANNEL_OFFSET_C:
+			if(tracedCmd != null) tracedCmd.data = modTarget;
+			return NUSALSeqLinking.P_TYPE_CH_CODE;
+		case CALL_TABLE: //seq
+			if(tracedCmd != null) tracedCmd.data = modTarget;
+			return NUSALSeqLinking.P_TYPE_SEQ_CODE;
+		case VOICE_OFFSET:
+		case VOICE_OFFSET_REL:
+			if(tracedCmd != null) tracedCmd.data = modTarget;
+			return NUSALSeqLinking.P_TYPE_LYR_CODE;
+		case CH_ENVELOPE:
+		case L_ENVELOPE:
+		case LOAD_SHORTTBL_GATE:
+		case LOAD_SHORTTBL_VEL:
+		case CH_LOAD_PARAMS:
+		case SET_CH_FILTER:
+		case LOAD_SEQ:
+			//The mod is probably an address to some kind of data array.
+			if(tracedCmd != null) tracedCmd.data = modTarget;
+			return NUSALSeqLinking.P_TYPE_GENERAL_DATA;
+		case STORE_TO_SELF_S:
+		case STORE_TO_SELF_C:
+			//The mod is either the address (p) or offset (q)
+			//Assuming it's p here... (change if this becomes a problem)
+			if(tracedCmd != null) tracedCmd.data = modTarget;
+			return NUSALSeqLinking.P_TYPE_PDATA;
+		case LOAD_P_TABLE:
+			//The mod is probably address to p table
+			if(tracedCmd != null) tracedCmd.data = modTarget;
+			return NUSALSeqLinking.P_TYPE_PDATA;
+		case SET_DYNTABLE:
+			//The mod is probably address of dyntable.
+			//No idea what is in the dyntable though.
+			return guessDynTableUsageType(modTarget, tracedCmd);
+		case LOAD_FROM_SELF:
+			//The mod is probably address to write Q to
+			if(tracedCmd != null) tracedCmd.data = modTarget;
+			return NUSALSeqLinking.P_TYPE_QDATA;
+		case LOAD_IMM_P:
+			//The mod is probably the immediate
+			//But need to trace in case it is a pointer to something else
+			return guessPUsageType(modTarget, tracedCmd);
+		case STORE_TO_SELF_P:
+			//The mod is probably the address to write P to
+			//Recurse w/ target
+			/*NUSALSeqCommand stsTarget = modTarget.getBranchTarget();
+			if(stsTarget != null) {
+				return guessStoreTargetUsage(stsTarget, tracedCmd);
+			}
+			break;*/ //Probably just not linked yet.
+			if(tracedCmd != null) tracedCmd.data = modTarget;
+			return NUSALSeqLinking.P_TYPE_PDATA;
+		case BRANCH_IF_LTZ_REL:
+		case BRANCH_IF_EQZ_REL:
+		case BRANCH_ALWAYS_REL:
+		case BRANCH_IF_GTEZ:
+		case BRANCH_IF_LTZ:
+		case BRANCH_IF_EQZ:
+		case BRANCH_ALWAYS:
+		case CALL:
+			if(tracedCmd != null) tracedCmd.data = modTarget;
+			if(modTarget.isSeqCommand()) return NUSALSeqLinking.P_TYPE_SEQ_CODE;
+			else if(modTarget.isChannelCommand()) return NUSALSeqLinking.P_TYPE_CH_CODE;
+			else if(modTarget.isLayerCommand()) return NUSALSeqLinking.P_TYPE_LYR_CODE;
+			break;
+		default:
+			//Commonly used as table of parametesr for modifying commands
+			if(tracedCmd != null) tracedCmd.data = modTarget;
+			return NUSALSeqLinking.P_TYPE_QDATA;
+		}
+		
+		return NUSALSeqLinking.P_TYPE_UNK;
+	}
+	
+	public static int guessDynTableUsageType(NUSALSeqCommand dtReferee, Ref<NUSALSeqCommand> tracedCmd) {
+		//TODO
+		//Tries to guess usage from the dyntable referee
+		//Uses a NUSALSeqLinking pseudo-enum instead.
+		if(dtReferee == null) return NUSALSeqLinking.P_TYPE_UNK;
+		
+		//Walk down from this command to find next command that reads dyntbl ptr to do something
+		NUSALSeqCommand trg = null;
+		CommandWalker walker = new CommandWalker();
+		walker.initializeWith(dtReferee);
+		while((trg = walker.next()) != null) {
+			switch(trg.getFunctionalType()) {
+			case SHIFT_DYNTABLE:
+				//TODO
+				//idr what this does :) Will have to check decomp code.
+				break;
+			case DYNTABLE_READ:
+				//dyntop
+				return guessPUsageType(trg, tracedCmd);
+			case DYNTABLE_LOAD:
+				//lddyn
+				if(tracedCmd != null) tracedCmd.data = trg;
+				return NUSALSeqLinking.P_TYPE_QDATA;
+			case CALL_DYNTABLE:
+				if(tracedCmd != null) tracedCmd.data = trg;
+				return NUSALSeqLinking.P_TYPE_CH_CODE;
+			default:
+				break;
+			}
+		}	
+		
+		return NUSALSeqLinking.P_TYPE_UNK;
+	}
+	
+	public static int guessPUsageType(NUSALSeqCommand pReferee, Ref<NUSALSeqCommand> tracedCmd) {
+		//Tries to guess usage from the non-table referee
+		//Uses a NUSALSeqLinking pseudo-enum instead.
+		if(pReferee == null) return NUSALSeqLinking.P_TYPE_UNK;
+		
+		//If pReferee is SET_DYNTABLE, redirect to guessDynTableUsageType.
+		if(pReferee.getFunctionalType() == NUSALSeqCmdType.SET_DYNTABLE) {
+			return guessDynTableUsageType(pReferee, tracedCmd);
+		}
+		
+		//Find next command that uses (reads) p
+		NUSALSeqCommand trg = null;
+		CommandWalker walker = new CommandWalker();
+		walker.initializeWith(pReferee);
+		while((trg = walker.next()) != null) {
+			switch(trg.getFunctionalType()) {
+			case DYNTABLE_WRITE:
+				return guessDynTableUsageType(trg, tracedCmd);
+			case STORE_TO_SELF_P:
+				NUSALSeqCommand stsTrg = trg.getBranchTarget();
+				if(stsTrg != null) {
+					guessStoreTargetUsage(stsTrg, tracedCmd);
+				}
+				return NUSALSeqLinking.P_TYPE_UNK; //Assumed target not found yet.
+			default:
+				break;
+			}
+		}	
+		
+		return NUSALSeqLinking.P_TYPE_UNK;
 	}
 	
 }

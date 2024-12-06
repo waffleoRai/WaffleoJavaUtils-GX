@@ -3,6 +3,8 @@ package waffleoRai_SeqSound.n64al;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 
+import waffleoRai_SeqSound.n64al.cmd.SysCommandBook;
+
 public class Test_MergeNUSALSeqMML {
 
 	public static void main(String[] args) {
@@ -15,7 +17,7 @@ public class Test_MergeNUSALSeqMML {
 		String outpath = args[1];
 
 		try{
-			NUSALSeq seq = NUSMMLSplitter.mergeSeq(instem);
+			NUSALSeq seq = NUSMMLSplitter.mergeSeq(instem, SysCommandBook.ZELDA64.getBook());
 			if(seq == null){
 				System.err.println("ERROR: Returned seq is null! See stderr for details.");
 				System.exit(1);

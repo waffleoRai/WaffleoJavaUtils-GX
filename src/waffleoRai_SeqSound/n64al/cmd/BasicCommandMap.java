@@ -11,15 +11,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
+import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandSource;
 import waffleoRai_Utils.FileBuffer;
 
 public class BasicCommandMap implements NUSALSeqCommandSource{
 
 	private ConcurrentMap<Integer, NUSALSeqCommand> map;
+	private NUSALSeqCommandBook cmdBook;
 	
-	public BasicCommandMap(){
+ 	public BasicCommandMap(NUSALSeqCommandBook book){
 		map = new ConcurrentHashMap<Integer, NUSALSeqCommand>();
+		cmdBook = book;
+		if(book == null) book = SysCommandBook.ZELDA64.getBook();
 	}
 	
 	public void addCommand(int addr, NUSALSeqCommand cmd){
@@ -127,7 +131,7 @@ public class BasicCommandMap implements NUSALSeqCommandSource{
 		else data.replaceByte((byte)val, addr - caddr);
 		
 		if(cmd.seqUsed()){
-			ncmd = SeqCommands.parseSequenceCommand(data.getReferenceAt(0));
+			ncmd = SeqCommands.parseSequenceCommand(data.getReferenceAt(0), cmdBook);
 			if(ncmd == null) return STSResult.FAIL;
 			ncmd.flagSeqUsed();
 		}
@@ -140,12 +144,12 @@ public class BasicCommandMap implements NUSALSeqCommandSource{
 				}
 			}
 			if(chuse){
-				ncmd = ChannelCommands.parseChannelCommand(data.getReferenceAt(0));
+				ncmd = ChannelCommands.parseChannelCommand(data.getReferenceAt(0), cmdBook);
 				if(ncmd == null) return STSResult.FAIL;
 			}
 			else{
 				//layer
-				ncmd = LayerCommands.parseLayerCommand(data.getReferenceAt(0), false);
+				ncmd = LayerCommands.parseLayerCommand(data.getReferenceAt(0), cmdBook, false);
 				if(ncmd == null) return STSResult.FAIL;
 			}
 		}

@@ -13,16 +13,42 @@ import waffleoRai_SeqSound.n64al.NUSALSeqCommands;
 import waffleoRai_Utils.FileBuffer;
 
 public class NUSALSeqCommandChunk extends NUSALSeqCommand{
+	
+	/*----- Instance Variables -----*/
 
 	private LinkedList<NUSALSeqCommand> commands;
+	
+	/*----- Init -----*/
 	
 	public NUSALSeqCommandChunk() {
 		super(NUSALSeqCommandDef.getChunkDummyDef(), (byte)0x00);
 		commands = new LinkedList<NUSALSeqCommand>();
 	}
 
+	/*----- Getters -----*/
+	
 	public boolean isChunk(){return true;}
 	public boolean isEmpty(){return commands.isEmpty();}
+	
+	public boolean isNoteless() {
+		for(NUSALSeqCommand cmd : commands) {
+			if(cmd instanceof NUSALSeqCommandChunk) {
+				NUSALSeqCommandChunk ccmd = (NUSALSeqCommandChunk)cmd;
+				if(!ccmd.isNoteless()) return false;
+			}
+			else {
+				if(cmd instanceof NUSALSeqNoteCommand) return false;
+				NUSALSeqCmdType cc = cmd.getFunctionalType();
+				if(cc == NUSALSeqCmdType.PLAY_NOTE_NTVG) return false;
+				else if(cc == NUSALSeqCmdType.PLAY_NOTE_NTV) return false;
+				else if(cc == NUSALSeqCmdType.PLAY_NOTE_NVG) return false;
+				else if(cc == NUSALSeqCmdType.SHORT_NOTE_NTV) return false;
+				else if(cc == NUSALSeqCmdType.SHORT_NOTE_NTVG) return false;
+				else if(cc == NUSALSeqCmdType.SHORT_NOTE_NVG) return false;
+			}
+		}
+		return true;
+	}
 	
 	public NUSALSeqCommand getChunkHead(){
 		if(commands.isEmpty()) return null;
@@ -32,60 +58,6 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 	public NUSALSeqCommand getChunkTail(){
 		if(commands.isEmpty()) return null;
 		return commands.getLast();
-	}
-
-	public void setAddress(int addr){
-		super.setAddress(addr);
-		int pos = addr;
-		for(NUSALSeqCommand cmd : commands){
-			cmd.setAddress(pos);
-			pos = cmd.getAddress() + cmd.getSizeInBytes(); //setAddress may adjust address if command needs alignment!
-		}
-	}
-
-	public void slideReferencesToChunkHeads(){
-		for(NUSALSeqCommand cmd : commands){
-			if(cmd.isChunk()){
-				((NUSALSeqCommandChunk)cmd).slideReferencesToChunkHeads();
-			}
-			else{
-				NUSALSeqCommand ref = cmd.getBranchTarget();
-				if(ref != null){
-					//Look backwards for label.
-					while(ref != null && (ref.getLabel() == null)){
-						ref = ref.getPreviousCommand();
-					}
-					if(ref != null) cmd.setReference(ref);
-				}
-			}
-		}
-	}
-	
-	public void dechunkReference(){
-		for(NUSALSeqCommand cmd : commands){
-			cmd.dechunkReference();
-		}
-	}
-	
-	public void addCommand(NUSALSeqCommand cmd){
-		if(cmd == null) return;
-		if(commands.isEmpty()){
-			String clbl = cmd.getLabel();
-			if(clbl != null){super.setLabel(clbl);}
-			else{
-				if(super.getLabel() != null){
-					cmd.setLabel(super.getLabel());
-				}
-				/*else{
-					//Gen new label for both.
-					Random r = new Random();
-					clbl = "lbl_" + Integer.toHexString(r.nextInt());
-					super.setLabel(clbl);
-					cmd.setLabel(clbl);
-				}*/
-			}
-		}
-		commands.add(cmd);
 	}
 	
 	public int getChildCount(){
@@ -137,6 +109,64 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		return copy;
 	}
 	
+	/*----- Setters -----*/
+	
+	public void setAddress(int addr){
+		super.setAddress(addr);
+		int pos = addr;
+		for(NUSALSeqCommand cmd : commands){
+			cmd.setAddress(pos);
+			pos = cmd.getAddress() + cmd.getSizeInBytes(); //setAddress may adjust address if command needs alignment!
+		}
+	}
+	
+	public void addCommand(NUSALSeqCommand cmd){
+		if(cmd == null) return;
+		if(commands.isEmpty()){
+			String clbl = cmd.getLabel();
+			if(clbl != null){super.setLabel(clbl);}
+			else{
+				if(super.getLabel() != null){
+					cmd.setLabel(super.getLabel());
+				}
+				/*else{
+					//Gen new label for both.
+					Random r = new Random();
+					clbl = "lbl_" + Integer.toHexString(r.nextInt());
+					super.setLabel(clbl);
+					cmd.setLabel(clbl);
+				}*/
+			}
+		}
+		commands.add(cmd);
+	}
+	
+	/*-----  Organization -----*/
+	
+	public void slideReferencesToChunkHeads(){
+		for(NUSALSeqCommand cmd : commands){
+			if(cmd.isChunk()){
+				((NUSALSeqCommandChunk)cmd).slideReferencesToChunkHeads();
+			}
+			else{
+				NUSALSeqCommand ref = cmd.getBranchTarget();
+				if(ref != null){
+					//Look backwards for label.
+					while(ref != null && (ref.getLabel() == null)){
+						ref = ref.getPreviousCommand();
+					}
+					if(ref != null) cmd.setReference(ref);
+				}
+			}
+		}
+	}
+	
+	public void dechunkReference(){
+		for(NUSALSeqCommand cmd : commands){
+			cmd.dechunkReference();
+		}
+	}
+	
 	public void linearizeTo(List<NUSALSeqCommand> cmdlist){
 		if(cmdlist == null) return;
 		//Expands calls and chunks
@@ -180,6 +210,12 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		linkSequentialCommands();
 	}
 	
+	public void mapByAddress(Map<Integer, NUSALSeqCommand> map){
+		for(NUSALSeqCommand cmd : commands) cmd.mapByAddress(map);
+	}
+	
+	/*----- Command Interactions -----*/
+	
 	public STSResult storeToSelf(int offset, byte value){
 		//Find command that includes the target offset.
 		int pos = 0; int end = -1;
@@ -192,10 +228,8 @@ public class NUSALSeqCommandChunk extends NUSALSeqCommand{
 		return STSResult.OUTSIDE;
 	}
 	
-	public void mapByAddress(Map<Integer, NUSALSeqCommand> map){
-		for(NUSALSeqCommand cmd : commands) cmd.mapByAddress(map);
-	}
-	
+	/*----- Serialization -----*/
+
 	public String toMMLCommand(boolean comment_addr, int syntax){
 		String out = "";
 		for(NUSALSeqCommand cmd : commands){

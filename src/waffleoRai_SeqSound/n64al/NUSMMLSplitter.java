@@ -99,7 +99,7 @@ public class NUSMMLSplitter {
 				cmd.setTickAddress(pos[1]);
 				chunk.addCommand(cmd);
 				
-				NUSALSeqCmdType ctype = cmd.getCommand();
+				NUSALSeqCmdType ctype = cmd.getFunctionalType();
 				switch(ctype){
 				case BRANCH_IF_LTZ_REL:
 				case BRANCH_IF_EQZ_REL:
@@ -267,7 +267,7 @@ public class NUSMMLSplitter {
 		return true;
 	}
 	
-	public static NUSALSeq mergeSeq(String mml_pathstem) throws IOException, UnsupportedFileTypeException{
+	public static NUSALSeq mergeSeq(String mml_pathstem, NUSALSeqCommandBook cmdBook) throws IOException, UnsupportedFileTypeException{
 		String scriptpath = genMasterScriptPath(mml_pathstem);
 		if(!FileBuffer.fileExists(scriptpath)){
 			System.err.println("Could master track: " + scriptpath);
@@ -322,7 +322,7 @@ public class NUSMMLSplitter {
 			for(MMLBlock sblock : tsec.maintrack){
 				List<NUSALSeqCommand> cmdlist = sblock.chunk.getCommands();
 				for(NUSALSeqCommand cmd : cmdlist){
-					NUSALSeqCmdType ctype = cmd.getCommand();
+					NUSALSeqCmdType ctype = cmd.getFunctionalType();
 					if(ctype.flagSet(NUSALSeqCommands.FLAG_OPENTRACK)){
 						//Assumed channel open.
 						//System.err.println("Open channel command found");
@@ -346,7 +346,7 @@ public class NUSMMLSplitter {
 					for(MMLBlock cblock : chsec.maintrack){
 						cmdlist = cblock.chunk.getCommands();
 						for(NUSALSeqCommand cmd : cmdlist){
-							NUSALSeqCmdType ctype = cmd.getCommand();
+							NUSALSeqCmdType ctype = cmd.getFunctionalType();
 							if(ctype.flagSet(NUSALSeqCommands.FLAG_OPENTRACK)){
 								//Make sure layer open. Ignore channel open.
 								if(ctype == NUSALSeqCmdType.VOICE_OFFSET || ctype == NUSALSeqCmdType.VOICE_OFFSET_REL){
@@ -378,7 +378,7 @@ public class NUSMMLSplitter {
 							for(MMLBlock lblock : lsec.maintrack){
 								cmdlist = lblock.chunk.getCommands();
 								for(NUSALSeqCommand cmd : cmdlist){
-									NUSALSeqCmdType ctype = cmd.getCommand();
+									NUSALSeqCmdType ctype = cmd.getFunctionalType();
 									if(ctype.flagSet(NUSALSeqCommands.FLAG_CALL)){
 										//Sub.
 										NUSALSeqCommand targ = cmd.getBranchTarget();
@@ -463,7 +463,7 @@ public class NUSMMLSplitter {
 		
 		//Put together output
 		master_chunk.setAddress(0);
-		BasicCommandMap cmap = new BasicCommandMap();
+		BasicCommandMap cmap = new BasicCommandMap(cmdBook);
 		cmap.loadIntoMap(master_chunk);
 		NUSALSeq seq = NUSALSeq.newNUSALSeq(cmap);
 		

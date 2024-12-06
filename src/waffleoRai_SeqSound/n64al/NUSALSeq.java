@@ -42,12 +42,13 @@ public class NUSALSeq implements WriterPrintable{
 	/*----- Constants -----*/
 	
 	public static final int NUS_TPQN = 48; //240
+	public static final int MAX_TEMPO = 225; //The point where 1 tick per NTSC audio refresh.
 	
 	public static final int EFFECT_ID_REVERB = 1;
 	public static final int EFFECT_ID_VIBRATO = 2;
 	
-	public static final int MIDI_NRPN_ID_REVERB = 0x06d4;
-	public static final int MIDI_NRPN_ID_VIBRATO = 0x06d8;
+	//public static final int MIDI_NRPN_ID_REVERB = 0x06d4;
+	//public static final int MIDI_NRPN_ID_VIBRATO = 0x06d8;
 	public static final int MIDI_NRPN_ID_PRIORITY = 0x06e9;
 	public static final int MIDI_NRPN_ID_LOOPSTART = 0x06f8;
 	public static final int MIDI_NRPN_ID_LOOPEND = 0x06f7;
@@ -125,6 +126,8 @@ public class NUSALSeq implements WriterPrintable{
 	private boolean jumpLoop; //Set if the loop uses a branch/jump instead of loop commands
 	
 	private boolean anno_enable;
+	private int beats_per_measure = 4;
+	private int beat_div = 4;
 	
 	private Writer[] dbg_ch_w;
 	
@@ -266,6 +269,25 @@ public class NUSALSeq implements WriterPrintable{
 	
 	public boolean hasJumpLoop(){return jumpLoop;}
 	
+	public int getBeatsPerMeasure() {return beats_per_measure;}
+	
+	public int getBeatDiv() {return beat_div;}
+	
+	public double getTicksPerBeat() {
+		double factor = 4.0 / (double)beat_div;
+		return factor * (double)NUS_TPQN;
+	}
+	
+	public double getTickCoordinate(int measure, int beat, int tick) {
+		double tpb = getTicksPerBeat();
+		double tpm = tpb * ((double)beats_per_measure);
+		double tt = tpm * (double)measure;
+		tt += tpb * (double)beat;
+		tt += (double)tick;
+		
+		return tt;
+	}
+	
 	public NUSALSeqChannel getChannel(int idx){
 		if(channels == null || idx < 0 || idx >= channels.length) return null;
 		return channels[idx];
@@ -345,11 +367,18 @@ public class NUSALSeq implements WriterPrintable{
 		return max_vox + 1;
 	}
 	
+	public int getMinSizeInBytes() {
+		if(source == null) return 0;
+		return source.getMinimumSizeInBytes();
+	}
+	
 	/*----- Setters -----*/
 	
 	public void setTarget(SequenceController t){target = t;}
 	public void setLoopEnabled(boolean b){loop_enabled = b;}
 	public void setAnnotationsEnabled(boolean b){anno_enable = b;}
+	public void setBeatsPerMeasure(int val) {beats_per_measure = val;}
+	public void setBeatDiv(int val) {beat_div = val;}
 	
 	public void setVarQ(int value){
 		//Clamp
@@ -456,10 +485,10 @@ public class NUSALSeq implements WriterPrintable{
 		Collections.sort(keys);
 		for(Integer k : keys){
 			NUSALSeqCommand cmd = cmap.get(k);
-			if(cmd.getCommand() == NUSALSeqCmdType.LOOP_START){
+			if(cmd.getFunctionalType() == NUSALSeqCmdType.LOOP_START){
 				loopst = k; loopct = cmd.getParam(0);
 			}
-			else if(cmd.getCommand() == NUSALSeqCmdType.LOOP_END){
+			else if(cmd.getFunctionalType() == NUSALSeqCmdType.LOOP_END){
 				looped = k;
 			}
 		}
@@ -471,7 +500,7 @@ public class NUSALSeq implements WriterPrintable{
 		int edcand = -1;
 		for(Integer k : keys){
 			NUSALSeqCommand cmd = cmap.get(k);
-			if(cmd.getCommand() == NUSALSeqCmdType.BRANCH_ALWAYS){
+			if(cmd.getFunctionalType() == NUSALSeqCmdType.BRANCH_ALWAYS){
 				int btarg = cmd.getBranchAddress();
 				if(btarg < k){
 					int diff = k - btarg;
@@ -733,10 +762,10 @@ public class NUSALSeq implements WriterPrintable{
 	}
 	
 	public void exportMMLScript(Writer writer) throws IOException{
-		exportMMLScript(writer, false);
+		exportMMLScript(writer, false, NUSALSeq.SYNTAX_SET_ZEQER);
 	}
 	
-	public void exportMMLScript(Writer writer, boolean note_addr) throws IOException{
+	public void exportMMLScript(Writer writer, boolean note_addr, int syntax) throws IOException{
 		if(writer == null) return;
 		writer.write("; Nintendo 64 MML\n");
 		writer.write("; Auto output by waffleoUtilsGX\n\n");
@@ -748,7 +777,7 @@ public class NUSALSeq implements WriterPrintable{
 				writer.write(":\n");
 			}
 			writer.write("\t");
-			writer.write(cmd.toMMLCommand(note_addr));
+			writer.write(cmd.toMMLCommand(note_addr, syntax));
 			writer.write("\n");
 		}
 	}
@@ -780,6 +809,25 @@ public class NUSALSeq implements WriterPrintable{
 	public void writeTo(String filepath) throws IOException{
 		if(filepath == null) return;
 		data.writeFile(filepath);
+	}
+	
+	/*----- Utilities -----*/
+	
+	public static int calculateGate(double lenTicks) {
+		double ceilTicks = Math.ceil(lenTicks);
+		double trimTicks = ceilTicks - lenTicks;
+		double ratio = trimTicks / ceilTicks;
+		return (int)Math.round(ratio * 255.0);
+	}
+	
+	public static double music2TickCoord(int measure, double beat, int timesigBeats, int timesigDiv, int tpqn) {
+		double divFactor = 4.0/(double)timesigDiv;
+		double ticksPerBeat = (double)tpqn * divFactor;
+		double ticksPerMeasure = (double)timesigBeats * ticksPerBeat;
+		double totalTick = ticksPerMeasure * (double)measure;
+		totalTick += beat * ticksPerBeat;
+		
+		return totalTick;
 	}
 	
 	/*----- Exceptions -----*/

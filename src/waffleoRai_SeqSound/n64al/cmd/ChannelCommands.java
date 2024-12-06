@@ -7,6 +7,7 @@ import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommandBook;
 import waffleoRai_SeqSound.n64al.cmd.FCommands.*;
 import waffleoRai_Utils.BufferReference;
+import waffleoRai_Utils.StringUtils;
 
 public class ChannelCommands {
 	
@@ -148,7 +149,7 @@ public class ChannelCommands {
 				return new C_C_StopChannel(i);
 			case 0xe:
 				i = Short.toUnsignedInt(dat.getShort(1));
-				return new C_C_LoadPImm(i);
+				//return new C_C_LoadPImm(i);
 			case 0xf:
 				i = Short.toUnsignedInt(dat.getShort(1));
 				return new C_C_StorePToSelf(i);
@@ -447,7 +448,7 @@ public class ChannelCommands {
 		else if(cmd.equals("ldpi")){
 			Integer n = NUSALSeqReader.readNumber(args[0]);
 			if(n == null) return null;
-			return new C_C_LoadPImm(n);
+			//return new C_C_LoadPImm(n);
 		}
 		else if(cmd.equals("rand")){
 			Integer n = NUSALSeqReader.readNumber(args[0]);
@@ -599,6 +600,7 @@ public class ChannelCommands {
 		int[] params = new int[8];
 		int bb = Byte.toUnsignedInt(dat.nextByte());
 		NUSALSeqCommandDef def = book.getChannelCommand((byte)bb);
+		if(def == null) return null;
 		NUSALSeqCommand.readBinArgs(params, dat, def, bb);
 		switch(def.getFunctionalType()) {
 		case CH_DELTA_TIME: return new C_C_DeltaTime(def, params[0]);
@@ -610,6 +612,7 @@ public class ChannelCommands {
 		case SUBTRACT_IO_C: return new C_C_SubIO(def, params[0]);
 		case LOAD_IO_C: return new C_C_LoadIO(def, params[0]);
 		case STORE_IO_C: return new C_C_StoreIO(def, params[0]);
+		//case VOICE_OFFSET_REL: return new C_C_StartLayerRel(def, params[0], (int)((short)params[1]));
 		case VOICE_OFFSET_REL: return new C_C_StartLayerRel(def, params[0], params[1]);
 		case TEST_VOICE: return new C_C_TestLayer(def, params[0]);
 		case VOICE_OFFSET: return new C_C_StartLayer(def, params[0], params[1]);
@@ -638,21 +641,21 @@ public class ChannelCommands {
 		case SET_BANK: return new C_C_ChangeBank(def, params[0]);
 		case STORE_TO_SELF_C: return new C_C_StoreToSelf(def, params[0], params[1]);
 		case SUBTRACT_IMM_C: return new C_C_SubtractImm(def, params[0]);
-		case AND_IMM_C: return new C_C_AndImm(def, params[0]);
+		case AND_IMM_C: return new C_C_AndImm(def, (params[0] & 0xff));
 		case LOAD_IMM_C: return new C_C_LoadImm(def, params[0]);
 		case MUTE_BEHAVIOR_C: return new C_C_MuteBehavior(def, params[0]);
 		case LOAD_FROM_SELF: return new C_C_LoadFromSelf(def, params[0]);
 		case STOP_CHANNEL_C: return new C_C_StopChannel(def, params[0]);
 		case LOAD_IMM_P: return new C_C_LoadPImm(def, params[0]);
 		case STORE_TO_SELF_P: return new C_C_StorePToSelf(def, params[0]);
-		case CH_STEREO_EFF: return new C_C_StereoEffects(def, params[0]);
+		case CH_STEREO_EFF: return new C_C_StereoEffects(def, (params[0] & 0xff));
 		case CH_NOTEALLOC_POLICY: return new C_C_NoteAllocPolicy(def, params[0]);
 		case CH_SUSTAIN: return new C_C_Sustain(def, params[0]);
 		case CH_PITCHBEND: return new C_C_PitchBend(def, params[0]);
 		case CH_REVERB: return new C_C_Reverb(def, params[0]);
-		case CH_VIBRATO_FREQ: return new C_C_VibratoFreq(def, params[0]);
+		case CH_VIBRATO_FREQ: return new C_C_VibratoFreq(def, (params[0] & 0xff));
 		case CH_VIBRATO_DEPTH: return new C_C_VibratoDepth(def, params[0]);
-		case CH_RELEASE: return new C_C_Release(def, params[0]);
+		case CH_RELEASE: return new C_C_Release(def, (params[0] & 0xff));
 		case CH_ENVELOPE: return new C_C_Envelope(def, params[0]);
 		case CH_TRANSPOSE: return new C_C_Transpose(def, params[0]);
 		case CH_PANMIX: return new C_C_PanMix(def, params[0]);
@@ -660,9 +663,9 @@ public class ChannelCommands {
 		case CH_FREQSCALE: return new C_C_FreqScale(def, params[0]);
 		case CH_VOLUME: return new C_C_Volume(def, params[0]);
 		case CH_EXP: return new C_C_Expression(def, params[0]);
-		case CH_VIBRATO_FREQENV: return new C_C_VibFreqEnvelope(def, params[0], params[1], params[2]);
-		case CH_VIBRATO_DEPTHENV: return new C_C_VibDepthEnvelope(def, params[0], params[1], params[2]);
-		case CH_VIBRATO_DELAY: return new C_C_VibratoDelay(def, params[0]);
+		case CH_VIBRATO_FREQENV: return new C_C_VibFreqEnvelope(def, (params[0] & 0xff), (params[1] & 0xff), (params[2] & 0xff));
+		case CH_VIBRATO_DEPTHENV: return new C_C_VibDepthEnvelope(def, (params[0] & 0xff), (params[1] & 0xff), (params[2] & 0xff));
+		case CH_VIBRATO_DELAY: return new C_C_VibratoDelay(def, (params[0] & 0xff));
 		case CALL_DYNTABLE: return new C_C_DynCall(def);
 		case CH_REVERB_IDX: return new C_C_ReverbIndex(def, params[0]);
 		case CH_SAMPLE_VARIATION: return new C_C_SampleVariation(def, params[0]);
@@ -692,6 +695,161 @@ public class ChannelCommands {
 		case YIELD: return new C_Yield(def);
 		case END_READ: return new C_EndRead(def);
 		 default: return null;
+		}
+	}
+	
+	public static NUSALSeqCommand parseChannelCommand(NUSALSeqCommandBook book, String cmd, String[] args) {
+		if(book == null || cmd == null) return null;
+		NUSALSeqCommandDef def = book.getChannelCommand(cmd.toLowerCase());
+		if(def == null) return null;
+		
+		int[][] iargs = def.parseMMLArgs(args);
+		int arg0 = 0;
+		if(iargs != null) arg0 = iargs[0][0];
+		else arg0 = StringUtils.parseSignedInt(args[0]);
+		int arg1 = 0, arg2 = 0;
+		
+		NUSALSeqCmdType ctype = def.getFunctionalType();
+		switch(ctype) {
+		case CH_DELTA_TIME: return new C_C_DeltaTime(def, arg0);
+		case LOAD_SAMPLE: return new C_C_LoadSample(def, arg0);
+		case LOAD_SAMPLE_P: return new C_C_LoadSampleP(def, arg0);
+		case CHANNEL_OFFSET_C: return new C_C_StartChannel(def, arg0, -1);
+		case STORE_CHIO: 
+			if(iargs != null) arg1 = iargs[1][0];
+			else arg1 = StringUtils.parseSignedInt(args[1]);
+			return new C_C_StoreChIO(def, arg0, arg1);
+		case LOAD_CHIO: 
+			if(iargs != null) arg1 = iargs[1][0];
+			else arg1 = StringUtils.parseSignedInt(args[1]);
+			return new C_C_LoadChIO(def, arg0, arg1);
+		case SUBTRACT_IO_C: return new C_C_SubIO(def, arg0);
+		case LOAD_IO_C: return new C_C_LoadIO(def, arg0);
+		case STORE_IO_C: return new C_C_StoreIO(def, arg0);
+		case VOICE_OFFSET_REL: return new C_C_StartLayerRel(def, arg0, -1);
+		case TEST_VOICE: return new C_C_TestLayer(def, arg0);
+		case VOICE_OFFSET: return new C_C_StartLayer(def, arg0, -1);
+		case STOP_VOICE: return new C_C_StopLayer(def, arg0);
+		case VOICE_OFFSET_TABLE: return new C_C_StartLayerTable(def, arg0);
+		case SET_CH_FILTER: return new C_C_SetFilter(def, -1);
+		case CLEAR_CH_FILTER:  return new C_C_ClearFilter(def);
+		case LOAD_P_TABLE: return new C_C_LoadPFromTable(def, -1);
+		case COPY_CH_FILTER: 
+			if(iargs != null) arg1 = iargs[1][0];
+			else arg1 = StringUtils.parseSignedInt(args[1]);
+			return new C_C_CopyFilter(def, arg0, arg1);
+		case DYNTABLE_WRITE: return new C_C_P2DynTable(def);
+		case DYNTABLE_READ: return new C_C_DynTable2P(def);
+		case DYNTABLE_LOAD: return new C_C_DynTable2Q(def);
+		case RANDP: return new C_C_RandomP(def, arg0);
+		case RAND_C: return new C_C_RandomQ(def, arg0);
+		case VELRAND: return new C_C_SetVelocityRand(def, arg0);
+		case GATERAND: return new C_C_SetGateRand(def, arg0);
+		case CHORUS: 
+			if(iargs != null) arg1 = iargs[1][0];
+			else arg1 = StringUtils.parseSignedInt(args[1]);
+			return new C_C_Chorus(def, arg0, arg1);
+		case ADD_IMM_P: return new C_C_AddPImmediate(def, arg0);
+		case ADD_RAND_IMM_P: 
+			if(iargs != null) arg1 = iargs[1][0];
+			else arg1 = StringUtils.parseSignedInt(args[1]);
+			return new C_C_AddPRandom(def, arg0, arg1);
+		case C_UNK_C0: return null;
+		case SET_PROGRAM: return new C_C_ChangeProgram(def, arg0);
+		case SET_DYNTABLE: return new C_C_SetDynTable(def, -1);
+		case SHORTNOTE_ON: return new C_C_SetShortNotesOn(def);
+		case SHORTNOTE_OFF: return new C_C_SetShortNotesOff(def);
+		case SHIFT_DYNTABLE: return new C_C_ShiftDynTable(def);
+		case SET_BANK: return new C_C_ChangeBank(def, arg0);
+		case STORE_TO_SELF_C: return new C_C_StoreToSelf(def, arg0, -1);
+		case SUBTRACT_IMM_C: return new C_C_SubtractImm(def, arg0);
+		case AND_IMM_C: return new C_C_AndImm(def, arg0);
+		case LOAD_IMM_C: return new C_C_LoadImm(def, arg0);
+		case MUTE_BEHAVIOR_C: return new C_C_MuteBehavior(def, arg0);
+		case LOAD_FROM_SELF: return new C_C_LoadFromSelf(def, -1);
+		case STOP_CHANNEL_C: return new C_C_StopChannel(def, arg0);
+		case LOAD_IMM_P: return new C_C_LoadPImm(def, arg0);
+		case STORE_TO_SELF_P: return new C_C_StorePToSelf(def, -1);
+		case CH_STEREO_EFF: return new C_C_StereoEffects(def, arg0);
+		case CH_NOTEALLOC_POLICY: return new C_C_NoteAllocPolicy(def, arg0);
+		case CH_SUSTAIN: return new C_C_Sustain(def, arg0);
+		case CH_PITCHBEND: return new C_C_PitchBend(def, arg0);
+		case CH_REVERB: return new C_C_Reverb(def, arg0);
+		case CH_VIBRATO_FREQ: return new C_C_VibratoFreq(def, arg0);
+		case CH_VIBRATO_DEPTH: return new C_C_VibratoDepth(def, arg0);
+		case CH_RELEASE: return new C_C_Release(def, arg0);
+		case CH_ENVELOPE: return new C_C_Envelope(def, -1);
+		case CH_TRANSPOSE: return new C_C_Transpose(def, arg0);
+		case CH_PANMIX: return new C_C_PanMix(def, arg0);
+		case CH_PAN: return new C_C_Pan(def, arg0);
+		case CH_FREQSCALE: return new C_C_FreqScale(def, arg0);
+		case CH_VOLUME: return new C_C_Volume(def, arg0);
+		case CH_EXP: return new C_C_Expression(def, arg0);
+		case CH_VIBRATO_FREQENV: 
+			if(iargs != null) {
+				arg1 = iargs[1][0];
+				arg2 = iargs[2][0];
+			}
+			else {
+				arg1 = StringUtils.parseSignedInt(args[1]);
+				arg2 = StringUtils.parseSignedInt(args[2]);
+			}
+			return new C_C_VibFreqEnvelope(def, arg0, arg1, arg2);
+		case CH_VIBRATO_DEPTHENV: 
+			if(iargs != null) {
+				arg1 = iargs[1][0];
+				arg2 = iargs[2][0];
+			}
+			else {
+				arg1 = StringUtils.parseSignedInt(args[1]);
+				arg2 = StringUtils.parseSignedInt(args[2]);
+			}
+			return new C_C_VibDepthEnvelope(def, arg0, arg1, arg2);
+		case CH_VIBRATO_DELAY: return new C_C_VibratoDelay(def, arg0);
+		case CALL_DYNTABLE: return new C_C_DynCall(def);
+		case CH_REVERB_IDX: return new C_C_ReverbIndex(def, arg0);
+		case CH_SAMPLE_VARIATION: return new C_C_SampleVariation(def, arg0);
+		case CH_LOAD_PARAMS: return new C_C_LoadChannelParams(def, -1);
+		case CH_SET_PARAMS: 
+			if(iargs != null) {
+				return new C_C_SetChannelParams(def, iargs[0]);
+			}
+			else {
+				int[] cparams = new int[8];
+				for(int i = 0; i < 8; i++) {
+					cparams[i] = StringUtils.parseSignedInt(args[i]);
+				}
+				return new C_C_SetChannelParams(def, cparams);
+			}
+		case CH_PRIORITY: return new C_C_Priority(def, arg0);
+		case CH_HALT: return new C_C_Halt(def);
+		case SET_BANK_AND_PROGRAM: 
+			if(iargs != null) arg1 = iargs[1][0];
+			else arg1 = StringUtils.parseSignedInt(args[1]);
+			return new C_C_SetBankProgram(def, arg0, arg1);
+		case CH_RESET: return new C_C_ResetChannel(def);
+		case CH_FILTER_GAIN: return new C_C_FilterGain(def, arg0);
+		case CH_PITCHBEND_ALT: return new C_C_PitchBendAlt(def, arg0);
+		
+		
+		case UNRESERVE_NOTES: return new C_UnreserveNotes(def);
+		case RESERVE_NOTES: return new C_ReserveNotes(def, arg0);
+		case BRANCH_IF_LTZ_REL: return new C_rbltz(-1, def);
+		case BRANCH_IF_EQZ_REL: return new C_rbeqz(-1, def);
+		case BRANCH_ALWAYS_REL: return new C_rjump(-1, def);
+		case BRANCH_IF_GTEZ: return new C_bgez(-1, def);
+		case BREAK: return new C_Break(def);
+		case LOOP_END: return new C_LoopEnd(def);
+		case LOOP_START: return new C_LoopStart(arg0, def);
+		case BRANCH_IF_LTZ: return new C_bltz(-1, def);
+		case BRANCH_IF_EQZ: return new C_beqz(-1, def);
+		case BRANCH_ALWAYS: return new C_Jump(-1, def);
+		case CALL: return new C_Call(-1, def);
+		case WAIT: return new C_Wait(def, arg0);
+		case YIELD: return new C_Yield(def);
+		case END_READ: return new C_EndRead(def);
+		
+		default: return null;
 		}
 	}
 	
@@ -1234,17 +1392,24 @@ public class ChannelCommands {
 	
 	/*--- 0xbb chorus ---*/
 	//TODO Implement
-	public static class C_C_Chorus extends CMD_IgnoredCommand{
+	public static class C_C_Chorus extends NUSALSeqGenericCommand{
 		public C_C_Chorus() {
 			super(NUSALSeqCmdType.CHORUS);
 		}
-		public C_C_Chorus(NUSALSeqCommandBook book) {
+		public C_C_Chorus(NUSALSeqCommandBook book, int p1, int p2) {
 			super(NUSALSeqCmdType.CHORUS, book);
+			super.setParam(0, p1);
+			super.setParam(1, p2);
 		}
 		public C_C_Chorus(NUSALSeqCommandDef def, int p1, int p2) {
 			super(def);
 			super.setParam(0, p1);
 			super.setParam(1, p2);
+		}
+		public boolean doCommand(NUSALSeqChannel channel){
+			//TODO
+			flagChannelUsed(channel.getIndex());
+			return true;
 		}
 	}
 	
@@ -1487,17 +1652,8 @@ public class ChannelCommands {
 			return true;
 		}
 		
-		public String[][] getParamStrings(){
-			String[][] pstr = new String[1][2];
-			pstr[0][0] = String.format("0x%02x", getParam(0) & 0xff);
-			return pstr;
-		}
-		
-		protected StringBuilder toMMLCommand_child(){
-			StringBuilder sb = new StringBuilder(256);
-			sb.append("and 0x");
-			sb.append(Integer.toHexString(getParam(0) & 0xff));
-			return sb;
+		protected String paramsToString(int syntax){
+			return String.format("0x%02x", super.getParam(0));
 		}
 	}
 	
@@ -1580,22 +1736,16 @@ public class ChannelCommands {
 	}
 	
 	/*--- 0xce ldpi ---*/
-	public static class C_C_LoadPImm extends NUSALSeqGenericCommand{
-		public C_C_LoadPImm(int imm) {
-			super(NUSALSeqCmdType.LOAD_IMM_P);
-			super.setParam(0, imm);
-		}
+	public static class C_C_LoadPImm extends NUSALSeqDataRefCommand{
 		public C_C_LoadPImm(NUSALSeqCommandBook book, int imm) {
-			super(NUSALSeqCmdType.LOAD_IMM_P, book);
-			super.setParam(0, imm);
+			super(NUSALSeqCmdType.LOAD_IMM_P, book, imm, -1);
 		}
 		public C_C_LoadPImm(NUSALSeqCommandDef def, int imm) {
-			super(def);
-			super.setParam(0, imm);
+			super(def, imm, -1);
 		}
 		public boolean doCommand(NUSALSeqChannel channel){
 			flagChannelUsed(channel.getIndex());
-			channel.setP((short)getParam(0));
+			channel.setP((short)this.getBranchAddress());
 			return true;
 		}
 	}
