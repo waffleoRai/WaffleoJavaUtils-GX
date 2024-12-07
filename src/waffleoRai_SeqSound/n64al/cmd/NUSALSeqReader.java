@@ -346,7 +346,14 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		}
  		NUSALSeqDataCommand dcmd = DataCommands.parseData(checkType, state.data.getReferenceAt(ndat.data_address), upper_addr);
  		if(dcmd != null){
- 			state.rchecked.add(ndat.data_address);
+ 			if(dcmd instanceof NUSALSeqPtrTableData) {
+ 				//eg. dyncall generates a ptable without going thru indirect referencing
+ 				state.rskip.add(ndat.data_address);
+ 				state.linkagain_flag = true;
+ 			}
+ 			else {
+ 				state.rchecked.add(ndat.data_address);
+ 			}
  			
  			dcmd.setAddress(ndat.data_address);
  			dcmd.setLabel(String.format(".data%03d", state.data_lbl_count++));
@@ -520,6 +527,8 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			NUSALSeqCommand cmd = state.cmdmap.get(addr);
 			if(cmd.getLabel() != null) state.lblmap.put(cmd.getLabel(), cmd);
 		}
+		Collections.sort(alist);
+		Collections.reverse(alist);
 		
 		/*
 		 * I think ( don't remember what I did...)
@@ -958,7 +967,10 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			//Try linkage...
 			state.linkagain_flag = false;
 			referenceLinkCycle(branchTimeout);
-			if(state.linkagain_flag) referenceLinkCycle(branchTimeout);
+			while(state.linkagain_flag) {
+				state.linkagain_flag = false;
+				referenceLinkCycle(branchTimeout);
+			}
 			if(Thread.interrupted()) throw new InterruptedException("NUSALSeqReader.preParse || Parser thread interrupted. Parse attempt terminated.");
 			
 			if(stopOnError && !state.errors.isEmpty()){

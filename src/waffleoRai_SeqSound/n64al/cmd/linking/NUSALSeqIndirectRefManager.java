@@ -10,6 +10,7 @@ import java.util.Set;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.cmd.DataCommands;
+import waffleoRai_SeqSound.n64al.cmd.NUSALSeqDataCommand;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqPtrTableData;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqReferenceCommand;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqReader.DataLater;
@@ -56,8 +57,25 @@ public class NUSALSeqIndirectRefManager {
 		}
 		else {
 			ptlink = new PTableLink(readerState, ptblAddr, referee);
+			ptlink.getPTable().setLabel(String.format(".data%03d", readerState.data_lbl_count++));
 			pTables.put(ptblAddr, ptlink);
 			scanPTable(ptlink);
+		}
+		
+		return true;
+	}
+	
+	private boolean addDyncallTable(int ptblAddr, NUSALSeqCommand referee) {
+		//Also do initial scan upon loading and add missed targets to indirLinks
+		PTableLink ptlink = pTables.get(ptblAddr);
+		if(ptlink != null) {
+			ptlink.addReferee(referee);
+		}
+		else {
+			ptlink = new PTableLink(readerState, ptblAddr, referee);
+			ptlink.getPTable().setLabel(String.format(".data%03d", readerState.data_lbl_count++));
+			ptlink.setTableType(NUSALSeqLinking.P_TYPE_SEQ_CODE);
+			resolvePTable(ptlink);
 		}
 		
 		return true;
@@ -159,7 +177,6 @@ public class NUSALSeqIndirectRefManager {
 	 			case CH_ENVELOPE:
 	 			case CH_LOAD_PARAMS:
 	 			case L_ENVELOPE:
-	 			case CALL_TABLE: //CALL_TABLE command itself - this queues the table
 	 				addToDataQueue(refAddr, ParseContext.fromCommand(cmd), cmd);
 	 				readerState.rchecked.add(cmd.getAddress());
 	 				return;
@@ -171,6 +188,11 @@ public class NUSALSeqIndirectRefManager {
 	 				//Will usually have a default immediate target to regular data,
 	 				// but it is not uncommon for target address to be overwritten.
 	 				addToDataQueue(refAddr, ParseContext.fromCommand(cmd), cmd);
+	 				readerState.rchecked.add(cmd.getAddress());
+	 				break;
+	 				
+	 			case CALL_TABLE: //CALL_TABLE command itself - can automatically type and resolve
+	 				addDyncallTable(refAddr, cmd);
 	 				readerState.rchecked.add(cmd.getAddress());
 	 				break;
 	 				
@@ -519,11 +541,31 @@ public class NUSALSeqIndirectRefManager {
  					pref = getCommandOver(p);
  					if(pref != null) {
  						ptbl.setReference(i, pref);
+ 						if(pref.getLabel() == null) {
+ 							if(pref instanceof NUSALSeqDataCommand) {
+ 								pref.setLabel(String.format(".data%03d", readerState.data_lbl_count++));
+ 	 						}
+ 							else {
+ 								if(pref.isSeqCommand()) {
+ 									reflink_LabelSeqBlock(pref, false);
+ 								}
+ 								else if(pref.isChannelCommand()) {
+ 									reflink_LabelChanBlock(pref, pref.getFirstChannelUsed(), false);
+ 								}
+ 								else {
+ 									reflink_LabelLyrBlock(pref, pref.getFirstChannelUsed(), 0, false);
+ 								}
+ 							}
+ 						}
  					}
  					else {
  						//Check data queue
- 						DataLater dl = readerState.data_parse.get(p);
+ 						/*DataLater dl = readerState.data_parse.get(p);
  						if(dl != null) dl.referees.add(ptbl);
+ 						else {
+ 							readerState.linkagain_flag = true;
+ 						}*/
+ 						readerState.linkagain_flag = true;
  					}
  				}
  				else ptbl.setReference(i, null);

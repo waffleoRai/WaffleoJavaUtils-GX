@@ -38,6 +38,7 @@ public class PTableLink {
 		if(!(dcmd instanceof NUSALSeqPtrTableData)) return;
 		ptable = (NUSALSeqPtrTableData)dcmd;
 		ptable.addReferee(referee);
+		ptable.setAddress(ptblAddr);
 		
 		//Refine size by trimming to only valid pointers.
 		int nowSize = ptable.getUnitCount();
