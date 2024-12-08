@@ -528,8 +528,10 @@ public class DataCommands {
 				if(tracedCmd != null) tracedCmd.data = trg;
 				return NUSALSeqLinking.P_TYPE_QDATA;
 			case CALL_DYNTABLE:
+				//TODO The TABLE is code pointers. The pointer TO the table is not.
 				if(tracedCmd != null) tracedCmd.data = trg;
-				return NUSALSeqLinking.P_TYPE_CH_CODE;
+				//return NUSALSeqLinking.P_TYPE_CH_CODE;
+				return NUSALSeqLinking.P_TYPE_PDATA;
 			default:
 				break;
 			}
@@ -559,7 +561,7 @@ public class DataCommands {
 			case STORE_TO_SELF_P:
 				NUSALSeqCommand stsTrg = trg.getBranchTarget();
 				if(stsTrg != null) {
-					guessStoreTargetUsage(stsTrg, tracedCmd);
+					return guessStoreTargetUsage(stsTrg, tracedCmd);
 				}
 				return NUSALSeqLinking.P_TYPE_UNK; //Assumed target not found yet.
 			default:

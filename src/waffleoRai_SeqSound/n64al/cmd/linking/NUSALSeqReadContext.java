@@ -33,6 +33,7 @@ public class NUSALSeqReadContext {
 	//public Map<Integer, UnknownLater> unk_parse; //Added Nov 2024
 	public Map<Integer, ParseResult> subroutines;
 	public int[] ch_shorton_tick;
+	public int dataStart = -1;
 	
 	public LabelCounter seq_lbls;
 	public LabelCounter[] ch_lbls;

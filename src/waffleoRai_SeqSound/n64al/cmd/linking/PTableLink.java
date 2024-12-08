@@ -17,12 +17,14 @@ public class PTableLink {
 	private int tableType = NUSALSeqLinking.P_TYPE_UNK;
 	
 	private int sourceMaxAddr = -1; //Source data size
+	private int limitAddr = -1; //Highest possible address of table end.
 	
 	private ParseContext codeCtx = null; //Null if not used for code
 	private NUSALSeqCommand stsTarget = null; //Null if not used for sts/stps
 	
 	public PTableLink(NUSALSeqReadContext readerState, int ptblAddr, NUSALSeqCommand referee) {
 		sourceMaxAddr = (int)readerState.data.getFileSize();
+		limitAddr = sourceMaxAddr;
 		
 		NUSALSeqCmdType refereeType = referee.getFunctionalType();
 		BufferReference datRead = readerState.data.getReferenceAt(ptblAddr);
@@ -39,6 +41,7 @@ public class PTableLink {
 		ptable = (NUSALSeqPtrTableData)dcmd;
 		ptable.addReferee(referee);
 		ptable.setAddress(ptblAddr);
+		ptable.addContextFlagsFrom(referee);
 		
 		//Refine size by trimming to only valid pointers.
 		int nowSize = ptable.getUnitCount();
@@ -62,6 +65,7 @@ public class PTableLink {
 	public ParseContext getCodeContext() {return codeCtx;}
 	public NUSALSeqCommand getSTSTarget() {return stsTarget;}
 	public IndirectLink[] getElementArray() {return contents;}
+	public int getEndLimitAddress() {return limitAddr;}
 	
 	public NUSALSeqCommand getFirstReferee() {
 		if(ptable == null) return null;
@@ -84,6 +88,69 @@ public class PTableLink {
 	
 	public void setTableType(int value) {tableType = value;}
 	public void setSTSTarget(NUSALSeqCommand value) {stsTarget = value;}
+	public void setEndLimitAddress(int value) {limitAddr = value;}
+	
+	public ParseContext determineTargetContext() {
+		ParseContext ctxt = ParseContext.fromCommand(ptable);
+		
+		switch(tableType) {
+		case NUSALSeqLinking.P_TYPE_SEQ_CODE:
+			ctxt.setAsSeq();
+			break;
+		case NUSALSeqLinking.P_TYPE_CH_CODE:
+			if(ptable.isChannelCommand()) ctxt = ParseContext.fromCommand(ptable);
+			else {
+				//Is traced command a "set channel" override?
+				//If not, just set to channel 0.
+				if(stsTarget != null) {
+					if((stsTarget.getFunctionalType() == NUSALSeqCmdType.CHANNEL_OFFSET_REL) ||
+							(stsTarget.getFunctionalType() == NUSALSeqCmdType.CHANNEL_OFFSET)) {
+						ctxt.setChannel(stsTarget.getParam(0));
+					}
+					else ctxt.setChannel(0);
+				}
+				else ctxt.setChannel(0);
+			}
+			break;
+		case NUSALSeqLinking.P_TYPE_LYR_CODE:
+			if(ptable.isLayerCommand()) ctxt = ParseContext.fromCommand(ptable);
+			else {
+				if(stsTarget != null) {
+					if((stsTarget.getFunctionalType() == NUSALSeqCmdType.VOICE_OFFSET_REL) ||
+							(stsTarget.getFunctionalType() == NUSALSeqCmdType.VOICE_OFFSET)) {
+						ctxt.setLayer(ctxt.getChannel(), stsTarget.getParam(0));
+					}
+					else {
+						ctxt.setLayer(ctxt.getChannel(), 0);
+					}
+				}
+				else {
+					ctxt.setLayer(ctxt.getChannel(), 0);
+				}
+			}
+			break;
+		}
+		
+		return ctxt;
+	}
+	
+	public void adjustSize(NUSALSeqReadContext readerState) {
+		int myAddr = ptable.getAddress();
+		int maxAddr = limitAddr;
+		
+		NUSALSeqCommand next = null;
+		int tryAddr = myAddr;
+		while(++tryAddr < maxAddr) {
+			next = readerState.cmdmap.get(tryAddr);
+			if(next != null) {
+				maxAddr = tryAddr;
+				break;
+			}
+		}
+		if(maxAddr < limitAddr) limitAddr = maxAddr;
+		
+		ptable.resize((maxAddr - myAddr) >> 1);
+	}
 	
 	public void reassessType() {
 		if(tableType != NUSALSeqLinking.P_TYPE_UNK) {

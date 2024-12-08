@@ -14,11 +14,13 @@ public class IndirectLink {
 	
 	//What is this a pointer to? If it is a pointer?
 	private int linkType = NUSALSeqLinking.P_TYPE_UNK;
+	private NUSALSeqCommand traceTarget = null;
 	
 	public IndirectLink() {
 		referees = new HashSet<NUSALSeqCommand>();
 	}
 	
+	public NUSALSeqCommand getTraceTarget() {return traceTarget;}
 	public int getAddress() {return addr;}
 	public int getLinkType() {return linkType;}
 	public boolean typeResolved(){return (linkType != NUSALSeqLinking.P_TYPE_UNK);}
@@ -67,6 +69,7 @@ public class IndirectLink {
 			int type = DataCommands.guessPUsageType(referee, trace);
 			if(type != NUSALSeqLinking.P_TYPE_UNK) {
 				linkType = type;
+				traceTarget = trace.data;
 				break;
 			}
 		}

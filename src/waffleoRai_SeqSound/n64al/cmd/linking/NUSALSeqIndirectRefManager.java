@@ -65,7 +65,7 @@ public class NUSALSeqIndirectRefManager {
 		return true;
 	}
 	
-	private boolean addDyncallTable(int ptblAddr, NUSALSeqCommand referee) {
+	private boolean handleKnownPTable(int ptblAddr, int type, NUSALSeqCommand referee) {
 		//Also do initial scan upon loading and add missed targets to indirLinks
 		PTableLink ptlink = pTables.get(ptblAddr);
 		if(ptlink != null) {
@@ -73,10 +73,11 @@ public class NUSALSeqIndirectRefManager {
 		}
 		else {
 			ptlink = new PTableLink(readerState, ptblAddr, referee);
-			ptlink.getPTable().setLabel(String.format(".data%03d", readerState.data_lbl_count++));
-			ptlink.setTableType(NUSALSeqLinking.P_TYPE_SEQ_CODE);
-			resolvePTable(ptlink);
 		}
+		
+		ptlink.getPTable().setLabel(String.format(".data%03d", readerState.data_lbl_count++));
+		ptlink.setTableType(type);
+		resolvePTable(ptlink);
 		
 		return true;
 	}
@@ -97,6 +98,7 @@ public class NUSALSeqIndirectRefManager {
  		//Reject if address is nonsense.
  		if(addr < 0) return false;
  		if(addr >= maxAddress) return false;
+ 		//if(getCommandOver(addr) != null) return false;
  		
  		readerState.branch_queue.add(new ParseLater(addr, tick, ctx));
  		return true;
@@ -185,6 +187,7 @@ public class NUSALSeqIndirectRefManager {
 	 			case STORE_TO_SELF_S:
 	 			case STORE_TO_SELF_C:
 	 			case LOAD_FROM_SELF:
+	 				//TODO These are flaky rn
 	 				//Will usually have a default immediate target to regular data,
 	 				// but it is not uncommon for target address to be overwritten.
 	 				addToDataQueue(refAddr, ParseContext.fromCommand(cmd), cmd);
@@ -192,7 +195,7 @@ public class NUSALSeqIndirectRefManager {
 	 				break;
 	 				
 	 			case CALL_TABLE: //CALL_TABLE command itself - can automatically type and resolve
-	 				addDyncallTable(refAddr, cmd);
+	 				handleKnownPTable(refAddr, NUSALSeqLinking.P_TYPE_SEQ_CODE, cmd);
 	 				readerState.rchecked.add(cmd.getAddress());
 	 				break;
 	 				
@@ -251,12 +254,20 @@ public class NUSALSeqIndirectRefManager {
 			break;
 		case NUSALSeqLinking.P_TYPE_GENERAL_DATA:
 		case NUSALSeqLinking.P_TYPE_QDATA:
-		case NUSALSeqLinking.P_TYPE_PDATA:
 			ref1 = ilink.getSingleReferee();
 			pctx = ParseContext.fromCommand(ref1);
 			okay = addToDataQueue(addr, pctx, null);
 			datl = readerState.data_parse.get(addr);
 			datl.referees.addAll(referees);
+			break;
+		case NUSALSeqLinking.P_TYPE_PDATA:
+			//TODO Check what it is.
+			NUSALSeqCommand trace = ilink.getTraceTarget();
+			if(trace != null) {
+				if(trace.getFunctionalType() == NUSALSeqCmdType.CALL_DYNTABLE) {
+					okay = handleKnownPTable(ilink.getAddress(), NUSALSeqLinking.P_TYPE_CH_CODE, ilink.getSingleReferee());
+				}
+			}
 			break;
 		case NUSALSeqLinking.P_TYPE_LITERAL:
 			okay = true;
@@ -274,7 +285,7 @@ public class NUSALSeqIndirectRefManager {
 	}
 	
 	private void resolvePTable(PTableLink table) {
-		ParseContext pctx = new ParseContext();
+		ParseContext pctx = table.determineTargetContext();
 		NUSALSeqPtrTableData ptbl = table.getPTable();
 		int addr = ptbl.getAddress();
 		List<NUSALSeqCommand> referees = ptbl.getReferees();
@@ -283,7 +294,6 @@ public class NUSALSeqIndirectRefManager {
 		boolean okay = false;
 		switch(table.getTableType()) {
 		case NUSALSeqLinking.P_TYPE_SEQ_CODE:
-			pctx.setAsSeq();
 			for(int i = 0; i < tblCount; i++) {
 				int p = ptbl.getDataValue(i, false);
 				if(p > 0) {
@@ -294,18 +304,27 @@ public class NUSALSeqIndirectRefManager {
 			readerState.rskip.add(addr);
 			break;
 		case NUSALSeqLinking.P_TYPE_CH_CODE:
-			pctx.setAnyChannel();
 			for(int i = 0; i < tblCount; i++) {
 				int p = ptbl.getDataValue(i, false);
 				if(p > 0) {
-					okay = addToBranchQueue(p, ptbl.getTickAddress(), pctx);
+					NUSALSeqCommand over = this.getCommandOver(p);
+					if(over == null) {
+						okay = addToBranchQueue(p, ptbl.getTickAddress(), pctx);
+					}
+					else {
+						//Check if existing command is valid.
+						//If not, shrink table.
+						if(p != over.getAddress() || !over.isChannelCommand()) {
+							ptbl.resize(i);
+							break;
+						}
+					}
 				}
 				else okay = true;
 			}
 			readerState.rskip.add(addr);
 			break;
 		case NUSALSeqLinking.P_TYPE_LYR_CODE:
-			pctx.setAnyLayer();
 			for(int i = 0; i < tblCount; i++) {
 				int p = ptbl.getDataValue(i, false);
 				if(p > 0) {
@@ -318,7 +337,6 @@ public class NUSALSeqIndirectRefManager {
 		case NUSALSeqLinking.P_TYPE_GENERAL_DATA:
 		case NUSALSeqLinking.P_TYPE_QDATA:
 		case NUSALSeqLinking.P_TYPE_PDATA:
-			pctx = ParseContext.fromCommand(ptbl);
 			for(int i = 0; i < tblCount; i++) {
 				int p = ptbl.getDataValue(i, false);
 				if(p > 0) {
@@ -354,6 +372,21 @@ public class NUSALSeqIndirectRefManager {
 		}
 	}
 	
+	private void resizePTable(PTableLink table) {
+		//Adjust maximum address.
+		int myAddr = table.getPTable().getAddress();
+		int tryAddr = myAddr;
+		int limAddr = table.getEndLimitAddress();
+		while(++tryAddr < limAddr) {
+			if(pTables.containsKey(tryAddr)) {
+				//Another pending reference
+				table.setEndLimitAddress(tryAddr);
+				break;
+			}
+		}
+		table.adjustSize(readerState);
+	}
+	
 	private void scanPTable(PTableLink table) {
 		//1. Syncs types between table and elements and resolves if applicable
 		//2. Links any element references if they have since been found elsewhere
@@ -364,6 +397,7 @@ public class NUSALSeqIndirectRefManager {
 		//Does not make any attempt to determine type from reference tree tracing.
 		//	That is done elsewhere
 		
+		resizePTable(table);
 		table.reassessType();
 		if(table.getTableType() != NUSALSeqLinking.P_TYPE_UNK) {
 			resolvePTable(table);
@@ -553,7 +587,7 @@ public class NUSALSeqIndirectRefManager {
  									reflink_LabelChanBlock(pref, pref.getFirstChannelUsed(), false);
  								}
  								else {
- 									reflink_LabelLyrBlock(pref, pref.getFirstChannelUsed(), 0, false);
+ 									reflink_LabelLyrBlock(pref, 0, 0, false);
  								}
  							}
  						}

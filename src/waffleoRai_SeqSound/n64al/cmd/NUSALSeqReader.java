@@ -325,8 +325,14 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  	}
  	
  	private void addDataToCommandMap(NUSALSeqCommand cmd) {
+ 		if(cmd == null) return;
  		int addr = cmd.getAddress();
  		state.cmdmap.put(addr, cmd);
+ 		if(cmd instanceof NUSALSeqDataCommand) {
+ 			if((state.dataStart < 0 ) || (addr < state.dataStart)) {
+ 				state.dataStart = addr;
+ 			}
+ 		}
  	}
  	
  	private void addNewDataAndLink(DataLater ndat, int branchTimeout){
@@ -572,7 +578,43 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		}
  	}
  	
+ 	private NUSALSeqDataCommand processUnusedDataAsData(int startAddr, int gapSize, int branchTimeout) {
+ 		//I might make a detector for things like envelopes, but for now too lazy
+ 		
+ 		//1. Check if all zero. If so, make a buffer. If not, bin data.
+ 		boolean allZero = true;
+ 		for(int i = 0; i < gapSize; i++) {
+ 			if(state.data.getByte(startAddr + i) != 0) {
+ 				allZero = false;
+ 				break;
+ 			}
+ 		}
+ 		
+ 		NUSALSeqDataCommand dcmd = null;
+ 		if(allZero) {
+ 			dcmd = new NUSALSeqDataCommand(NUSALSeqDataType.BUFFER, gapSize);
+ 		}
+ 		else {
+ 			dcmd = new NUSALSeqDataCommand(NUSALSeqDataType.BINARY, gapSize);
+ 			for(int i = 0; i < gapSize; i++) {
+ 	 			dcmd.setDataByte(state.data.getByte(startAddr + i), i);
+ 	 		}
+ 		}
+ 		
+ 		if(dcmd != null) {
+ 			dcmd.setAddress(startAddr);
+ 			addDataToCommandMap(dcmd);
+ 			dcmd.setLabel(String.format(".unused_data%03d", state.data_lbl_count++));
+ 		}
+ 		
+ 		return dcmd;
+ 	}
+ 	
  	private NUSALSeqCommand processUnusedData(int startAddr, int gapSize, int branchTimeout) throws InterruptedException{
+ 		if((state.dataStart > 0) && (startAddr >= state.dataStart)) {
+ 			return processUnusedDataAsData(startAddr, gapSize, branchTimeout);
+ 		}
+ 		
  		//Check if nonzero
  		//Try to parse as a command (context by checking previous instruction)
  		//If that doesn't work, mark as unused data
@@ -650,8 +692,12 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 			
 			return gap;
  		}
+ 		else {
+ 			//Assume unused data.
+ 			return processUnusedDataAsData(startAddr, gapSize, branchTimeout);
+ 		}
  		
- 		return null;
+ 		//return null;
  	}
  	
  	private void findUnusedData(int branchTimeout) throws InterruptedException{
@@ -659,6 +705,16 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		List<Integer> alladdr = new ArrayList<Integer>(state.cmdmap.size()+1);
 		alladdr.addAll(state.cmdmap.keySet());
 		Collections.sort(alladdr);
+		
+		//First check for a data region
+		for(Integer addr : alladdr){
+			NUSALSeqCommand cmd = state.cmdmap.get(addr);
+			if(cmd instanceof NUSALSeqDataCommand) {
+				state.dataStart = addr;
+				break;
+			}
+		}
+		
 		int last_addr = 0;
 		for(Integer addr : alladdr){
 			if(last_addr < addr){
@@ -1007,6 +1063,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 		state.ecmd_lbl_count = 0;
 		state.rchecked.clear(); state.rskip.clear();
 		state.cmd_coverage = new CoverageMap1D();
+		state.dataStart = -1;
 		
 		indirMngr = new NUSALSeqIndirectRefManager(state);
  	}
@@ -1030,6 +1087,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		state.ch_lbls = null;
  		state.ly_lbls = null;
  		state.ch_shortnotes = null;
+ 		state.dataStart = -1;
  		
  		indirMngr.clear();
  		indirMngr = null;
