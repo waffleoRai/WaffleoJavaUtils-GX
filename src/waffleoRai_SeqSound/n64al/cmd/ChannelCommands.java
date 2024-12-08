@@ -1653,7 +1653,7 @@ public class ChannelCommands {
 		}
 		
 		protected String paramsToString(int syntax){
-			return String.format("0x%02x", super.getParam(0));
+			return String.format("0x%02x", super.getParam(0) & 0xff);
 		}
 	}
 	

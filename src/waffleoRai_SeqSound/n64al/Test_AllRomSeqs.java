@@ -201,7 +201,7 @@ public class Test_AllRomSeqs {
 					System.err.println("\t> Parse succeeded(?) Exporting MML script...");
 					foutpath = outpath + File.separator + seqname + ".mus";
 					BufferedWriter bw = new BufferedWriter(new FileWriter(foutpath));
-					mySeq.exportMMLScript(bw);
+					mySeq.exportMMLScript(bw, true, NUSALSeq.SYNTAX_SET_ZEQER);
 					bw.close();
 					
 					//Try mid

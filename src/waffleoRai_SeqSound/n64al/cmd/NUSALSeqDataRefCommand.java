@@ -45,7 +45,14 @@ public abstract class NUSALSeqDataRefCommand extends NUSALSeqReferenceCommand{
 	public void setDataOffset(int value){offset = value;}
 	
 	public String getLabelPrefix(){return lbl_prefix;}
-	public int getExpectedDataSize(){return data_size;}
+	public int getExpectedDataSize(){return data_size;}	
+	
+	public void removeReference(NUSALSeqCommand target) {
+		if(target == super.getBranchTarget()) {
+			offset = 0;
+		}
+		super.removeReference(target);
+	}
 	
 	public void updateAddressParameter(){
 		NUSALSeqCommand ref = super.getBranchTarget();

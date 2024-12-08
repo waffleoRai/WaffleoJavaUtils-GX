@@ -12,9 +12,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
 
 import waffleoRai_SeqSound.n64al.NUSALSeq;
 import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
@@ -35,17 +32,11 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
 	//TODO Call tick calculation still not working quite right... (Seq CZLE031, ch 2)
 	//TODO Update MML parser to recognize ptbl
 	
-	//TODO stps on voice_offset param genning buffer instead of pointing to instruction. (stps seems to always do this)
-	//TODO still not parsing voice_offset mod params in layer context, except for first in table.
 	//TODO having trouble with some envelopes (0xffa in seq 01)
-	
-	//TODO sts targets getting eaten? (Seq 46) Target was parsed and recognized as target, and linked to sts... then removed from cmd map???
-	
-	//TODO sts/stps reparser does not account for if the new command was referenced by another before being replaced
 	
 	/*--- Constants ---*/
 	
-	public static final boolean DEBUG_MODE = true;
+	public static final boolean DEBUG_MODE = false;
 	
 	public static final int PARSEMODE_UNDEFINED = 0x0;
 	public static final int PARSEMODE_SEQ = 0x1;
@@ -311,18 +302,6 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  	}
  	
  	/*--- Command Linking (Bin) ---*/
- 	
- 	private boolean addToDataQueue(int datAddr, ParseContext ctxGuess, NUSALSeqCommand referee) {
- 		if(datAddr < 0) return false;
- 		if(datAddr >= (int)state.data.getFileSize()) return false;
- 		
- 		DataLater dat = new DataLater();
-		dat.data_address = datAddr;
-		dat.ctx_guess = ctxGuess;
-		dat.referees.add(referee);
-		state.data_parse.put(datAddr, dat);
- 		return true;
- 	}
  	
  	private void addDataToCommandMap(NUSALSeqCommand cmd) {
  		if(cmd == null) return;
@@ -751,14 +730,19 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  		return state.ch_shortnotes[channel].isCovered(tick);
  	}
  	
- 	private boolean checkZeroTail(int addr, boolean channel_ctx){
+ 	private boolean checkZeroTail(int addr, ParseContext pctx){
  		int zerocount = 0;
 		for(int p = addr; p < state.data.getFileSize(); p++){
 			if(state.data.getByte(p) != 0) break;
 			zerocount++;
 		}
+		if(pctx.isLayer()) {
+			//Can allow some zeros - can be note commands filled by sts
+			if(zerocount >= 4) return true;
+			else return false;
+		}
 		if(zerocount >= 2) return true;
-		if(channel_ctx && zerocount >= 1) return true;
+		if(pctx.isChannel() && zerocount >= 1) return true;
 		return false;
  	}
  	 	
@@ -842,7 +826,7 @@ public class NUSALSeqReader implements NUSALSeqCommandSource{
  				break;
  			}
  			
- 			if(checkZeroTail(now_addr, context.isChannel())){
+ 			if(checkZeroTail(now_addr, context)){
  				res.end_type = BRANCHEND_ZEROES;
  				break;
  			}

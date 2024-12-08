@@ -11,6 +11,7 @@ import waffleoRai_SeqSound.n64al.NUSALSeqCmdType;
 import waffleoRai_SeqSound.n64al.NUSALSeqCommand;
 import waffleoRai_SeqSound.n64al.cmd.DataCommands;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqDataCommand;
+import waffleoRai_SeqSound.n64al.cmd.NUSALSeqDataRefCommand;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqPtrTableData;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqReferenceCommand;
 import waffleoRai_SeqSound.n64al.cmd.NUSALSeqReader.DataLater;
@@ -108,11 +109,16 @@ public class NUSALSeqIndirectRefManager {
  		if(datAddr < 0) return false;
  		if(datAddr >= maxAddress) return false;
  		
- 		DataLater dat = new DataLater();
-		dat.data_address = datAddr;
-		dat.ctx_guess = ctxGuess;
+ 		//If already in queue, add referee
+ 		DataLater dat = readerState.data_parse.get(datAddr);
+ 		if(dat == null) {
+ 			dat = new DataLater();
+ 			dat.data_address = datAddr;
+ 			dat.ctx_guess = ctxGuess;
+ 			readerState.data_parse.put(datAddr, dat);
+ 		}
+
 		if(referee != null) dat.referees.add(referee);
-		readerState.data_parse.put(datAddr, dat);
  		return true;
  	}
 	
@@ -126,14 +132,29 @@ public class NUSALSeqIndirectRefManager {
 		if(isValidAddress(refAddr)) {
 			NUSALSeqCommand target = getCommandOver(refAddr);
 			if(target != null) {
+				int taddr = target.getAddress();
+				int offset = refAddr - taddr;
 				cmd.setReference(target);
+				if(offset > 0) {
+					if(cmd instanceof NUSALSeqDataRefCommand) {
+						NUSALSeqDataRefCommand drcmd = (NUSALSeqDataRefCommand)cmd;
+						drcmd.setDataOffset(offset);
+					}
+				}
+
 				if(target.getLabel() == null){
-					int[] ctxt = target.getFirstUsed();
-					boolean isSub = (cmd.getFunctionalType()== NUSALSeqCmdType.CALL);
-					if(ctxt[0] < 0) reflink_LabelSeqBlock(target, isSub);
-					else{
-						if(ctxt[1] < 0) reflink_LabelChanBlock(target, ctxt[0], isSub);
-						else reflink_LabelLyrBlock(target, ctxt[0], ctxt[1], isSub);
+					if(offset > 0) {
+						target.setLabel(String.format(".dyncmd%03d", readerState.ecmd_lbl_count++));
+						readerState.lblmap.put(target.getLabel(), target);
+					}
+					else {
+						int[] ctxt = target.getFirstUsed();
+						boolean isSub = (cmd.getFunctionalType()== NUSALSeqCmdType.CALL);
+						if(ctxt[0] < 0) reflink_LabelSeqBlock(target, isSub);
+						else{
+							if(ctxt[1] < 0) reflink_LabelChanBlock(target, ctxt[0], isSub);
+							else reflink_LabelLyrBlock(target, ctxt[0], ctxt[1], isSub);
+						}	
 					}
 				}
 				readerState.rchecked.add(cmd.getAddress());
@@ -187,7 +208,6 @@ public class NUSALSeqIndirectRefManager {
 	 			case STORE_TO_SELF_S:
 	 			case STORE_TO_SELF_C:
 	 			case LOAD_FROM_SELF:
-	 				//TODO These are flaky rn
 	 				//Will usually have a default immediate target to regular data,
 	 				// but it is not uncommon for target address to be overwritten.
 	 				addToDataQueue(refAddr, ParseContext.fromCommand(cmd), cmd);

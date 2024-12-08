@@ -50,7 +50,9 @@ public class CommandWalker {
 		NUSALSeqCommand ncmd = null;
 		if(current.getFunctionalType() != NUSALSeqCmdType.END_READ) {
 			ncmd = current.getSubsequentCommand();
-			if(triedAddr.contains(ncmd.getAddress())) ncmd = null;
+			if(ncmd != null) {
+				if(triedAddr.contains(ncmd.getAddress())) ncmd = null;
+			}
 		}
 
 		if(ncmd != null) {
