@@ -1,8 +1,15 @@
 package waffleoRai_Containers.maxis;
 
+import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.Set;
 
 import waffleoRai_Utils.BufferReference;
 import waffleoRai_Utils.FileBuffer;
@@ -19,13 +26,30 @@ public class MaxisPropertyStream {
 	private int versionFieldSize = 2;
 	
 	private int version = 2;
-	private FileBuffer data;
-	private Map<Integer, Integer> propertyMap;
+	//private FileBuffer data;
+	//private Map<Integer, Integer> propertyMap;
+	
+	private List<PropertyNode> propertyList; //To preserve order
+	private Map<Integer, FileBuffer> propertyData;
+	
+	/*----- Classes -----*/
+	
+	private static class PropertyNode{
+		public int propId;
+		public FileBuffer data;
+		
+		public PropertyNode(int key, FileBuffer val) {
+			propId = key;
+			data = val;
+		}
+	}
 	
 	/*----- Init -----*/
 	
 	private MaxisPropertyStream(){
-		propertyMap = new TreeMap<Integer, Integer>();
+		//propertyMap = new TreeMap<Integer, Integer>();
+		propertyData = new HashMap<Integer, FileBuffer>();
+		propertyList = new LinkedList<PropertyNode>();
 	}
 	
 	/*----- Getters -----*/
@@ -36,70 +60,194 @@ public class MaxisPropertyStream {
 	public int getVersion(){return version;}
 	
 	public boolean hasField(int key){
-		return propertyMap.containsKey(key);
+		//return propertyMap.containsKey(key);
+		return propertyData.containsKey(key);
+	}
+	
+	public boolean getFieldAsBool(int key) {
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return false;
+		if(dat.isEmpty()) return false;
+		return dat.getByte(0L) != 0;
+	}
+	
+	public boolean[] getFieldAsBoolArray(int key) {
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return null;
+		if(dat.isEmpty()) return null;
+		int ecount = (int)dat.getFileSize();
+		dat.setCurrentPosition(0L);
+		boolean[] arr = new boolean[ecount];
+		for(int i = 0; i < ecount; i++) {
+			arr[i] = (dat.nextByte() != 0);
+		}
+		return arr;
 	}
 	
 	public byte getFieldAsByte(int key){
-		Integer offset = propertyMap.get(key);
-		if(offset == null) return -1;
-		return data.getByte(offset);
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return -1;
+		if(dat.isEmpty()) return -1;
+		return dat.getByte(0L);
+	}
+	
+	public byte[] getFieldAsByteArray(int key) {
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return null;
+		if(dat.isEmpty()) return null;
+		int ecount = (int)dat.getFileSize();
+		dat.setCurrentPosition(0L);
+		byte[] arr = new byte[ecount];
+		for(int i = 0; i < ecount; i++) {
+			arr[i] = dat.nextByte();
+		}
+		return arr;
 	}
 	
 	public short getFieldAsShort(int key){
-		Integer offset = propertyMap.get(key);
-		if(offset == null) return -1;
-		return data.shortFromFile(offset);
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return -1;
+		if(dat.isEmpty()) return -1;
+		return dat.shortFromFile(0L);
+	}
+	
+	public short[] getFieldAsShortArray(int key) {
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return null;
+		if(dat.isEmpty()) return null;
+		int ecount = (int)dat.getFileSize() >>> 1;
+		dat.setCurrentPosition(0L);
+		short[] arr = new short[ecount];
+		for(int i = 0; i < ecount; i++) {
+			arr[i] = dat.nextShort();
+		}
+		return arr;
 	}
 	
 	public int getFieldAsShortish(int key){
-		Integer offset = propertyMap.get(key);
-		if(offset == null) return -1;
-		return data.shortishFromFile(offset);
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return -1;
+		if(dat.isEmpty()) return -1;
+		return dat.shortishFromFile(0L);
 	}
 	
 	public int getFieldAsInt(int key){
-		Integer offset = propertyMap.get(key);
-		if(offset == null) return -1;
-		return data.intFromFile(offset);
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return -1;
+		if(dat.isEmpty()) return -1;
+		return dat.intFromFile(0L);
+	}
+	
+	public int[] getFieldAsIntArray(int key) {
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return null;
+		if(dat.isEmpty()) return null;
+		int ecount = (int)dat.getFileSize() >>> 2;
+		dat.setCurrentPosition(0L);
+		int[] arr = new int[ecount];
+		for(int i = 0; i < ecount; i++) {
+			arr[i] = dat.nextInt();
+		}
+		return arr;
 	}
 	
 	public long getFieldAsLong(int key){
-		Integer offset = propertyMap.get(key);
-		if(offset == null) return -1;
-		return data.longFromFile(offset);
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return -1;
+		if(dat.isEmpty()) return -1;
+		return dat.longFromFile(0L);
+	}
+	
+	public long[] getFieldAsLongArray(int key) {
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return null;
+		if(dat.isEmpty()) return null;
+		int ecount = (int)dat.getFileSize() >>> 3;
+		dat.setCurrentPosition(0L);
+		long[] arr = new long[ecount];
+		for(int i = 0; i < ecount; i++) {
+			arr[i] = dat.nextLong();
+		}
+		return arr;
 	}
 	
 	public float getFieldAsFloat(int key){
-		Integer offset = propertyMap.get(key);
-		if(offset == null) return -1;
-		int ival = data.intFromFile(offset);
-		return Float.intBitsToFloat(ival);
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return -1;
+		if(dat.isEmpty()) return -1;
+		return Float.intBitsToFloat(dat.intFromFile(0L));
+	}
+	
+	public float[] getFieldAsFloatArray(int key) {
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return null;
+		if(dat.isEmpty()) return null;
+		int ecount = (int)dat.getFileSize() >>> 2;
+		dat.setCurrentPosition(0L);
+		float[] arr = new float[ecount];
+		for(int i = 0; i < ecount; i++) {
+			arr[i] = Float.intBitsToFloat(dat.nextInt());
+		}
+		return arr;
 	}
 	
 	public double getFieldAsDouble(int key){
-		Integer offset = propertyMap.get(key);
-		if(offset == null) return -1;
-		long ival = data.longFromFile(offset);
-		return Double.longBitsToDouble(ival);
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return -1;
+		if(dat.isEmpty()) return -1;
+		return Double.longBitsToDouble(dat.longFromFile(0L));
+	}
+	
+	public double[] getFieldAsDoubleArray(int key) {
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return null;
+		if(dat.isEmpty()) return null;
+		int ecount = (int)dat.getFileSize() >>> 3;
+		dat.setCurrentPosition(0L);
+		double[] arr = new double[ecount];
+		for(int i = 0; i < ecount; i++) {
+			arr[i] = Double.longBitsToDouble(dat.nextLong());
+		}
+		return arr;
 	}
 	
 	public String getFieldAsString(int key){
-		Integer offset = propertyMap.get(key);
-		if(offset == null) return null;
-		BufferReference strref = data.getReferenceAt(offset);
-		return MaxisTypes.readMaxisString(strref);
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return null;
+		if(dat.isEmpty()) return null;
+		return MaxisTypes.readMaxisString(dat.getReferenceAt(0L));
 	}
 	
-	public byte[] getFieldAsBlob(int key){
-		//TODO
-		return null;
+	public String[] getFieldAsStringArray(int key){
+		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return null;
+		if(dat.isEmpty()) return null;
+		BufferReference pos = dat.getReferenceAt(0L);
+		List<String> ll = new LinkedList<String>();
+		while(pos.hasRemaining()) ll.add(MaxisTypes.readMaxisString(pos));
+		if(ll.isEmpty()) return null;
+		String[] arr = new String[ll.size()];
+		int i = 0;
+		for(String s : ll) {
+			arr[i++] = s;
+		}
+		return arr;
+	}
+	
+	public FileBuffer getFieldAsBlob(int key){
+		FileBuffer dat = propertyData.get(key);
+		return dat;
 	}
 	
 	public MaxisPropertyStream getChildStream(int key){
-		Integer offset = propertyMap.get(key);
-		if(offset == null) return null;
-		BufferReference ref = data.getReferenceAt(offset);
-		return openForRead(ref, byteOrder, versionFieldSize);
+		FileBuffer dat = propertyData.get(key);
+		return openForRead(dat.getReferenceAt(0L), byteOrder, versionFieldSize);
+	}
+	
+	public Set<Integer> getAllFieldKeys(){
+		Set<Integer> set = new HashSet<Integer>();
+		set.addAll(propertyData.keySet());
+		return set;
 	}
 	
 	/*----- Setters -----*/
@@ -107,7 +255,10 @@ public class MaxisPropertyStream {
 	public void setByteOrder(boolean val){
 		if(readOnly) return;
 		byteOrder = val;
-		if(data != null) data.setEndian(val);
+		//if(data != null) data.setEndian(val);
+		for(FileBuffer dat : propertyData.values()) {
+			dat.setEndian(val);
+		}
 	}
 	
 	public void setVersionFieldShort(){
@@ -125,105 +276,224 @@ public class MaxisPropertyStream {
 		version = val;
 	}
 	
-	public void allocateWriteBuffer(int size){
-		if(readOnly) return;
-		data = new FileBuffer(size, byteOrder);
-		propertyMap.clear();
-	}
-	
 	public void clearContents(){
 		if(readOnly) return;
-		try{data.dispose();}
-		catch(Exception ex){ex.printStackTrace();}
-		data = null;
-		propertyMap.clear();
+		try {
+			propertyList.clear();
+			for(FileBuffer dat : propertyData.values()) {
+				dat.dispose();
+			}
+			propertyData.clear();
+		}
+		catch(Exception ex) {ex.printStackTrace();}
+	}
+	
+	public boolean addBool(boolean value, int key){
+		if(readOnly) return false;
+		FileBuffer buff = new FileBuffer(1, byteOrder);
+		byte bb = value?(byte)1:(byte)0;
+		buff.addToFile(bb);
+		propertyData.put(key, buff);
+		propertyList.add(new PropertyNode(key, buff));
+		return true;
+	}
+	
+	public boolean addBoolArray(boolean[] value, int key) {
+		if(readOnly) return false;
+		if(value == null) return false;
+		int datSize = value.length;
+		FileBuffer dat = new FileBuffer(datSize, byteOrder);
+		for(int i = 0; i < value.length; i++) {
+			int bb = value[i]?1:0;
+			dat.addToFile(bb);
+		}
+		return true;
 	}
 	
 	public boolean addByte(byte value, int key){
 		if(readOnly) return false;
-		if(propertyMap.containsKey(key)) return false;
-		if(data == null) return false;
-		int offset = (int)data.getFileSize();
-		data.addToFile(value);
-		propertyMap.put(key, offset);
+		FileBuffer buff = new FileBuffer(1, byteOrder);
+		buff.addToFile(value);
+		propertyData.put(key, buff);
+		propertyList.add(new PropertyNode(key, buff));
+		return true;
+	}
+	
+	public boolean addByteArray(byte[] value, int key) {
+		if(readOnly) return false;
+		if(value == null) return false;
+		int datSize = value.length;
+		FileBuffer dat = new FileBuffer(datSize, byteOrder);
+		for(int i = 0; i < value.length; i++) {
+			dat.addToFile(value[i]);
+		}
 		return true;
 	}
 	
 	public boolean addShort(short value, int key){
 		if(readOnly) return false;
-		if(propertyMap.containsKey(key)) return false;
-		if(data == null) return false;
-		int offset = (int)data.getFileSize();
-		data.addToFile(value);
-		propertyMap.put(key, offset);
+		FileBuffer buff = new FileBuffer(2, byteOrder);
+		buff.addToFile(value);
+		propertyData.put(key, buff);
+		propertyList.add(new PropertyNode(key, buff));
+		return true;
+	}
+	
+	public boolean addShortArray(short[] value, int key) {
+		if(readOnly) return false;
+		if(value == null) return false;
+		int datSize = value.length << 1;
+		FileBuffer dat = new FileBuffer(datSize, byteOrder);
+		for(int i = 0; i < value.length; i++) {
+			dat.addToFile(value[i]);
+		}
 		return true;
 	}
 	
 	public boolean addShortish(int value, int key){
 		if(readOnly) return false;
-		if(propertyMap.containsKey(key)) return false;
-		if(data == null) return false;
-		int offset = (int)data.getFileSize();
-		data.add24ToFile(value);
-		propertyMap.put(key, offset);
+		FileBuffer buff = new FileBuffer(3, byteOrder);
+		buff.add24ToFile(value);
+		propertyData.put(key, buff);
+		propertyList.add(new PropertyNode(key, buff));
 		return true;
 	}
 	
 	public boolean addInt(int value, int key){
 		if(readOnly) return false;
-		if(propertyMap.containsKey(key)) return false;
-		if(data == null) return false;
-		int offset = (int)data.getFileSize();
-		data.addToFile(value);
-		propertyMap.put(key, offset);
+		FileBuffer buff = new FileBuffer(4, byteOrder);
+		buff.addToFile(value);
+		propertyData.put(key, buff);
+		propertyList.add(new PropertyNode(key, buff));
+		return true;
+	}
+	
+	public boolean addIntArray(int[] value, int key) {
+		if(readOnly) return false;
+		if(value == null) return false;
+		int datSize = value.length << 2;
+		FileBuffer dat = new FileBuffer(datSize, byteOrder);
+		for(int i = 0; i < value.length; i++) {
+			dat.addToFile(value[i]);
+		}
 		return true;
 	}
 	
 	public boolean addLong(long value, int key){
 		if(readOnly) return false;
-		if(propertyMap.containsKey(key)) return false;
-		if(data == null) return false;
-		int offset = (int)data.getFileSize();
-		data.addToFile(value);
-		propertyMap.put(key, offset);
+		FileBuffer buff = new FileBuffer(8, byteOrder);
+		buff.addToFile(value);
+		propertyData.put(key, buff);
+		propertyList.add(new PropertyNode(key, buff));
+		return true;
+	}
+	
+	public boolean addLongArray(long[] value, int key) {
+		if(readOnly) return false;
+		if(value == null) return false;
+		int datSize = value.length << 3;
+		FileBuffer dat = new FileBuffer(datSize, byteOrder);
+		for(int i = 0; i < value.length; i++) {
+			dat.addToFile(value[i]);
+		}
 		return true;
 	}
 	
 	public boolean addFloat(float value, int key){
 		if(readOnly) return false;
-		if(propertyMap.containsKey(key)) return false;
-		if(data == null) return false;
-		int offset = (int)data.getFileSize();
-		data.addToFile(Float.floatToRawIntBits(value));
-		propertyMap.put(key, offset);
+		FileBuffer buff = new FileBuffer(4, byteOrder);
+		buff.addToFile(Float.floatToRawIntBits(value));
+		propertyData.put(key, buff);
+		propertyList.add(new PropertyNode(key, buff));
+		return true;
+	}
+	
+	public boolean addFloatArray(float[] value, int key) {
+		if(readOnly) return false;
+		if(value == null) return false;
+		int datSize = value.length << 2;
+		FileBuffer dat = new FileBuffer(datSize, byteOrder);
+		for(int i = 0; i < value.length; i++) {
+			dat.addToFile(Float.floatToRawIntBits(value[i]));
+		}
 		return true;
 	}
 	
 	public boolean addDouble(double value, int key){
 		if(readOnly) return false;
-		if(propertyMap.containsKey(key)) return false;
-		if(data == null) return false;
-		int offset = (int)data.getFileSize();
-		data.addToFile(Double.doubleToRawLongBits(value));
-		propertyMap.put(key, offset);
+		FileBuffer buff = new FileBuffer(8, byteOrder);
+		buff.addToFile(Double.doubleToRawLongBits(value));
+		propertyData.put(key, buff);
+		propertyList.add(new PropertyNode(key, buff));
+		return true;
+	}
+	
+	public boolean addDoubleArray(double[] value, int key) {
+		if(readOnly) return false;
+		if(value == null) return false;
+		int datSize = value.length << 3;
+		FileBuffer dat = new FileBuffer(datSize, byteOrder);
+		for(int i = 0; i < value.length; i++) {
+			dat.addToFile(Double.doubleToRawLongBits(value[i]));
+		}
 		return true;
 	}
 	
 	public boolean addString(String value, int key){
-		//TODO
 		if(readOnly) return false;
+		if(value == null) return false;
+		FileBuffer buff = MaxisTypes.serializeMaxisString(value, byteOrder);
+		propertyData.put(key, buff);
+		propertyList.add(new PropertyNode(key, buff));
+		return true;
+	}
+	
+	public boolean addStringArray(String[] value, int key) {
+		if(readOnly) return false;
+		if(value == null) return false;
+		int datSize = value.length << 2;
+		for(int i = 0; i < value.length; i++) {
+			if(value[i] != null) datSize += value.length << 1;
+		}
+		FileBuffer dat = new FileBuffer(datSize, byteOrder);
+		for(int i = 0; i < value.length; i++) {
+			MaxisTypes.serializeMaxisStringTo(value[i], dat);
+		}
 		return true;
 	}
 	
 	public boolean addBlob(byte[] value, int key){
-		//TODO
 		if(readOnly) return false;
+		if(value == null) return false;
+		FileBuffer buff = FileBuffer.wrap(value);
+		buff.setEndian(byteOrder);
+		propertyData.put(key, buff);
+		propertyList.add(new PropertyNode(key, buff));
+		return true;
+	}
+	
+	public boolean addBlob(FileBuffer value, int key){
+		if(readOnly) return false;
+		if(value == null) return false;
+		FileBuffer buff;
+		try {
+			buff = value.createCopy(0, value.getFileSize());
+			buff.setEndian(byteOrder);
+			propertyData.put(key, buff);
+			propertyList.add(new PropertyNode(key, buff));
+		} catch (IOException e) {
+			e.printStackTrace();
+			return false;
+		}
 		return true;
 	}
 	
 	public boolean addChildStream(MaxisPropertyStream value, int key){
-		//TODO
 		if(readOnly) return false;
+		if(value == null) return false;
+		FileBuffer buff = value.serializeMe();
+		propertyData.put(key, buff);
+		propertyList.add(new PropertyNode(key, buff));
 		return true;
 	}
 	
@@ -246,18 +516,54 @@ public class MaxisPropertyStream {
 			break;
 		}
 		
-		//Copy data into new buffer
+		//Read property table
 		int data_size = input.nextInt();
-		ps.data = new FileBuffer(data_size, ps.byteOrder);
-		for(int i = 0; i < data_size; i++) ps.data.addToFile(input.nextByte()); //memcpy
+		FileBuffer backingBuffer = input.getBuffer();
+		long dataPos = input.getBufferPosition();
+		FileBuffer dataBuffer = backingBuffer.createReadOnlyCopy(dataPos, dataPos + data_size);
+		
+		input.add(data_size);
+		int entry_count = Short.toUnsignedInt(input.nextShort());
+		
+		List<Integer> keyOrder = new ArrayList<Integer>(entry_count+1);
+		Map<Integer, Integer> off2KeyMap = new HashMap<Integer, Integer>();
+		List<Integer> offsets = new ArrayList<Integer>(entry_count+1);
 		
 		//Adjust offsets in map to reflect offset from data start, not ps start.
-		int entry_count = Short.toUnsignedInt(input.nextShort());
 		for(int i = 0; i < entry_count; i++){
 			int key = input.nextInt();
 			int offset = input.nextInt();
 			offset -= (ps.versionFieldSize + 4);
-			ps.propertyMap.put(key, offset);
+			keyOrder.add(key);
+			offsets.add(offset);
+			off2KeyMap.put(offset, key);
+		}
+		
+		//Split up data
+		Collections.sort(offsets);
+		for(int i = 0; i < entry_count; i++) {
+			int offSt = offsets.get(i);
+			int offEd = data_size;
+			if(i < (entry_count - 1)) {
+				offEd = offsets.get(i+1);
+			}
+			
+			int key = off2KeyMap.get(offSt);
+			
+			try{
+				FileBuffer field = dataBuffer.createCopy(offSt, offEd);
+				field.setEndian(ps.byteOrder);
+				ps.propertyData.put(key, field);
+			}
+			catch(Exception ex) {ex.printStackTrace();}
+		}
+		try{dataBuffer.dispose();}
+		catch(Exception ex) {ex.printStackTrace();}
+		
+		//List order
+		for(Integer key : keyOrder) {
+			FileBuffer field = ps.propertyData.get(key);
+			ps.propertyList.add(new PropertyNode(key, field));
 		}
 		
 		return ps;
@@ -265,14 +571,83 @@ public class MaxisPropertyStream {
 
 	/*----- Writing -----*/
 	
-	public static MaxisPropertyStream openForWrite(int buffer_alloc){
-		//TODO
-		return null;
+	public static MaxisPropertyStream openForWrite(boolean byte_order){
+		return openForWrite(byte_order, 2);
 	}
 	
-	public long writeTo(OutputStream output){
-		//TODO
-		return 0L;
+	public static MaxisPropertyStream openForWrite(boolean byte_order, int verFieldSize){
+		MaxisPropertyStream ps = new MaxisPropertyStream();
+		ps.byteOrder = byte_order;
+		ps.versionFieldSize = verFieldSize;
+		return ps;
+	}
+	
+	public int calculateSerialSize() {
+		int size = 4 + versionFieldSize + 2; //Data size, version, entry count
+		for(PropertyNode node : propertyList) {
+			if(node.data != null) {
+				size += (int)node.data.getFileSize();
+			}
+			size += 8; //Table entry
+		}
+		return size;
+	}
+	
+	public int calculateDataSize() {
+		int size = 0;
+		for(PropertyNode node : propertyList) {
+			if(node.data != null) {
+				size += (int)node.data.getFileSize();
+			}
+		}
+		return size;
+	}
+	
+	public FileBuffer serializeMe() {
+		FileBuffer buff = new FileBuffer(calculateSerialSize() + 8, byteOrder);
+		serializeTo(buff);
+		return buff;
+	}
+	
+	public long serializeTo(FileBuffer target) {
+		int dataSize = calculateDataSize();
+		int entryCount = propertyList.size();
+		long stPos = target.getFileSize();
+		
+		target.addToFile(dataSize);
+		if(versionFieldSize == 2) target.addToFile((short)version);
+		else if(versionFieldSize == 4) target.addToFile(version);
+		
+		//Data
+		for(PropertyNode node : propertyList) {
+			if(node.data != null) {
+				int datsize = (int)node.data.getFileSize();
+				for(int i = 0; i < datsize; i++) target.addToFile(node.data.getByte(i));
+			}
+			else target.addToFile(0);
+		}
+		
+		//Property table
+		target.addToFile((short)entryCount);
+		int offset = 4 + versionFieldSize;
+		for(PropertyNode node : propertyList) {
+			target.addToFile(node.propId);
+			target.addToFile(offset);
+			if(node.data != null) {
+				offset += (int)node.data.getFileSize();
+			}
+			else offset += 4;
+		}
+		
+		return target.getFileSize() - stPos;
+	}
+	
+	public long writeTo(OutputStream output) throws IOException{
+		if(output == null) return 0L;
+		FileBuffer buff = serializeMe();
+		if(buff == null) return 0L;
+		buff.writeToStream(output);
+		return buff.getFileSize();
 	}
 	
 }

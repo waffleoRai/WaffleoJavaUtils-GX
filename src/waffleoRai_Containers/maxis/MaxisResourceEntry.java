@@ -22,7 +22,6 @@ public class MaxisResourceEntry {
 	
 	private String name;
 	
-	//For writing
 	private FileNode data_source;
 	private boolean compress;
 	
@@ -36,7 +35,7 @@ public class MaxisResourceEntry {
 	public int getSizeMem(){return sizeMem;}
 	public String getName(){return name;}
 	public boolean isCompressed(){return sizeMem > sizeDisk;}
-	public FileNode getWriteDataSource(){return data_source;}
+	public FileNode getDataSource(){return data_source;}
 	public boolean compressOnWrite(){return compress;}
 	
 	public void setOffset(int val){offset = val;}
@@ -44,7 +43,46 @@ public class MaxisResourceEntry {
 	public void setSizeMem(int val){sizeMem = val;}
 	public void setName(String val){name = val;}
 	
-	public void setWritableDataSource(FileNode src){data_source = src;}
+	public void setTypeId(int val) {
+		key.setTypeId(val);
+	}
+	
+	public void setGroupId(int val) {
+		key.setGroupId(val);
+	}
+	
+	public void setInstanceId(long val) {
+		key.setInstanceId(val);
+	}
+	
+	public void setInstanceIdHi(int val) {
+		long id = key.getInstanceId();
+		id &= 0xffffffffL;
+		id |= (Integer.toUnsignedLong(val))<< 32;
+		key.setInstanceId(id);
+	}
+	
+	public void setInstanceIdLo(int val) {
+		long id = key.getInstanceId();
+		id &= ~0xffffffffL;
+		id |= Integer.toUnsignedLong(val);
+		key.setInstanceId(id);
+	}
+	
+	public void setKey(MaxisResKey val) {
+		if(val != null) {
+			key.setTypeId(val.getTypeId());
+			key.setGroupId(val.getGroupId());
+			key.setInstanceId(val.getInstanceId());
+		}
+		else {
+			key.setTypeId(0);
+			key.setGroupId(0);
+			key.setInstanceId(0L);
+		}
+	}
+	
+	public void setDataSource(FileNode src){data_source = src;}
 	public void setCompressOnWrite(boolean b){compress = b;}
 	
 	public FileNode generateFileNode(DirectoryNode parent, String pkgpath){
@@ -71,7 +109,34 @@ public class MaxisResourceEntry {
 		return dat;
 	}
 	
-	public static MaxisResourceEntry readFromIndex(BufferReference input, int inclFlags){
+	public static MaxisResourceEntry readFromIndexV7_0(BufferReference input) {
+		MaxisResourceEntry entry = new MaxisResourceEntry();
+		
+		entry.setTypeId(input.nextInt());
+		entry.setGroupId(input.nextInt());
+		entry.setInstanceId(Integer.toUnsignedLong(input.nextInt()));
+		entry.setOffset(input.nextInt());
+		entry.setSizeDisk(input.nextInt() & 0x7fffffff);
+		entry.sizeMem = entry.sizeDisk;
+		
+		return entry;
+	}
+	
+	public static MaxisResourceEntry readFromIndexV7_1(BufferReference input) {
+		MaxisResourceEntry entry = new MaxisResourceEntry();
+		
+		entry.setTypeId(input.nextInt());
+		entry.setGroupId(input.nextInt());
+		entry.setInstanceIdHi(input.nextInt());
+		entry.setInstanceIdLo(input.nextInt());
+		entry.setOffset(input.nextInt());
+		entry.setSizeDisk(input.nextInt() & 0x7fffffff);
+		entry.sizeMem = entry.sizeDisk;
+		
+		return entry;
+	}
+	
+	public static MaxisResourceEntry readFromIndexV2(BufferReference input, int inclFlags){
 		int mask = 0x1;
 		int[] words = new int[8];
 		MaxisResourceEntry entry = new MaxisResourceEntry();
@@ -95,7 +160,7 @@ public class MaxisResourceEntry {
 		return entry;
 	}
 	
-	public int writeToIndex(FileBuffer target, int inclFlags){
+	public int writeToIndexV2(FileBuffer target, int inclFlags){
 		int mask = 0x1;
 		int written = 0;
 		

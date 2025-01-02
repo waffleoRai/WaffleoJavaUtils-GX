@@ -163,6 +163,7 @@ class Z64BankBlocks {
 			super.copyTo(copy);
 			copy.order = this.order;
 			copy.count = this.count;
+			copy.table = Arrays.copyOf(table, table.length);
 			return copy;
 		}
 		
