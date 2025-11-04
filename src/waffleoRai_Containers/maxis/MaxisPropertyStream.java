@@ -14,9 +14,25 @@ import java.util.Set;
 import waffleoRai_Utils.BufferReference;
 import waffleoRai_Utils.FileBuffer;
 
+//Sims3.SimIFace.PropertyStreamWriter
+
 public class MaxisPropertyStream {
 	
 	/*----- Constants -----*/
+	
+	public static final int KEYXOR_BOOL = 0x68FE5F59;
+	public static final int KEYXOR_S16 = 0x021560C5;
+	public static final int KEYXOR_S32 = 0x0415642B;
+	public static final int KEYXOR_S64 = 0x071568E6;
+	public static final int KEYXOR_U16 = 0xF328896C;
+	public static final int KEYXOR_U32 = 0xF1288606;
+	public static final int KEYXOR_U64 = 0xEE28814F;
+	public static final int KEYXOR_F32 = 0x4EDCD7A9;
+	public static final int KEYXOR_U8 = 0x6236014F;
+	public static final int KEYXOR_STRING = 0x15196597;
+	public static final int KEYXOR_CHILD = 0xFFF75A95;
+
+	public static final int KEYXOR_ARRAY = 0x555CCDF4;
 	
 	/*----- Instance Variables -----*/
 	
@@ -65,6 +81,7 @@ public class MaxisPropertyStream {
 	}
 	
 	public boolean getFieldAsBool(int key) {
+		key ^= KEYXOR_BOOL;
 		FileBuffer dat = propertyData.get(key);
 		if(dat == null) return false;
 		if(dat.isEmpty()) return false;
@@ -72,6 +89,7 @@ public class MaxisPropertyStream {
 	}
 	
 	public boolean[] getFieldAsBoolArray(int key) {
+		key ^= KEYXOR_BOOL ^ KEYXOR_ARRAY;
 		FileBuffer dat = propertyData.get(key);
 		if(dat == null) return null;
 		if(dat.isEmpty()) return null;
@@ -85,13 +103,15 @@ public class MaxisPropertyStream {
 	}
 	
 	public byte getFieldAsByte(int key){
+		key ^= KEYXOR_U8;
 		FileBuffer dat = propertyData.get(key);
-		if(dat == null) return -1;
-		if(dat.isEmpty()) return -1;
+		if(dat == null) return 0;
+		if(dat.isEmpty()) return 0;
 		return dat.getByte(0L);
 	}
 	
 	public byte[] getFieldAsByteArray(int key) {
+		key ^= KEYXOR_U8 ^ KEYXOR_ARRAY;
 		FileBuffer dat = propertyData.get(key);
 		if(dat == null) return null;
 		if(dat.isEmpty()) return null;
@@ -104,14 +124,18 @@ public class MaxisPropertyStream {
 		return arr;
 	}
 	
-	public short getFieldAsShort(int key){
+	public short getFieldAsShort(int key, boolean signed){
+		if(signed) key ^= KEYXOR_S16;
+		else key ^= KEYXOR_U16;
 		FileBuffer dat = propertyData.get(key);
-		if(dat == null) return -1;
-		if(dat.isEmpty()) return -1;
+		if(dat == null) return 0;
+		if(dat.isEmpty()) return 0;
 		return dat.shortFromFile(0L);
 	}
 	
-	public short[] getFieldAsShortArray(int key) {
+	public short[] getFieldAsShortArray(int key, boolean signed) {
+		if(signed) key ^= KEYXOR_S16 ^ KEYXOR_ARRAY;
+		else key ^= KEYXOR_U16 ^ KEYXOR_ARRAY;
 		FileBuffer dat = propertyData.get(key);
 		if(dat == null) return null;
 		if(dat.isEmpty()) return null;
@@ -126,19 +150,23 @@ public class MaxisPropertyStream {
 	
 	public int getFieldAsShortish(int key){
 		FileBuffer dat = propertyData.get(key);
-		if(dat == null) return -1;
-		if(dat.isEmpty()) return -1;
+		if(dat == null) return 0;
+		if(dat.isEmpty()) return 0;
 		return dat.shortishFromFile(0L);
 	}
 	
-	public int getFieldAsInt(int key){
+	public int getFieldAsInt(int key, boolean signed){
+		if(signed) key ^= KEYXOR_S32;
+		else key ^= KEYXOR_U32;
 		FileBuffer dat = propertyData.get(key);
-		if(dat == null) return -1;
-		if(dat.isEmpty()) return -1;
+		if(dat == null) return 0;
+		if(dat.isEmpty()) return 0;
 		return dat.intFromFile(0L);
 	}
 	
-	public int[] getFieldAsIntArray(int key) {
+	public int[] getFieldAsIntArray(int key, boolean signed) {
+		if(signed) key ^= KEYXOR_S32 ^ KEYXOR_ARRAY;
+		else key ^= KEYXOR_U32 ^ KEYXOR_ARRAY;
 		FileBuffer dat = propertyData.get(key);
 		if(dat == null) return null;
 		if(dat.isEmpty()) return null;
@@ -151,14 +179,18 @@ public class MaxisPropertyStream {
 		return arr;
 	}
 	
-	public long getFieldAsLong(int key){
+	public long getFieldAsLong(int key, boolean signed){
+		if(signed) key ^= KEYXOR_S64;
+		else key ^= KEYXOR_U64;
 		FileBuffer dat = propertyData.get(key);
-		if(dat == null) return -1;
-		if(dat.isEmpty()) return -1;
+		if(dat == null) return 0L;
+		if(dat.isEmpty()) return 0L;
 		return dat.longFromFile(0L);
 	}
 	
-	public long[] getFieldAsLongArray(int key) {
+	public long[] getFieldAsLongArray(int key, boolean signed) {
+		if(signed) key ^= KEYXOR_S64 ^ KEYXOR_ARRAY;
+		else key ^= KEYXOR_U64 ^ KEYXOR_ARRAY;
 		FileBuffer dat = propertyData.get(key);
 		if(dat == null) return null;
 		if(dat.isEmpty()) return null;
@@ -172,13 +204,15 @@ public class MaxisPropertyStream {
 	}
 	
 	public float getFieldAsFloat(int key){
+		key ^= KEYXOR_F32;
 		FileBuffer dat = propertyData.get(key);
-		if(dat == null) return -1;
-		if(dat.isEmpty()) return -1;
+		if(dat == null) return 0;
+		if(dat.isEmpty()) return 0;
 		return Float.intBitsToFloat(dat.intFromFile(0L));
 	}
 	
 	public float[] getFieldAsFloatArray(int key) {
+		key ^= KEYXOR_F32 ^ KEYXOR_ARRAY;
 		FileBuffer dat = propertyData.get(key);
 		if(dat == null) return null;
 		if(dat.isEmpty()) return null;
@@ -193,8 +227,8 @@ public class MaxisPropertyStream {
 	
 	public double getFieldAsDouble(int key){
 		FileBuffer dat = propertyData.get(key);
-		if(dat == null) return -1;
-		if(dat.isEmpty()) return -1;
+		if(dat == null) return 0;
+		if(dat.isEmpty()) return 0;
 		return Double.longBitsToDouble(dat.longFromFile(0L));
 	}
 	
@@ -212,6 +246,7 @@ public class MaxisPropertyStream {
 	}
 	
 	public String getFieldAsString(int key){
+		key ^= KEYXOR_STRING;
 		FileBuffer dat = propertyData.get(key);
 		if(dat == null) return null;
 		if(dat.isEmpty()) return null;
@@ -219,6 +254,7 @@ public class MaxisPropertyStream {
 	}
 	
 	public String[] getFieldAsStringArray(int key){
+		key ^= KEYXOR_STRING ^ KEYXOR_ARRAY;
 		FileBuffer dat = propertyData.get(key);
 		if(dat == null) return null;
 		if(dat.isEmpty()) return null;
@@ -240,7 +276,9 @@ public class MaxisPropertyStream {
 	}
 	
 	public MaxisPropertyStream getChildStream(int key){
+		key ^= KEYXOR_CHILD;
 		FileBuffer dat = propertyData.get(key);
+		if(dat == null) return null;
 		return openForRead(dat.getReferenceAt(0L), byteOrder, versionFieldSize);
 	}
 	
@@ -290,6 +328,7 @@ public class MaxisPropertyStream {
 	
 	public boolean addBool(boolean value, int key){
 		if(readOnly) return false;
+		key ^= KEYXOR_BOOL;
 		FileBuffer buff = new FileBuffer(1, byteOrder);
 		byte bb = value?(byte)1:(byte)0;
 		buff.addToFile(bb);
@@ -301,6 +340,7 @@ public class MaxisPropertyStream {
 	public boolean addBoolArray(boolean[] value, int key) {
 		if(readOnly) return false;
 		if(value == null) return false;
+		key ^= KEYXOR_BOOL ^ KEYXOR_ARRAY;
 		int datSize = value.length;
 		FileBuffer dat = new FileBuffer(datSize, byteOrder);
 		for(int i = 0; i < value.length; i++) {
@@ -312,6 +352,7 @@ public class MaxisPropertyStream {
 	
 	public boolean addByte(byte value, int key){
 		if(readOnly) return false;
+		key ^= KEYXOR_U8;
 		FileBuffer buff = new FileBuffer(1, byteOrder);
 		buff.addToFile(value);
 		propertyData.put(key, buff);
@@ -322,6 +363,7 @@ public class MaxisPropertyStream {
 	public boolean addByteArray(byte[] value, int key) {
 		if(readOnly) return false;
 		if(value == null) return false;
+		key ^= KEYXOR_U8 ^ KEYXOR_ARRAY;
 		int datSize = value.length;
 		FileBuffer dat = new FileBuffer(datSize, byteOrder);
 		for(int i = 0; i < value.length; i++) {
@@ -330,8 +372,10 @@ public class MaxisPropertyStream {
 		return true;
 	}
 	
-	public boolean addShort(short value, int key){
+	public boolean addShort(short value, int key, boolean signed){
 		if(readOnly) return false;
+		if(signed) key ^= KEYXOR_S16;
+		else key ^= KEYXOR_U16;
 		FileBuffer buff = new FileBuffer(2, byteOrder);
 		buff.addToFile(value);
 		propertyData.put(key, buff);
@@ -339,9 +383,11 @@ public class MaxisPropertyStream {
 		return true;
 	}
 	
-	public boolean addShortArray(short[] value, int key) {
+	public boolean addShortArray(short[] value, int key, boolean signed) {
 		if(readOnly) return false;
 		if(value == null) return false;
+		if(signed) key ^= KEYXOR_S16 ^ KEYXOR_ARRAY;
+		else key ^= KEYXOR_U16 ^ KEYXOR_ARRAY;
 		int datSize = value.length << 1;
 		FileBuffer dat = new FileBuffer(datSize, byteOrder);
 		for(int i = 0; i < value.length; i++) {
@@ -359,8 +405,10 @@ public class MaxisPropertyStream {
 		return true;
 	}
 	
-	public boolean addInt(int value, int key){
+	public boolean addInt(int value, int key, boolean signed){
 		if(readOnly) return false;
+		if(signed) key ^= KEYXOR_S32;
+		else key ^= KEYXOR_U32;
 		FileBuffer buff = new FileBuffer(4, byteOrder);
 		buff.addToFile(value);
 		propertyData.put(key, buff);
@@ -368,9 +416,11 @@ public class MaxisPropertyStream {
 		return true;
 	}
 	
-	public boolean addIntArray(int[] value, int key) {
+	public boolean addIntArray(int[] value, int key, boolean signed) {
 		if(readOnly) return false;
 		if(value == null) return false;
+		if(signed) key ^= KEYXOR_S32 ^ KEYXOR_ARRAY;
+		else key ^= KEYXOR_U32 ^ KEYXOR_ARRAY;
 		int datSize = value.length << 2;
 		FileBuffer dat = new FileBuffer(datSize, byteOrder);
 		for(int i = 0; i < value.length; i++) {
@@ -379,8 +429,10 @@ public class MaxisPropertyStream {
 		return true;
 	}
 	
-	public boolean addLong(long value, int key){
+	public boolean addLong(long value, int key, boolean signed){
 		if(readOnly) return false;
+		if(signed) key ^= KEYXOR_S64;
+		else key ^= KEYXOR_U64;
 		FileBuffer buff = new FileBuffer(8, byteOrder);
 		buff.addToFile(value);
 		propertyData.put(key, buff);
@@ -388,9 +440,11 @@ public class MaxisPropertyStream {
 		return true;
 	}
 	
-	public boolean addLongArray(long[] value, int key) {
+	public boolean addLongArray(long[] value, int key, boolean signed) {
 		if(readOnly) return false;
 		if(value == null) return false;
+		if(signed) key ^= KEYXOR_S64 ^ KEYXOR_ARRAY;
+		else key ^= KEYXOR_U64 ^ KEYXOR_ARRAY;
 		int datSize = value.length << 3;
 		FileBuffer dat = new FileBuffer(datSize, byteOrder);
 		for(int i = 0; i < value.length; i++) {
@@ -401,6 +455,7 @@ public class MaxisPropertyStream {
 	
 	public boolean addFloat(float value, int key){
 		if(readOnly) return false;
+		key ^= KEYXOR_F32;
 		FileBuffer buff = new FileBuffer(4, byteOrder);
 		buff.addToFile(Float.floatToRawIntBits(value));
 		propertyData.put(key, buff);
@@ -411,6 +466,7 @@ public class MaxisPropertyStream {
 	public boolean addFloatArray(float[] value, int key) {
 		if(readOnly) return false;
 		if(value == null) return false;
+		key ^= KEYXOR_F32 ^ KEYXOR_ARRAY;
 		int datSize = value.length << 2;
 		FileBuffer dat = new FileBuffer(datSize, byteOrder);
 		for(int i = 0; i < value.length; i++) {
@@ -442,6 +498,7 @@ public class MaxisPropertyStream {
 	public boolean addString(String value, int key){
 		if(readOnly) return false;
 		if(value == null) return false;
+		key ^= KEYXOR_STRING;
 		FileBuffer buff = MaxisTypes.serializeMaxisString(value, byteOrder);
 		propertyData.put(key, buff);
 		propertyList.add(new PropertyNode(key, buff));
@@ -451,6 +508,7 @@ public class MaxisPropertyStream {
 	public boolean addStringArray(String[] value, int key) {
 		if(readOnly) return false;
 		if(value == null) return false;
+		key ^= KEYXOR_STRING ^ KEYXOR_ARRAY;
 		int datSize = value.length << 2;
 		for(int i = 0; i < value.length; i++) {
 			if(value[i] != null) datSize += value.length << 1;
@@ -491,6 +549,7 @@ public class MaxisPropertyStream {
 	public boolean addChildStream(MaxisPropertyStream value, int key){
 		if(readOnly) return false;
 		if(value == null) return false;
+		key ^= KEYXOR_CHILD;
 		FileBuffer buff = value.serializeMe();
 		propertyData.put(key, buff);
 		propertyList.add(new PropertyNode(key, buff));
@@ -505,6 +564,7 @@ public class MaxisPropertyStream {
 		ps.readOnly = true;
 		ps.versionFieldSize = verFieldSize;
 		input.setByteOrder(byte_order);
+		int headerSize = 4 + ps.versionFieldSize;
 		
 		//This parser is based on version 2 for TS3. Will update when more variations are known.
 		switch(ps.versionFieldSize){
@@ -517,13 +577,14 @@ public class MaxisPropertyStream {
 		}
 		
 		//Read property table
-		int data_size = input.nextInt();
+		int data_size = input.nextInt() - headerSize; //This INCLUDES header.
 		FileBuffer backingBuffer = input.getBuffer();
 		long dataPos = input.getBufferPosition();
 		FileBuffer dataBuffer = backingBuffer.createReadOnlyCopy(dataPos, dataPos + data_size);
 		
 		input.add(data_size);
 		int entry_count = Short.toUnsignedInt(input.nextShort());
+		//int entry_count = input.nextInt();
 		
 		List<Integer> keyOrder = new ArrayList<Integer>(entry_count+1);
 		Map<Integer, Integer> off2KeyMap = new HashMap<Integer, Integer>();
@@ -534,6 +595,7 @@ public class MaxisPropertyStream {
 			int key = input.nextInt();
 			int offset = input.nextInt();
 			offset -= (ps.versionFieldSize + 4);
+			
 			keyOrder.add(key);
 			offsets.add(offset);
 			off2KeyMap.put(offset, key);

@@ -2,12 +2,16 @@ package waffleoRai_Containers.maxis;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
+import waffleoRai_Compression.lz77.MaxisLZ;
+import waffleoRai_DataContainers.MultiValMap;
+import waffleoRai_Files.maxis.MaxisTypeIds;
 import waffleoRai_Files.tree.DirectoryNode;
 import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Utils.BufferReference;
@@ -41,6 +45,13 @@ public class MaxisDBPFPackage {
 	
 	/*----- Getters -----*/
 	
+	public Collection<MaxisResKey> getAllResourceKeys(){
+		List<MaxisResKey> keys = new ArrayList<MaxisResKey>(index.size()+1);
+		keys.addAll(index.keySet());
+		Collections.sort(keys);
+		return keys;
+	}
+	
 	public MaxisResourceEntry getResourceInfo(MaxisResKey key) {
 		if(key == null) return null;
 		return index.get(key);
@@ -51,6 +62,7 @@ public class MaxisDBPFPackage {
 		
 		MaxisResourceEntry entry = index.get(key);
 		if(entry == null) return null;
+		if(entry.getSizeDisk() < 1) return null;
 		FileNode src = entry.getDataSource();
 		if(src == null) return null;
 		
@@ -161,7 +173,7 @@ public class MaxisDBPFPackage {
 		int added = 0;
 		for(int i = 0; i < entry_count; i++) {
 			MaxisResourceEntry entry = MaxisResourceEntry.readFromIndexV2(data, ~commonMask);
-			for(int j = 0; j < 8; i++) {
+			for(int j = 0; j < 8; j++) {
 				if((mask & commonMask) != 0) {
 					switch(j) {
 					case 0: entry.setTypeId(commonFields[j]); break;
@@ -198,6 +210,7 @@ public class MaxisDBPFPackage {
 			pack.rootDir = new DirectoryNode(null, "DBPF");
 			for(MaxisResourceEntry entry : pack.index.values()) {
 				FileNode fn = entry.generateFileNode(pack.rootDir, pkgPath);
+				fn.setSourcePath(pkgPath);
 				if(offset > 0) fn.setOffset(fn.getOffset() + offset);
 				entry.setDataSource(fn);
 			}
@@ -253,7 +266,7 @@ public class MaxisDBPFPackage {
 		
 		
 		//Read in index
-		if(indexVersionMajor != 7) {
+		if((versionMajor < 2) && (indexVersionMajor != 7)) {
 			throw new UnsupportedFileTypeException("MaxisDBPFPackage.read || Expected index version of 7!");
 		}
 		
@@ -283,11 +296,13 @@ public class MaxisDBPFPackage {
 		allKeys.addAll(pack.index.keySet());
 		Collections.sort(allKeys);
 		
-		Map<Long, MaxisResourceEntry> instanceIdMap = new HashMap<Long, MaxisResourceEntry>();
+		//Map<Long, MaxisResourceEntry> instanceIdMap = new HashMap<Long, MaxisResourceEntry>();
+		MultiValMap<Long, MaxisResourceEntry> instanceIdMap = new MultiValMap<Long, MaxisResourceEntry>();
 		for(MaxisResKey key : allKeys) {
 			long iid = key.getInstanceId();
 			MaxisResourceEntry entry = pack.index.get(key);
-			instanceIdMap.put(iid, entry);
+			//instanceIdMap.put(iid, entry);
+			instanceIdMap.addValue(iid, entry);
 		}
 		
 		//Read in DIRs (if applicable)
@@ -337,23 +352,26 @@ public class MaxisDBPFPackage {
 		boolean nameTableFound = false;
 		for(MaxisResKey key : allKeys) {
 			int typeId = key.getTypeId();
-			if(typeId == MaxisTypeIds.NAME_INDEX) {
-				nameTableFound = true;
+			if(typeId == MaxisTypeIds._KEY_NAMEIDX) {
 				MaxisResourceEntry entry = pack.index.get(key);
+				if(entry.getSizeDisk() < 5) continue;
+				nameTableFound = true;
 				
 				long offset = Integer.toUnsignedLong(entry.getOffset());
 				FileBuffer tblData = data.createReadOnlyCopy(offset, offset + entry.getSizeDisk());
+				if(entry.isCompressed()) tblData = MaxisLZ.decompress(tblData);
+				//FileBuffer tblData = pack.loadResourceData(key);
 				MaxisPackageNameTable ntbl = MaxisPackageNameTable.read(tblData.getReferenceAt(0L));
+				tblData.dispose();
 				
 				List<Long> memberIds = ntbl.getAllInstanceIds();
 				for(Long iid : memberIds) {
-					MaxisResourceEntry target = instanceIdMap.get(iid);
-					if(target != null) {
-						target.setName(ntbl.get(iid));
+					//MaxisResourceEntry target = instanceIdMap.get(iid);
+					List<MaxisResourceEntry> targets = instanceIdMap.getValues(iid);
+					if(targets != null) {
+						for(MaxisResourceEntry trg : targets) trg.setName(ntbl.get(iid));
 					}
 				}
-				
-				tblData.dispose();
 			}
 			else {
 				if(nameTableFound) break;
@@ -369,10 +387,11 @@ public class MaxisDBPFPackage {
 		if(delta.index.isEmpty()) return false;
 		
 		List<MaxisResKey> allKeys = new ArrayList<MaxisResKey>(delta.index.size()+1);
+		allKeys.addAll(delta.index.keySet());
 		Collections.sort(allKeys);
 		for(MaxisResKey key : allKeys) {
 			MaxisResourceEntry deltaEntry = delta.index.get(key);
-			if((deltaEntry.getSizeDisk() < 1) && !keepDel) {
+			if(((deltaEntry.getSizeMem() < 0) || (deltaEntry.getSizeDisk() < 1)) && !keepDel) {
 				index.remove(key);
 			}
 			else index.put(key, deltaEntry);
@@ -387,6 +406,7 @@ public class MaxisDBPFPackage {
 		if(delta.index.isEmpty()) return false;
 		
 		List<MaxisResKey> allKeys = new ArrayList<MaxisResKey>(delta.index.size()+1);
+		allKeys.addAll(delta.index.keySet());
 		Collections.sort(allKeys);
 		for(MaxisResKey key : allKeys) {
 			MaxisResourceEntry deltaEntry = delta.index.get(key);
@@ -397,6 +417,14 @@ public class MaxisDBPFPackage {
 		}
 		
 		return true;
+	}
+	
+	public MaxisResTable toResourceTable() {
+		MaxisResTable tbl = new MaxisResTable();
+		for(MaxisResourceEntry entry : index.values()) {
+			tbl.newEntry(entry.getKey(), entry.getName());
+		}
+		return tbl;
 	}
 	
 	/*----- Write -----*/

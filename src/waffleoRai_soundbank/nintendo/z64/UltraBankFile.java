@@ -115,8 +115,8 @@ public class UltraBankFile {
 		meta_flags = Byte.toUnsignedInt(data.nextByte());
 		
 		int warc_count = Byte.toUnsignedInt(data.nextByte());
-		if(warc_count >= 1) bank.setPrimaryWaveArcIndex(Byte.toUnsignedInt(data.nextByte()));
-		if(warc_count >= 2) bank.setSecondaryWaveArcIndex(Byte.toUnsignedInt(data.nextByte()));
+		if(warc_count >= 1) bank.setPrimaryWaveArcIndex((int)data.nextByte());
+		if(warc_count >= 2) bank.setSecondaryWaveArcIndex((int)data.nextByte());
 		
 		long cpos = data.getCurrentPosition();
 		while((cpos & 0x3) != 0) cpos++;
