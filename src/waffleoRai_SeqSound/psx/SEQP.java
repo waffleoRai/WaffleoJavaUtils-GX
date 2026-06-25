@@ -165,15 +165,16 @@ public class SEQP {
 					
 					if(tick == 0) {
 						if(metaType == MIDIMetaCommands.TEMPO) {
+							//Skip length field in standard MIDI!
 							seqp.MicrosecondsPerQNote = 0;
 							for(int k = 0; k < MIDIMetaCommands.LEN_TEMPO; k++) {
 								seqp.MicrosecondsPerQNote <<= 8;
-								seqp.MicrosecondsPerQNote |= Byte.toUnsignedInt(bytes[2+k]);
+								seqp.MicrosecondsPerQNote |= Byte.toUnsignedInt(bytes[3+k]);
 							}
 						}
 						else if(metaType == MIDIMetaCommands.TIMESIG) {
-							seqp.timeSigNumerator = Byte.toUnsignedInt(bytes[2]);
-							seqp.timeSigDenominator = Byte.toUnsignedInt(bytes[3]);
+							seqp.timeSigNumerator = Byte.toUnsignedInt(bytes[3]);
+							seqp.timeSigDenominator = Byte.toUnsignedInt(bytes[4]);
 						}
 						else {
 							if(verbose) { System.err.println("SEQP.fromMIDI || Incompatible meta event will be skipped (Track " + (i+1) + "): " +
