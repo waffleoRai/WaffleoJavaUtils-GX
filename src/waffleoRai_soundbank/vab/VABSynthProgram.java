@@ -20,14 +20,16 @@ public class VABSynthProgram implements SynthProgram{
 	public SynthSampleStream getSampleStream(byte pitch, byte velocity) throws InterruptedException {
 		VABProgram p = bank.getProgram(progIndex);
 		VABTone t = p.getTone(pitch);
-		return new VABSynthSampleStream(samples.openSampleStream(t.getSampleIndex()), bank, p, t, pitch, velocity, 44100);
+		int sidx = t.getSampleIndex() - 1;
+		return new VABSynthSampleStream(samples.openSampleStream(sidx), bank, p, t, pitch, velocity, 44100);
 	}
 	
 	public SynthSampleStream getSampleStream(byte pitch, byte velocity, float targetSampleRate) throws InterruptedException {
 		VABProgram p = bank.getProgram(progIndex);
 		if(p == null) System.err.println("Error: Program " + progIndex + " doesn't exist?");
 		VABTone t = p.getTone(pitch);
-		return new VABSynthSampleStream(samples.openSampleStream(t.getSampleIndex()), bank, p, t, pitch, velocity, targetSampleRate);
+		int sidx = t.getSampleIndex() - 1;
+		return new VABSynthSampleStream(samples.openSampleStream(sidx), bank, p, t, pitch, velocity, targetSampleRate);
 	}
 	
 }

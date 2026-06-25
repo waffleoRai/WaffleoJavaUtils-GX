@@ -42,7 +42,7 @@ public class VABTone {
 	private int pBendMax;
 	
 	private int parentProgram;
-	private int sampleIndex;
+	private int sampleIndex; //These are 1-based!! (fsfr)
 	
 	private boolean Am;
 	private int Ah;
@@ -396,7 +396,7 @@ public class VABTone {
 	/* ----- Conversion ----- */
 	
 	public void addToInstrument(SimpleInstrument inst){
-		String skey = PSXVAB.generateSampleKey(sampleIndex);
+		String skey = PSXVAB.generateSampleKey((sampleIndex - 1));
 		int idx = inst.newRegion(skey);
 		if (idx < 0) throw new IndexOutOfBoundsException();
 		InstRegion reg = inst.getRegion(idx);
