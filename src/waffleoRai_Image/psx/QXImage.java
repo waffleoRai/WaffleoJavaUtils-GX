@@ -21,6 +21,7 @@ import waffleoRai_Files.FileClass;
 import waffleoRai_Files.FileTypeDefinition;
 import waffleoRai_Files.tree.FileNode;
 import waffleoRai_Image.BmpFile;
+import waffleoRai_Image.ImageUtils;
 import waffleoRai_Image.PaletteGen;
 import waffleoRai_Image.nintendo.NDSGraphics;
 import waffleoRai_Image.psx.CLUTCompare.CLUTImgMatch;
@@ -827,7 +828,7 @@ public class QXImage {
 					}
 				}
 				
-				PaletteGen gen = new PaletteGen(bitdepth, false);
+				PaletteGen gen = new PaletteGen(bitdepth, ImageUtils.ALPHA_MODE_IGNORE);
 				gen.processImage(inputARGB);
 				clut.palette = gen.generatePalette();
 				clut.paletteFmt = PALETTE_FMT_ARGB;
@@ -904,7 +905,7 @@ public class QXImage {
 				}
 				target.palette_idx = clutIndex;
 				
-				PaletteGen gen = new PaletteGen(bitdepth, false);
+				PaletteGen gen = new PaletteGen(bitdepth, ImageUtils.ALPHA_MODE_IGNORE);
 				gen.processImage(inputARGB);
 				clut.palette = gen.generatePalette();
 				clut.paletteFmt = PALETTE_FMT_ARGB;
@@ -975,7 +976,7 @@ public class QXImage {
 				}
 				target.palette_idx = clutIndex;
 				
-				PaletteGen gen = new PaletteGen(bitdepth, alpha);
+				PaletteGen gen = new PaletteGen(bitdepth, ImageUtils.ALPHA_MODE_IGNORE);
 				gen.processImage(inputImage);
 				clut.palette = gen.generatePalette();
 				clut.paletteFmt = PALETTE_FMT_ARGB;

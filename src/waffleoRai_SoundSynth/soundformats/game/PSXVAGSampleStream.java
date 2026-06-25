@@ -74,13 +74,12 @@ public class PSXVAGSampleStream implements AudioSampleStream{
 	
 	/*----- Stream -----*/
 	
-	private void nextChunk()
-	{
-		if(next_chunk == -1)
-		{
+	private void nextChunk() {
+		if(next_chunk == -1) {
 			//One shot end
 			now_samps = new int[28];
 			spos = 0;
+			firstpass = false;
 			return;
 		}
 		
